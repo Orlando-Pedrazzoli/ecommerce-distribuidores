@@ -1,4 +1,4 @@
-// 17. PAGES/_APP.JS
+// 17. PAGES/_APP.JS - CORRIGIDO
 // ===================================
 
 import '../styles/globals.css';
@@ -10,17 +10,34 @@ export const useCart = () => useContext(CartContext);
 
 export default function App({ Component, pageProps }) {
   const [cart, setCart] = useState([]);
+  const [isClient, setIsClient] = useState(false);
 
+  // Verificar se estamos no cliente
   useEffect(() => {
-    const savedCart = localStorage.getItem('cart');
-    if (savedCart) {
-      setCart(JSON.parse(savedCart));
-    }
+    setIsClient(true);
   }, []);
 
+  // Carregar carrinho do localStorage apenas no cliente
   useEffect(() => {
-    localStorage.setItem('cart', JSON.stringify(cart));
-  }, [cart]);
+    if (isClient) {
+      const savedCart = localStorage.getItem('cart');
+      if (savedCart) {
+        try {
+          setCart(JSON.parse(savedCart));
+        } catch (error) {
+          console.error('Erro ao carregar carrinho:', error);
+          localStorage.removeItem('cart');
+        }
+      }
+    }
+  }, [isClient]);
+
+  // Salvar carrinho no localStorage apenas no cliente
+  useEffect(() => {
+    if (isClient) {
+      localStorage.setItem('cart', JSON.stringify(cart));
+    }
+  }, [cart, isClient]);
 
   const addToCart = (produto, quantidade) => {
     setCart(prevCart => {
@@ -70,6 +87,7 @@ export default function App({ Component, pageProps }) {
       0
     ),
     cartCount: cart.reduce((count, item) => count + item.quantidade, 0),
+    isClient,
   };
 
   return (
