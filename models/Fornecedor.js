@@ -1,15 +1,41 @@
-// 9. MODELS/FORNECEDOR.JS
+// MODELS/FORNECEDOR.JS - SIMPLIFICADO
 // ===================================
 
 import mongoose from 'mongoose';
 
-const FornecedorSchema = new mongoose.Schema({
-  nome: { type: String, required: true },
-  codigo: { type: String, required: true, unique: true }, // A, B, C
-  email: { type: String, required: true },
-  ativo: { type: Boolean, default: true },
-  dataCriacao: { type: Date, default: Date.now },
-});
+const FornecedorSchema = new mongoose.Schema(
+  {
+    nome: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    codigo: {
+      type: String,
+      required: true,
+      unique: true,
+      uppercase: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    categorias: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
+    ativo: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
 
 export default mongoose.models.Fornecedor ||
   mongoose.model('Fornecedor', FornecedorSchema);

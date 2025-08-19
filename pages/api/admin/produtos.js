@@ -1,4 +1,4 @@
-// 15. PAGES/API/ADMIN/PRODUTOS.JS - ATUALIZADO
+// PAGES/API/ADMIN/PRODUTOS.JS - SIMPLIFICADO
 // ===================================
 
 import dbConnect from '../../../lib/mongodb';
@@ -17,7 +17,10 @@ export default async function handler(req, res) {
         'nome codigo'
       );
 
-      return res.status(201).json(produtoPopulado);
+      return res.status(201).json({
+        success: true,
+        produto: produtoPopulado,
+      });
     } catch (error) {
       console.error('Erro ao criar produto:', error);
       return res.status(500).json({
@@ -29,46 +32,13 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     try {
-      const { page = 1, limit = 20, fornecedor, categoria, busca } = req.query;
-
-      // Construir filtros
-      let filter = {};
-
-      if (fornecedor && fornecedor !== 'todos') {
-        filter.fornecedorId = fornecedor;
-      }
-
-      if (categoria && categoria !== 'Todos') {
-        filter.categoria = categoria;
-      }
-
-      if (busca) {
-        filter.$or = [
-          { nome: { $regex: busca, $options: 'i' } },
-          { descricao: { $regex: busca, $options: 'i' } },
-          { sku: { $regex: busca, $options: 'i' } },
-        ];
-      }
-
-      // Paginação
-      const skip = (parseInt(page) - 1) * parseInt(limit);
-
-      const produtos = await Produto.find(filter)
+      const produtos = await Produto.find({ ativo: true })
         .populate('fornecedorId', 'nome codigo')
-        .sort({ dataCriacao: -1 })
-        .skip(skip)
-        .limit(parseInt(limit));
-
-      const total = await Produto.countDocuments(filter);
+        .sort({ createdAt: -1 });
 
       return res.status(200).json({
         produtos,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(total / parseInt(limit)),
-          totalItems: total,
-          itemsPerPage: parseInt(limit),
-        },
+        total: produtos.length,
       });
     } catch (error) {
       console.error('Erro ao buscar produtos:', error);
@@ -84,14 +54,9 @@ export default async function handler(req, res) {
         return res.status(400).json({ message: 'ID do produto é obrigatório' });
       }
 
-      const produto = await Produto.findByIdAndUpdate(
-        id,
-        {
-          ...req.body,
-          dataUltimaAtualizacao: new Date(),
-        },
-        { new: true }
-      ).populate('fornecedorId', 'nome codigo');
+      const produto = await Produto.findByIdAndUpdate(id, req.body, {
+        new: true,
+      }).populate('fornecedorId', 'nome codigo');
 
       if (!produto) {
         return res.status(404).json({ message: 'Produto não encontrado' });
@@ -99,7 +64,6 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        message: 'Produto atualizado com sucesso',
         produto,
       });
     } catch (error) {
@@ -119,7 +83,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ message: 'ID do produto é obrigatório' });
       }
 
-      // Soft delete - marcar como inativo ao invés de deletar
+      // Soft delete - marcar como inativo
       const produto = await Produto.findByIdAndUpdate(
         id,
         { ativo: false },

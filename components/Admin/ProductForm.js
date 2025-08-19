@@ -1,32 +1,53 @@
-// COMPONENTS/ADMIN/PRODUCTFORM.JS
+// COMPONENTS/ADMIN/PRODUCTFORM.JS - SIMPLIFICADO
 // ===================================
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function ProductForm({ onSuccess, editingProduct = null }) {
   const [loading, setLoading] = useState(false);
-  const [uploadingImages, setUploadingImages] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [fornecedores, setFornecedores] = useState([]);
+  const [selectedFornecedor, setSelectedFornecedor] = useState(null);
   const [formData, setFormData] = useState({
-    nome: editingProduct?.nome || '',
     fornecedorId: editingProduct?.fornecedorId || '',
-    categoria: editingProduct?.categoria || 'Capas',
-    preco: editingProduct?.preco || '',
+    codigo: editingProduct?.codigo || '',
+    nome: editingProduct?.nome || '',
     descricao: editingProduct?.descricao || '',
-    estoque: editingProduct?.estoque || '',
-    sku: editingProduct?.sku || '',
-    peso: editingProduct?.peso || '',
-    tags: editingProduct?.tags?.join(', ') || '',
+    categoria: editingProduct?.categoria || '',
+    preco: editingProduct?.preco || '',
   });
-  const [imagens, setImagens] = useState(editingProduct?.imagens || []);
-  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [currentImage, setCurrentImage] = useState(
+    editingProduct?.imagem || ''
+  );
 
-  const fornecedores = [
-    { _id: '507f1f77bcf86cd799439011', nome: 'Fornecedor A', codigo: 'A' },
-    { _id: '507f1f77bcf86cd799439012', nome: 'Fornecedor B', codigo: 'B' },
-    { _id: '507f1f77bcf86cd799439013', nome: 'Fornecedor C', codigo: 'C' },
-  ];
+  useEffect(() => {
+    buscarFornecedores();
+  }, []);
 
-  const categorias = ['Capas', 'Decks', 'Leashes', 'Acessórios'];
+  useEffect(() => {
+    if (formData.fornecedorId) {
+      const fornecedor = fornecedores.find(
+        f => f._id === formData.fornecedorId
+      );
+      setSelectedFornecedor(fornecedor);
+      if (fornecedor && !editingProduct) {
+        setFormData(prev => ({ ...prev, categoria: '' }));
+      }
+    }
+  }, [formData.fornecedorId, fornecedores]);
+
+  const buscarFornecedores = async () => {
+    try {
+      const response = await fetch('/api/admin/fornecedores');
+      if (response.ok) {
+        const data = await response.json();
+        setFornecedores(data);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar fornecedores:', error);
+    }
+  };
 
   const handleInputChange = e => {
     const { name, value } = e.target;
@@ -37,19 +58,23 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
   };
 
   const handleFileSelect = e => {
-    const files = Array.from(e.target.files);
-    setSelectedFiles(files);
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Arquivo muito grande. Máximo 5MB.');
+        return;
+      }
+      setSelectedFile(file);
+    }
   };
 
-  const uploadImages = async () => {
-    if (selectedFiles.length === 0) return [];
+  const uploadImage = async () => {
+    if (!selectedFile) return currentImage;
 
-    setUploadingImages(true);
+    setUploadingImage(true);
     try {
       const formDataUpload = new FormData();
-      selectedFiles.forEach(file => {
-        formDataUpload.append('images', file);
-      });
+      formDataUpload.append('images', selectedFile);
 
       const response = await fetch('/api/admin/upload', {
         method: 'POST',
@@ -57,17 +82,17 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
       });
 
       if (!response.ok) {
-        throw new Error('Erro no upload das imagens');
+        throw new Error('Erro no upload da imagem');
       }
 
       const data = await response.json();
-      return data.imageUrls;
+      return data.imageUrls[0];
     } catch (error) {
       console.error('Erro ao fazer upload:', error);
-      alert('Erro ao fazer upload das imagens');
-      return [];
+      alert('Erro ao fazer upload da imagem');
+      return currentImage;
     } finally {
-      setUploadingImages(false);
+      setUploadingImage(false);
     }
   };
 
@@ -76,21 +101,14 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
     setLoading(true);
 
     try {
-      // Upload das novas imagens
-      const newImageUrls = await uploadImages();
-      const allImages = [...imagens, ...newImageUrls];
+      // Upload da imagem
+      const imageUrl = await uploadImage();
 
       // Preparar dados do produto
       const productData = {
         ...formData,
         preco: parseFloat(formData.preco),
-        estoque: parseInt(formData.estoque) || 0,
-        peso: parseFloat(formData.peso) || 0,
-        tags: formData.tags
-          .split(',')
-          .map(tag => tag.trim())
-          .filter(tag => tag),
-        imagens: allImages,
+        imagem: imageUrl,
       };
 
       // Salvar produto
@@ -113,48 +131,105 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             : 'Produto criado com sucesso!'
         );
 
-        // Reset form
-        setFormData({
-          nome: '',
-          fornecedorId: '',
-          categoria: 'Capas',
-          preco: '',
-          descricao: '',
-          estoque: '',
-          sku: '',
-          peso: '',
-          tags: '',
-        });
-        setImagens([]);
-        setSelectedFiles([]);
+        // Reset form apenas se não estiver editando
+        if (!editingProduct) {
+          setFormData({
+            fornecedorId: '',
+            codigo: '',
+            nome: '',
+            descricao: '',
+            categoria: '',
+            preco: '',
+          });
+          setCurrentImage('');
+          setSelectedFile(null);
+          setSelectedFornecedor(null);
 
-        // Reset file input
-        const fileInput = document.getElementById('images');
-        if (fileInput) fileInput.value = '';
+          // Reset file input
+          const fileInput = document.getElementById('imageFile');
+          if (fileInput) fileInput.value = '';
+        }
 
         onSuccess && onSuccess();
       } else {
-        throw new Error('Erro ao salvar produto');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erro ao salvar produto');
       }
     } catch (error) {
       console.error('Erro:', error);
-      alert('Erro ao salvar produto');
+      alert(`Erro ao salvar produto: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const removeImage = index => {
-    setImagens(prev => prev.filter((_, i) => i !== index));
-  };
-
   return (
     <div className='bg-white rounded-lg shadow-md p-6'>
       <h2 className='text-xl font-bold text-gray-800 mb-6'>
-        {editingProduct ? 'Editar Produto' : 'Adicionar Novo Produto'}
+        {editingProduct ? 'Editar Produto' : 'Adicionar Produto'}
       </h2>
 
       <form onSubmit={handleSubmit} className='space-y-4'>
+        {/* Fornecedor */}
+        <div>
+          <label className='block text-gray-700 font-medium mb-2'>
+            Fornecedor *
+          </label>
+          <select
+            name='fornecedorId'
+            value={formData.fornecedorId}
+            onChange={handleInputChange}
+            className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
+            required
+          >
+            <option value=''>Selecione um fornecedor</option>
+            {fornecedores.map(f => (
+              <option key={f._id} value={f._id}>
+                {f.nome} ({f.codigo})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Categoria - só aparece quando fornecedor selecionado */}
+        {selectedFornecedor && (
+          <div>
+            <label className='block text-gray-700 font-medium mb-2'>
+              Categoria *
+            </label>
+            <select
+              name='categoria'
+              value={formData.categoria}
+              onChange={handleInputChange}
+              className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
+              required
+            >
+              <option value=''>Selecione uma categoria</option>
+              {selectedFornecedor.categorias?.map(cat => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Código */}
+        <div>
+          <label className='block text-gray-700 font-medium mb-2'>
+            Código do Produto *
+          </label>
+          <input
+            type='text'
+            name='codigo'
+            value={formData.codigo}
+            onChange={handleInputChange}
+            placeholder='Ex: CAP-A-001'
+            className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
+            required
+          />
+        </div>
+
         {/* Nome */}
         <div>
           <label className='block text-gray-700 font-medium mb-2'>
@@ -170,209 +245,91 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
           />
         </div>
 
-        {/* SKU */}
-        <div>
-          <label className='block text-gray-700 font-medium mb-2'>
-            SKU (Código do Produto)
-          </label>
-          <input
-            type='text'
-            name='sku'
-            value={formData.sku}
-            onChange={handleInputChange}
-            className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
-            placeholder='Ex: CAP001'
-          />
-        </div>
-
-        {/* Fornecedor e Categoria */}
-        <div className='grid md:grid-cols-2 gap-4'>
-          <div>
-            <label className='block text-gray-700 font-medium mb-2'>
-              Fornecedor *
-            </label>
-            <select
-              name='fornecedorId'
-              value={formData.fornecedorId}
-              onChange={handleInputChange}
-              className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
-              required
-            >
-              <option value=''>Selecione um fornecedor</option>
-              {fornecedores.map(f => (
-                <option key={f._id} value={f._id}>
-                  {f.nome}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className='block text-gray-700 font-medium mb-2'>
-              Categoria *
-            </label>
-            <select
-              name='categoria'
-              value={formData.categoria}
-              onChange={handleInputChange}
-              className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
-            >
-              {categorias.map(cat => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Preço, Estoque e Peso */}
-        <div className='grid md:grid-cols-3 gap-4'>
-          <div>
-            <label className='block text-gray-700 font-medium mb-2'>
-              Preço (R$) *
-            </label>
-            <input
-              type='number'
-              step='0.01'
-              name='preco'
-              value={formData.preco}
-              onChange={handleInputChange}
-              className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
-              required
-            />
-          </div>
-          <div>
-            <label className='block text-gray-700 font-medium mb-2'>
-              Estoque
-            </label>
-            <input
-              type='number'
-              name='estoque'
-              value={formData.estoque}
-              onChange={handleInputChange}
-              className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
-            />
-          </div>
-          <div>
-            <label className='block text-gray-700 font-medium mb-2'>
-              Peso (kg)
-            </label>
-            <input
-              type='number'
-              step='0.01'
-              name='peso'
-              value={formData.peso}
-              onChange={handleInputChange}
-              className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
-              placeholder='0.5'
-            />
-          </div>
-        </div>
-
         {/* Descrição */}
         <div>
           <label className='block text-gray-700 font-medium mb-2'>
             Descrição *
           </label>
           <textarea
-            rows='4'
+            rows='3'
             name='descricao'
             value={formData.descricao}
             onChange={handleInputChange}
             className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
             required
-          ></textarea>
-        </div>
-
-        {/* Tags */}
-        <div>
-          <label className='block text-gray-700 font-medium mb-2'>
-            Tags (separadas por vírgula)
-          </label>
-          <input
-            type='text'
-            name='tags'
-            value={formData.tags}
-            onChange={handleInputChange}
-            className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
-            placeholder='Ex: azul, impermeável, premium'
           />
         </div>
 
-        {/* Imagens Atuais */}
-        {imagens.length > 0 && (
+        {/* Preço */}
+        <div>
+          <label className='block text-gray-700 font-medium mb-2'>
+            Preço (R$) *
+          </label>
+          <input
+            type='number'
+            step='0.01'
+            min='0'
+            name='preco'
+            value={formData.preco}
+            onChange={handleInputChange}
+            className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
+            required
+          />
+        </div>
+
+        {/* Imagem atual */}
+        {currentImage && (
           <div>
             <label className='block text-gray-700 font-medium mb-2'>
-              Imagens Atuais
+              Imagem Atual
             </label>
-            <div className='flex flex-wrap gap-2'>
-              {imagens.map((img, index) => (
-                <div key={index} className='relative'>
-                  <img
-                    src={img}
-                    alt={`Produto ${index + 1}`}
-                    className='w-20 h-20 object-cover rounded border'
-                  />
-                  <button
-                    type='button'
-                    onClick={() => removeImage(index)}
-                    className='absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 text-xs hover:bg-red-600'
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
+            <img
+              src={currentImage}
+              alt='Produto'
+              className='w-24 h-24 object-cover rounded border'
+            />
           </div>
         )}
 
-        {/* Upload de Imagens */}
+        {/* Upload de Imagem */}
         <div>
           <label className='block text-gray-700 font-medium mb-2'>
-            {editingProduct ? 'Adicionar Mais Imagens' : 'Imagens do Produto'}
+            {currentImage ? 'Alterar Imagem' : 'Imagem do Produto'}
           </label>
           <input
             type='file'
-            id='images'
-            multiple
+            id='imageFile'
             accept='image/*'
             onChange={handleFileSelect}
             className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
           />
           <p className='text-xs text-gray-500 mt-1'>
-            Máximo 5MB por imagem. Formatos: JPG, PNG, WEBP
+            Máximo 5MB. Formatos: JPG, PNG, WEBP
           </p>
         </div>
 
-        {/* Preview das novas imagens */}
-        {selectedFiles.length > 0 && (
+        {/* Preview da nova imagem */}
+        {selectedFile && (
           <div>
             <label className='block text-gray-700 font-medium mb-2'>
-              Preview das Novas Imagens
+              Preview da Nova Imagem
             </label>
-            <div className='flex flex-wrap gap-2'>
-              {selectedFiles.map((file, index) => (
-                <div key={index} className='relative'>
-                  <img
-                    src={URL.createObjectURL(file)}
-                    alt={`Preview ${index + 1}`}
-                    className='w-20 h-20 object-cover rounded border'
-                  />
-                </div>
-              ))}
-            </div>
+            <img
+              src={URL.createObjectURL(selectedFile)}
+              alt='Preview'
+              className='w-24 h-24 object-cover rounded border'
+            />
           </div>
         )}
 
         {/* Submit Button */}
         <button
           type='submit'
-          disabled={loading || uploadingImages}
+          disabled={loading || uploadingImage}
           className='w-full bg-blue-500 text-white py-3 rounded font-medium hover:bg-blue-600 transition disabled:opacity-50'
         >
-          {loading || uploadingImages
-            ? uploadingImages
+          {loading || uploadingImage
+            ? uploadingImage
               ? 'Fazendo upload...'
               : 'Salvando...'
             : editingProduct
