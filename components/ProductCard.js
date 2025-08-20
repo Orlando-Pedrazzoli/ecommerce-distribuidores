@@ -1,14 +1,16 @@
-// COMPONENTS/PRODUCTCARD.JS - SIMPLIFICADO
+// COMPONENTS/PRODUCTCARD.JS - COM TOAST SYSTEM
 // ===================================
 
 import { useState } from 'react';
 import { useCart } from '../pages/_app';
+import { useToastContext } from '../pages/_app';
 import Image from 'next/image';
 
 export default function ProductCard({ produto }) {
   const [quantidade, setQuantidade] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const { addToCart } = useCart();
+  const toast = useToastContext(); // ✅ ADICIONADO: Hook do toast
 
   const handleAddToCart = async () => {
     setIsLoading(true);
@@ -16,21 +18,12 @@ export default function ProductCard({ produto }) {
       await addToCart(produto, quantidade);
       setQuantidade(1);
 
-      // Notificação simples
-      const toast = document.createElement('div');
-      toast.className =
-        'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
-      toast.textContent = '✅ Adicionado ao carrinho!';
-      document.body.appendChild(toast);
-
-      setTimeout(() => {
-        if (document.body.contains(toast)) {
-          document.body.removeChild(toast);
-        }
-      }, 3000);
+      // ✅ REMOVIDO: toast manual (já é chamado automaticamente no addToCart)
+      // O toast de sucesso já é exibido automaticamente no _app.js!
     } catch (error) {
       console.error('Erro ao adicionar ao carrinho:', error);
-      alert('Erro ao adicionar produto ao carrinho');
+      // ✅ SUBSTITUÍDO: alert por toast
+      toast.error('Erro ao adicionar produto ao carrinho');
     } finally {
       setIsLoading(false);
     }

@@ -5,12 +5,16 @@ const getDistribuidores = () => {
   const distribuidores = [];
 
   // Carregar distribuidores das variáveis de ambiente
-  for (let i = 1; i <= 10; i++) {
-    // Suporta até 10 distribuidores
+  for (let i = 1; i <= 20; i++) {
+    // Suporta até 20 distribuidores
     const distribuidorEnv = process.env[`DISTRIBUIDOR_${i}`];
     if (distribuidorEnv) {
-      const [email, password, nome] = distribuidorEnv.split(':');
-      distribuidores.push({ email, password, nome });
+      const [usuario, password, nomeCompleto] = distribuidorEnv.split(':');
+      distribuidores.push({
+        usuario: usuario.trim(),
+        password: password.trim(),
+        nomeCompleto: nomeCompleto.trim(),
+      });
     }
   }
 
@@ -39,7 +43,7 @@ export default async function handler(req, res) {
       const token = jwt.sign(
         {
           id: 'admin',
-          email: username,
+          usuario: username,
           tipo: 'admin',
           nome: 'Administrador',
         },
@@ -62,20 +66,27 @@ export default async function handler(req, res) {
     // 2. VERIFICAR DISTRIBUIDORES
     const distribuidores = getDistribuidores();
     console.log('Distribuidores carregados:', distribuidores.length);
+    console.log(
+      'Lista:',
+      distribuidores.map(d => d.usuario)
+    );
 
     const distribuidor = distribuidores.find(
-      d => d.email === username && d.password === password
+      d => d.usuario === username && d.password === password
     );
 
     if (distribuidor) {
-      console.log('✅ Login DISTRIBUIDOR bem-sucedido:', distribuidor.nome);
+      console.log(
+        '✅ Login DISTRIBUIDOR bem-sucedido:',
+        distribuidor.nomeCompleto
+      );
 
       const token = jwt.sign(
         {
-          id: distribuidor.email, // Usar email como ID
-          email: distribuidor.email,
+          id: distribuidor.usuario, // Usar usuario como ID
+          usuario: distribuidor.usuario,
           tipo: 'distribuidor',
-          nome: distribuidor.nome,
+          nome: distribuidor.nomeCompleto,
         },
         process.env.NEXTAUTH_SECRET,
         { expiresIn: '24h' }
@@ -90,9 +101,9 @@ export default async function handler(req, res) {
         success: true,
         message: 'Login realizado com sucesso',
         user: {
-          id: distribuidor.email,
-          nome: distribuidor.nome,
-          email: distribuidor.email,
+          id: distribuidor.usuario,
+          nome: distribuidor.nomeCompleto,
+          usuario: distribuidor.usuario,
           tipo: 'distribuidor',
         },
       });
@@ -102,7 +113,7 @@ export default async function handler(req, res) {
     console.log('❌ Credenciais inválidas');
     return res.status(401).json({
       success: false,
-      message: 'Email ou senha incorretos',
+      message: 'Usuário ou senha incorretos',
     });
   } catch (error) {
     console.error('💥 Erro no login:', error);

@@ -1,4 +1,4 @@
-// PAGES/PRODUTOS/[FORNECEDOR].JS - SIMPLIFICADO
+// PAGES/PRODUTOS/[FORNECEDOR].JS - COM GRADIENTES PERSONALIZADOS
 // ===================================
 
 import { useState, useEffect } from 'react';
@@ -14,6 +14,19 @@ export default function ProdutosFornecedor() {
   const [categoriaFiltro, setCategoriaFiltro] = useState('Todas');
   const [loading, setLoading] = useState(true);
   const [fornecedorInfo, setFornecedorInfo] = useState(null);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
+
+  // Mapeamento das cores dos fornecedores - igual ao dashboard
+  const fornecedorCores = {
+    A: 'from-[#ff7e5f] to-[#feb47b]', // Vitor - Pandawa
+    B: 'from-[#43cea2] to-[#185a9d]', // Mauricio - Maos Acessórios
+    C: 'from-[#6a11cb] to-[#2575fc]', // Rodrigo - Godas
+  };
+
+  // Função para obter a cor do fornecedor
+  const obterCorFornecedor = codigo => {
+    return fornecedorCores[codigo] || 'from-gray-500 to-gray-600';
+  };
 
   useEffect(() => {
     if (fornecedor) {
@@ -99,7 +112,11 @@ export default function ProdutosFornecedor() {
             </button>
           </div>
 
-          <div className='bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6 rounded-lg'>
+          <div
+            className={`bg-gradient-to-r ${obterCorFornecedor(
+              fornecedorInfo.codigo
+            )} text-white p-6 rounded-lg shadow-lg`}
+          >
             <h1 className='text-3xl font-bold mb-2'>{fornecedorInfo.nome}</h1>
             <p className='opacity-90'>
               {produtos.length} produtos disponíveis
@@ -108,9 +125,103 @@ export default function ProdutosFornecedor() {
           </div>
         </div>
 
-        <div className='flex gap-8'>
-          {/* Sidebar de Filtros */}
-          <aside className='w-64 bg-white rounded-lg shadow-md p-6 h-fit sticky top-4'>
+        <div className='lg:flex gap-8'>
+          {/* Mobile Filter Button */}
+          <div className='lg:hidden mb-6'>
+            <button
+              onClick={() => setShowMobileFilters(true)}
+              className={`w-full bg-gradient-to-r ${obterCorFornecedor(
+                fornecedorInfo.codigo
+              )} text-white py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 shadow-md`}
+            >
+              <svg
+                className='w-5 h-5'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.707A1 1 0 013 7V4z'
+                />
+              </svg>
+              Filtros ({categoriaFiltro === 'Todas' ? 'Todos' : categoriaFiltro}
+              )
+            </button>
+          </div>
+
+          {/* Mobile Filter Modal */}
+          {showMobileFilters && (
+            <div className='lg:hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end'>
+              <div className='bg-white w-full max-h-[80vh] rounded-t-xl overflow-y-auto'>
+                <div className='sticky top-0 bg-white border-b p-4 flex justify-between items-center'>
+                  <h3 className='font-bold text-gray-800 text-lg'>
+                    Filtrar por Categoria
+                  </h3>
+                  <button
+                    onClick={() => setShowMobileFilters(false)}
+                    className='text-gray-500 hover:text-gray-700'
+                  >
+                    <svg
+                      className='w-6 h-6'
+                      fill='none'
+                      stroke='currentColor'
+                      viewBox='0 0 24 24'
+                    >
+                      <path
+                        strokeLinecap='round'
+                        strokeLinejoin='round'
+                        strokeWidth={2}
+                        d='M6 18L18 6M6 6l12 12'
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className='p-4 space-y-2'>
+                  <button
+                    onClick={() => {
+                      setCategoriaFiltro('Todas');
+                      setShowMobileFilters(false);
+                    }}
+                    className={`w-full text-left px-4 py-3 rounded-lg transition ${
+                      categoriaFiltro === 'Todas'
+                        ? `bg-gradient-to-r ${obterCorFornecedor(
+                            fornecedorInfo.codigo
+                          )} text-white shadow-md`
+                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                    }`}
+                  >
+                    Todas as Categorias
+                  </button>
+
+                  {categorias.map(categoria => (
+                    <button
+                      key={categoria}
+                      onClick={() => {
+                        setCategoriaFiltro(categoria);
+                        setShowMobileFilters(false);
+                      }}
+                      className={`w-full text-left px-4 py-3 rounded-lg transition ${
+                        categoriaFiltro === categoria
+                          ? `bg-gradient-to-r ${obterCorFornecedor(
+                              fornecedorInfo.codigo
+                            )} text-white shadow-md`
+                          : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      {categoria}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Desktop Sidebar */}
+          <aside className='hidden lg:block w-64 bg-white rounded-lg shadow-md p-6 h-fit sticky top-4'>
             <h3 className='font-bold text-gray-800 text-lg mb-4'>Categorias</h3>
 
             <div className='space-y-2'>
@@ -118,7 +229,9 @@ export default function ProdutosFornecedor() {
                 onClick={() => setCategoriaFiltro('Todas')}
                 className={`w-full text-left px-3 py-2 rounded transition ${
                   categoriaFiltro === 'Todas'
-                    ? 'bg-blue-500 text-white'
+                    ? `bg-gradient-to-r ${obterCorFornecedor(
+                        fornecedorInfo.codigo
+                      )} text-white shadow-md`
                     : 'hover:bg-gray-100 text-gray-700'
                 }`}
               >
@@ -131,7 +244,9 @@ export default function ProdutosFornecedor() {
                   onClick={() => setCategoriaFiltro(categoria)}
                   className={`w-full text-left px-3 py-2 rounded transition ${
                     categoriaFiltro === categoria
-                      ? 'bg-blue-500 text-white'
+                      ? `bg-gradient-to-r ${obterCorFornecedor(
+                          fornecedorInfo.codigo
+                        )} text-white shadow-md`
                       : 'hover:bg-gray-100 text-gray-700'
                   }`}
                 >
@@ -160,7 +275,7 @@ export default function ProdutosFornecedor() {
           </aside>
 
           {/* Grid de Produtos */}
-          <div className='flex-1'>
+          <div className='w-full lg:flex-1'>
             {produtos.length === 0 ? (
               <div className='text-center py-16'>
                 <div className='text-6xl mb-4'>📦</div>
@@ -175,7 +290,9 @@ export default function ProdutosFornecedor() {
                 {categoriaFiltro !== 'Todas' && (
                   <button
                     onClick={() => setCategoriaFiltro('Todas')}
-                    className='bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition'
+                    className={`bg-gradient-to-r ${obterCorFornecedor(
+                      fornecedorInfo?.codigo
+                    )} text-white px-6 py-2 rounded-lg hover:opacity-90 transition shadow-md`}
                   >
                     Ver Todas as Categorias
                   </button>

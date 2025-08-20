@@ -1,7 +1,8 @@
-// COMPONENTS/CART.JS - MELHORADO
+// COMPONENTS/CART.JS - ATUALIZADO COM TOAST SYSTEM
 // ===================================
 
 import { useCart } from '../pages/_app';
+import { useToastContext } from '../pages/_app';
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
 
@@ -13,8 +14,13 @@ export default function Cart({ isOpen, onClose }) {
     cartTotal,
     cartCount,
     clearCart,
+    currentUser,
   } = useCart();
+
+  const toast = useToastContext(); // ✅ Hook do toast
   const [isAnimating, setIsAnimating] = useState(false);
+  const [pendingRemoval, setPendingRemoval] = useState(null); // ✅ Para controlar remoção
+  const [pendingClearCart, setPendingClearCart] = useState(false); // ✅ Para controlar limpeza
 
   // Animação de entrada
   useEffect(() => {
@@ -45,17 +51,66 @@ export default function Cart({ isOpen, onClose }) {
 
   const handleQuantityChange = (itemId, newQuantity) => {
     if (newQuantity < 1) {
-      if (confirm('Deseja remover este item do carrinho?')) {
+      // ✅ NOVO: Sistema de confirmação com toast
+      const item = cart.find(item => item._id === itemId);
+      if (pendingRemoval === itemId) {
+        // Segunda vez clicando - confirmar remoção
         removeFromCart(itemId);
+        setPendingRemoval(null);
+        toast.info(`${item?.nome} removido do carrinho`);
+      } else {
+        // Primeira vez - mostrar aviso
+        setPendingRemoval(itemId);
+        toast.warning(
+          `Clique novamente no "-" para remover ${item?.nome}`,
+          3000
+        );
+        // Auto-cancelar após 3 segundos
+        setTimeout(() => {
+          setPendingRemoval(null);
+        }, 3000);
       }
       return;
     }
     updateQuantity(itemId, newQuantity);
+    setPendingRemoval(null); // Cancelar remoção pendente se aumentar quantidade
   };
 
   const handleClearCart = () => {
-    if (confirm('Deseja limpar todo o carrinho?')) {
+    if (pendingClearCart) {
+      // Segunda vez clicando - confirmar limpeza
       clearCart();
+      setPendingClearCart(false);
+      // Toast já é chamado automaticamente no clearCart
+    } else {
+      // Primeira vez - mostrar aviso
+      setPendingClearCart(true);
+      toast.warning(
+        'Clique novamente em "Limpar carrinho" para confirmar',
+        4000
+      );
+      // Auto-cancelar após 4 segundos
+      setTimeout(() => {
+        setPendingClearCart(false);
+      }, 4000);
+    }
+  };
+
+  const handleRemoveItem = itemId => {
+    const item = cart.find(item => item._id === itemId);
+    if (pendingRemoval === itemId) {
+      // Segunda vez clicando - confirmar remoção
+      removeFromCart(itemId);
+      setPendingRemoval(null);
+      toast.info(`${item?.nome} removido do carrinho`);
+    } else {
+      // Primeira vez - mostrar aviso
+      setPendingRemoval(itemId);
+      toast.warning(`Clique novamente no 🗑️ para remover ${item?.nome}`, 3000);
+      // Auto-cancelar após 3 segundos
+      setTimeout(() => {
+        setPendingRemoval(null);
+      }, 3000);
     }
   };
 
@@ -89,6 +144,11 @@ export default function Cart({ isOpen, onClose }) {
             <p className='text-sm text-gray-600'>
               {cartCount} {cartCount === 1 ? 'item' : 'itens'}
             </p>
+            {currentUser && (
+              <p className='text-xs text-blue-600 font-medium'>
+                👤 {currentUser.nome}
+              </p>
+            )}
           </div>
           <button
             onClick={handleClose}
@@ -107,13 +167,15 @@ export default function Cart({ isOpen, onClose }) {
                 Seu carrinho está vazio
               </h3>
               <p className='text-gray-500 mb-6'>
-                Adicione produtos para começar suas compras
+                {currentUser
+                  ? 'Adicione produtos para começar suas compras'
+                  : 'Faça login para adicionar produtos ao carrinho'}
               </p>
               <button
                 onClick={handleClose}
                 className='bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition'
               >
-                Continuar Comprando
+                {currentUser ? 'Continuar Comprando' : 'Voltar'}
               </button>
             </div>
           ) : (
@@ -123,9 +185,15 @@ export default function Cart({ isOpen, onClose }) {
                 <div className='mb-4'>
                   <button
                     onClick={handleClearCart}
-                    className='text-red-500 hover:text-red-700 text-sm underline'
+                    className={`text-sm underline transition ${
+                      pendingClearCart
+                        ? 'text-red-700 font-medium animate-pulse'
+                        : 'text-red-500 hover:text-red-700'
+                    }`}
                   >
-                    Limpar carrinho
+                    {pendingClearCart
+                      ? '⚠️ Clique novamente para confirmar'
+                      : 'Limpar carrinho'}
                   </button>
                 </div>
               )}
@@ -146,13 +214,17 @@ export default function Cart({ isOpen, onClose }) {
                         {items.map(item => (
                           <div
                             key={item._id}
-                            className='flex gap-3 p-2 hover:bg-gray-50 rounded transition'
+                            className={`flex gap-3 p-2 rounded transition ${
+                              pendingRemoval === item._id
+                                ? 'bg-red-50 border border-red-200'
+                                : 'hover:bg-gray-50'
+                            }`}
                           >
                             {/* Image */}
                             <div className='w-16 h-16 bg-gray-200 rounded flex-shrink-0 overflow-hidden'>
-                              {item.imagens && item.imagens[0] ? (
+                              {item.imagem ? (
                                 <Image
-                                  src={item.imagens[0]}
+                                  src={item.imagem}
                                   alt={item.nome}
                                   width={64}
                                   height={64}
@@ -166,13 +238,10 @@ export default function Cart({ isOpen, onClose }) {
                               <div
                                 className='w-full h-full flex items-center justify-center text-gray-400 text-xs'
                                 style={{
-                                  display:
-                                    item.imagens && item.imagens[0]
-                                      ? 'none'
-                                      : 'flex',
+                                  display: item.imagem ? 'none' : 'flex',
                                 }}
                               >
-                                Sem imagem
+                                📦
                               </div>
                             </div>
 
@@ -197,7 +266,13 @@ export default function Cart({ isOpen, onClose }) {
                                       item.quantidade - 1
                                     )
                                   }
-                                  className='w-7 h-7 bg-gray-200 text-gray-700 rounded-full text-sm hover:bg-gray-300 transition flex items-center justify-center'
+                                  className={`w-7 h-7 rounded-full text-sm transition flex items-center justify-center ${
+                                    pendingRemoval === item._id
+                                      ? 'bg-red-200 text-red-700 animate-pulse'
+                                      : item.quantidade <= 1
+                                      ? 'bg-red-200 text-red-700 hover:bg-red-300'
+                                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                  }`}
                                 >
                                   -
                                 </button>
@@ -228,15 +303,19 @@ export default function Cart({ isOpen, onClose }) {
 
                             {/* Remove Button */}
                             <button
-                              onClick={() => {
-                                if (confirm('Remover item do carrinho?')) {
-                                  removeFromCart(item._id);
-                                }
-                              }}
-                              className='text-red-500 hover:text-red-700 text-sm p-1 hover:bg-red-50 rounded transition self-start'
-                              title='Remover item'
+                              onClick={() => handleRemoveItem(item._id)}
+                              className={`text-sm p-1 rounded transition self-start ${
+                                pendingRemoval === item._id
+                                  ? 'text-red-700 bg-red-100 animate-pulse'
+                                  : 'text-red-500 hover:text-red-700 hover:bg-red-50'
+                              }`}
+                              title={
+                                pendingRemoval === item._id
+                                  ? 'Clique novamente para confirmar'
+                                  : 'Remover item'
+                              }
                             >
-                              🗑️
+                              {pendingRemoval === item._id ? '⚠️' : '🗑️'}
                             </button>
                           </div>
                         ))}
@@ -275,10 +354,13 @@ export default function Cart({ isOpen, onClose }) {
                     handleClose();
                     window.location.href = '/checkout';
                   }}
-                  className='w-full bg-green-500 text-white py-3 rounded-lg font-medium hover:bg-green-600 transition flex items-center justify-center gap-2'
+                  disabled={!currentUser}
+                  className='w-full bg-green-500 text-white py-3 rounded-lg font-medium hover:bg-green-600 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed'
                 >
                   <span>🛒</span>
-                  Finalizar Pedido
+                  {currentUser
+                    ? 'Finalizar Pedido'
+                    : 'Faça Login para Continuar'}
                 </button>
                 <button
                   onClick={handleClose}

@@ -1,4 +1,4 @@
-// MODELS/PEDIDO.JS - ATUALIZADO PARA USUARIOS
+// 3. CORREÇÃO: models/Pedido.js - SEM REFERÊNCIA A USER
 // ===================================
 
 import mongoose from 'mongoose';
@@ -6,8 +6,7 @@ import mongoose from 'mongoose';
 const PedidoSchema = new mongoose.Schema(
   {
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: String, // ← MUDANÇA: String em vez de ObjectId
       required: true,
       index: true,
     },

@@ -1,6 +1,4 @@
-// 2. CORREÇÃO: components/Navbar.js
-// ===================================
-
+// components/Navbar.js
 import Link from 'next/link';
 import Image from 'next/image';
 import { useCart } from '../pages/_app';
@@ -82,24 +80,31 @@ export default function Navbar() {
               href='/dashboard'
               className='flex items-center hover:opacity-80 transition'
             >
-              <div className='text-white font-bold text-xl'>
-                📦 E-commerce Distribuidores
+              <div className='relative'>
+                {/* Logo para Desktop */}
+                <Image
+                  src='/logo.png'
+                  alt='Elite Surfing Logo'
+                  width={180}
+                  height={40}
+                  className='hidden md:block h-8 w-auto object-contain'
+                  priority
+                />
+                {/* Logo para Mobile */}
+                <Image
+                  src='/logo.png'
+                  alt='Elite Surfing Logo'
+                  width={120}
+                  height={28}
+                  className='block md:hidden h-6 w-auto object-contain'
+                  priority
+                />
               </div>
             </Link>
 
             {/* Desktop Menu */}
             <div className='hidden md:flex items-center space-x-6'>
               {/* Navigation Links */}
-              <Link
-                href='/dashboard'
-                className={`px-3 py-2 rounded transition ${
-                  isActive('/dashboard')
-                    ? 'bg-blue-600 text-white'
-                    : 'hover:bg-gray-700'
-                }`}
-              >
-                🏠 Dashboard
-              </Link>
 
               {user?.tipo === 'distribuidor' && (
                 <Link

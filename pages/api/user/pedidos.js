@@ -1,4 +1,4 @@
-// PAGES/API/USER/PEDIDOS.JS - ENDPOINT PARA PEDIDOS DO USUARIO
+// 4. CORREÇÃO: pages/api/user/pedidos.js - SEM MONGOOSE USER
 // ===================================
 
 import jwt from 'jsonwebtoken';
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
 
     const { page = 1, limit = 10, status } = req.query;
 
-    let filter = { userId: decoded.id };
+    let filter = { userId: decoded.usuario }; // ← Usar usuário string
     if (status && status !== 'todos') {
       filter.status = status;
     }
