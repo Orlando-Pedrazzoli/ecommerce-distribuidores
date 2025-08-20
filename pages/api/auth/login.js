@@ -1,27 +1,48 @@
-// PAGES/API/AUTH/LOGIN.JS - ATUALIZADO PARA USUARIOS
-// ===================================
-
 import jwt from 'jsonwebtoken';
-import User from '../../../models/User';
-import dbConnect from '../../../lib/mongodb';
+
+// Função para carregar distribuidores do .env
+const getDistribuidores = () => {
+  const distribuidores = [];
+
+  // Carregar distribuidores das variáveis de ambiente
+  for (let i = 1; i <= 10; i++) {
+    // Suporta até 10 distribuidores
+    const distribuidorEnv = process.env[`DISTRIBUIDOR_${i}`];
+    if (distribuidorEnv) {
+      const [email, password, nome] = distribuidorEnv.split(':');
+      distribuidores.push({ email, password, nome });
+    }
+  }
+
+  return distribuidores;
+};
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  await dbConnect();
+  const { username, password } = req.body;
 
-  const { email, password } = req.body;
+  console.log('=== LOGIN DEBUG ===');
+  console.log('Username:', username);
+  console.log('Password:', password);
 
   try {
-    // Verificar se é login admin (fallback)
+    // 1. VERIFICAR ADMIN
     if (
-      email === process.env.ADMIN_USERNAME &&
+      username === process.env.ADMIN_USERNAME &&
       password === process.env.ADMIN_PASSWORD
     ) {
+      console.log('✅ Login ADMIN bem-sucedido');
+
       const token = jwt.sign(
-        { id: 'admin', email, tipo: 'admin', nome: 'Admin' },
+        {
+          id: 'admin',
+          email: username,
+          tipo: 'admin',
+          nome: 'Administrador',
+        },
         process.env.NEXTAUTH_SECRET,
         { expiresIn: '24h' }
       );
@@ -34,62 +55,57 @@ export default async function handler(req, res) {
       return res.status(200).json({
         success: true,
         message: 'Login admin realizado com sucesso',
-        user: { tipo: 'admin', nome: 'Admin' },
+        user: { tipo: 'admin', nome: 'Administrador' },
       });
     }
 
-    // Login de usuário distribuidor
-    const user = await User.findOne({ email, ativo: true });
+    // 2. VERIFICAR DISTRIBUIDORES
+    const distribuidores = getDistribuidores();
+    console.log('Distribuidores carregados:', distribuidores.length);
 
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Email ou senha incorretos',
-      });
-    }
-
-    const isValidPassword = await user.comparePassword(password);
-
-    if (!isValidPassword) {
-      return res.status(401).json({
-        success: false,
-        message: 'Email ou senha incorretos',
-      });
-    }
-
-    // Atualizar último login
-    user.ultimoLogin = new Date();
-    await user.save();
-
-    // Criar token JWT
-    const token = jwt.sign(
-      {
-        id: user._id,
-        email: user.email,
-        tipo: user.tipo,
-        nome: user.nome,
-      },
-      process.env.NEXTAUTH_SECRET,
-      { expiresIn: '24h' }
+    const distribuidor = distribuidores.find(
+      d => d.email === username && d.password === password
     );
 
-    res.setHeader(
-      'Set-Cookie',
-      `auth-token=${token}; HttpOnly; Path=/; Max-Age=86400; SameSite=Strict`
-    );
+    if (distribuidor) {
+      console.log('✅ Login DISTRIBUIDOR bem-sucedido:', distribuidor.nome);
 
-    return res.status(200).json({
-      success: true,
-      message: 'Login realizado com sucesso',
-      user: {
-        id: user._id,
-        nome: user.nome,
-        email: user.email,
-        tipo: user.tipo,
-      },
+      const token = jwt.sign(
+        {
+          id: distribuidor.email, // Usar email como ID
+          email: distribuidor.email,
+          tipo: 'distribuidor',
+          nome: distribuidor.nome,
+        },
+        process.env.NEXTAUTH_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      res.setHeader(
+        'Set-Cookie',
+        `auth-token=${token}; HttpOnly; Path=/; Max-Age=86400; SameSite=Strict`
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: 'Login realizado com sucesso',
+        user: {
+          id: distribuidor.email,
+          nome: distribuidor.nome,
+          email: distribuidor.email,
+          tipo: 'distribuidor',
+        },
+      });
+    }
+
+    // 3. CREDENCIAIS INVÁLIDAS
+    console.log('❌ Credenciais inválidas');
+    return res.status(401).json({
+      success: false,
+      message: 'Email ou senha incorretos',
     });
   } catch (error) {
-    console.error('Erro no login:', error);
+    console.error('💥 Erro no login:', error);
     return res.status(500).json({
       success: false,
       message: 'Erro interno do servidor',

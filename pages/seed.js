@@ -1,4 +1,4 @@
-// PAGES/SEED.JS - CRIE ESTE ARQUIVO
+// PAGES/SEED.JS - CORRIGIDO
 // ===================================
 
 import { useState } from 'react';
@@ -11,7 +11,7 @@ export default function SeedPage() {
   const executarSeed = async () => {
     if (
       !confirm(
-        '🌱 Isso vai criar os dados iniciais (fornecedores e produtos de exemplo).\n\nContinuar?'
+        '🌱 Isso vai LIMPAR todos os dados existentes e criar novos dados iniciais.\n\n⚠️ ATENÇÃO: Todos os fornecedores, produtos e usuários atuais serão removidos!\n\nContinuar?'
       )
     ) {
       return;
@@ -30,6 +30,7 @@ export default function SeedPage() {
       });
 
       const data = await response.json();
+      console.log('📥 Resposta do seed:', data);
 
       if (response.ok) {
         setResult(data);
@@ -37,6 +38,7 @@ export default function SeedPage() {
         throw new Error(data.message || 'Erro ao executar seed');
       }
     } catch (err) {
+      console.error('💥 Erro no seed:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -68,16 +70,37 @@ export default function SeedPage() {
                 <div className='mt-2 text-sm text-blue-700'>
                   <ul className='list-disc pl-5 space-y-1'>
                     <li>
-                      <strong>3 Fornecedores</strong> (A, B, C) com categorias
-                      específicas
+                      <strong>3 Fornecedores:</strong> Vitor (A), Mauricio (B),
+                      Rodrigo (C)
                     </li>
                     <li>
-                      <strong>9 Produtos</strong> de exemplo (3 por fornecedor)
+                      <strong>Produtos de exemplo</strong> para cada fornecedor
                     </li>
                     <li>
-                      <strong>1 Distribuidor</strong> padrão para testes
+                      <strong>3 Distribuidores</strong> para teste de login
+                    </li>
+                    <li>
+                      <strong>1 Admin</strong> adicional no banco de dados
                     </li>
                   </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className='bg-red-50 border-l-4 border-red-400 p-4 mb-6'>
+            <div className='flex'>
+              <div className='flex-shrink-0'>
+                <span className='text-red-400 text-xl'>⚠️</span>
+              </div>
+              <div className='ml-3'>
+                <h3 className='text-sm font-medium text-red-800'>ATENÇÃO:</h3>
+                <div className='mt-2 text-sm text-red-700'>
+                  <p>
+                    Esta operação irá <strong>LIMPAR TODOS OS DADOS</strong>{' '}
+                    existentes (fornecedores, produtos, usuários) e criar novos
+                    dados de exemplo.
+                  </p>
                 </div>
               </div>
             </div>
@@ -110,41 +133,94 @@ export default function SeedPage() {
                 <span className='mr-2'>✅</span>
                 Sistema inicializado com sucesso!
               </h3>
+
               <div className='text-sm text-green-700 mb-4'>
-                <p>
-                  <strong>Fornecedores criados:</strong>{' '}
-                  {result.dados.fornecedores}
-                </p>
-                <p>
-                  <strong>Produtos criados:</strong> {result.dados.produtos}
-                </p>
-                <div className='mt-2'>
-                  <p>
-                    <strong>Detalhes por fornecedor:</strong>
-                  </p>
-                  <ul className='ml-4 mt-1'>
-                    {Object.entries(result.dados.detalhes).map(
-                      ([fornecedor, quantidade]) => (
-                        <li key={fornecedor}>
-                          • {fornecedor}: {quantidade} produtos
-                        </li>
-                      )
-                    )}
-                  </ul>
+                <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mb-4'>
+                  <div className='bg-white p-3 rounded border'>
+                    <p className='font-semibold'>📦 Fornecedores</p>
+                    <p className='text-lg'>{result.dados?.fornecedores || 0}</p>
+                  </div>
+                  <div className='bg-white p-3 rounded border'>
+                    <p className='font-semibold'>🛍️ Produtos</p>
+                    <p className='text-lg'>{result.dados?.produtos || 0}</p>
+                  </div>
+                  <div className='bg-white p-3 rounded border'>
+                    <p className='font-semibold'>👥 Usuários</p>
+                    <p className='text-lg'>{result.dados?.usuarios || 0}</p>
+                  </div>
                 </div>
+
+                {/* Credenciais criadas */}
+                {result.credenciais && (
+                  <div className='bg-white p-4 rounded border'>
+                    <h4 className='font-semibold text-green-800 mb-2'>
+                      🔑 Credenciais de Acesso:
+                    </h4>
+
+                    {/* Admin */}
+                    {result.credenciais.admin && (
+                      <div className='mb-3 p-2 bg-red-50 rounded'>
+                        <p className='font-medium text-red-800'>
+                          🔴 ADMIN (do .env):
+                        </p>
+                        <p className='text-sm'>
+                          Usuário:{' '}
+                          <code className='bg-gray-200 px-1 rounded'>
+                            {result.credenciais.admin.username}
+                          </code>
+                        </p>
+                        <p className='text-sm'>
+                          Senha:{' '}
+                          <code className='bg-gray-200 px-1 rounded'>
+                            {result.credenciais.admin.password}
+                          </code>
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Distribuidores */}
+                    {result.credenciais.distribuidores && (
+                      <div className='p-2 bg-blue-50 rounded'>
+                        <p className='font-medium text-blue-800 mb-2'>
+                          🟢 DISTRIBUIDORES:
+                        </p>
+                        {result.credenciais.distribuidores.map(
+                          (dist, index) => (
+                            <div key={index} className='text-sm mb-1'>
+                              <code className='bg-gray-200 px-1 rounded'>
+                                {dist.email}
+                              </code>
+                              {' / '}
+                              <code className='bg-gray-200 px-1 rounded'>
+                                {dist.senha}
+                              </code>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
+
               <div className='flex gap-3'>
                 <a
-                  href='/dashboard'
+                  href='/'
                   className='inline-block bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded transition duration-200'
                 >
-                  🏠 Ir para Dashboard
+                  🔑 Fazer Login
+                </a>
+                <a
+                  href='/dashboard'
+                  className='inline-block bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded transition duration-200'
+                >
+                  🏠 Dashboard
                 </a>
                 <a
                   href='/admin'
-                  className='inline-block bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded transition duration-200'
+                  className='inline-block bg-purple-500 hover:bg-purple-600 text-white font-medium py-2 px-4 rounded transition duration-200'
                 >
-                  ⚙️ Ir para Admin
+                  ⚙️ Admin
                 </a>
               </div>
             </div>
@@ -159,13 +235,13 @@ export default function SeedPage() {
               </h3>
               <p className='text-sm text-red-700 mb-3'>{error}</p>
               <div className='text-xs text-red-600'>
-                <p>
-                  <strong>Possíveis soluções:</strong>
-                </p>
-                <ul className='ml-4 mt-1 list-disc'>
+                <p className='font-semibold mb-1'>🔧 Possíveis soluções:</p>
+                <ul className='ml-4 list-disc space-y-1'>
                   <li>Verifique se o MongoDB está conectado</li>
                   <li>Confirme as variáveis de ambiente (.env.local)</li>
+                  <li>Verifique se MONGODB_URI tem o nome do database</li>
                   <li>Reinicie o servidor (npm run dev)</li>
+                  <li>Veja o console do navegador (F12) para mais detalhes</li>
                 </ul>
               </div>
             </div>
@@ -199,14 +275,29 @@ export default function SeedPage() {
                 Admin
               </a>
               <a
-                href='/produtos/A'
+                href='/test'
                 className='text-blue-500 hover:text-blue-700 flex items-center'
               >
-                <span className='mr-2'>📦</span>
-                Produtos Fornecedor A
+                <span className='mr-2'>🧪</span>
+                Teste
               </a>
             </div>
           </div>
+
+          {/* Informações de debug */}
+          {!result && !error && !loading && (
+            <div className='mt-6 p-4 bg-yellow-50 rounded-lg'>
+              <h4 className='text-sm font-semibold text-yellow-800 mb-2'>
+                💡 Antes de executar:
+              </h4>
+              <div className='text-xs text-yellow-700 space-y-1'>
+                <p>1. Verifique se seu .env.local está correto</p>
+                <p>2. Certifique-se que o MongoDB está acessível</p>
+                <p>3. Confirme que o servidor está rodando (npm run dev)</p>
+                <p>4. Abra o console (F12) para ver logs detalhados</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

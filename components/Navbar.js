@@ -1,4 +1,4 @@
-// COMPONENTS/NAVBAR.JS - CORRIGIDO
+// 2. CORREÇÃO: components/Navbar.js
 // ===================================
 
 import Link from 'next/link';
@@ -14,6 +14,7 @@ export default function Navbar() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [user, setUser] = useState(null);
+  const [loadingUser, setLoadingUser] = useState(true);
 
   useEffect(() => {
     buscarDadosUsuario();
@@ -21,13 +22,19 @@ export default function Navbar() {
 
   const buscarDadosUsuario = async () => {
     try {
+      setLoadingUser(true);
       const response = await fetch('/api/auth/me');
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
+      } else {
+        setUser(null);
       }
     } catch (error) {
       console.error('Erro ao buscar dados do usuário:', error);
+      setUser(null);
+    } finally {
+      setLoadingUser(false);
     }
   };
 
@@ -47,6 +54,24 @@ export default function Navbar() {
     return router.pathname === path;
   };
 
+  // Se ainda está carregando, não mostra nada
+  if (loadingUser) {
+    return (
+      <nav className='bg-gray-800 text-white shadow-lg'>
+        <div className='max-w-7xl mx-auto px-4'>
+          <div className='flex justify-center items-center py-4'>
+            <div className='animate-pulse text-gray-400'>Carregando...</div>
+          </div>
+        </div>
+      </nav>
+    );
+  }
+
+  // Se não tem usuário, não mostra navbar
+  if (!user) {
+    return null;
+  }
+
   return (
     <>
       <nav className='bg-gray-800 text-white shadow-lg relative z-40'>
@@ -57,14 +82,9 @@ export default function Navbar() {
               href='/dashboard'
               className='flex items-center hover:opacity-80 transition'
             >
-              <Image
-                src='/logo.png'
-                alt='E-commerce Distribuidores'
-                width={200}
-                height={50}
-                className='h-10 w-auto'
-                priority
-              />
+              <div className='text-white font-bold text-xl'>
+                📦 E-commerce Distribuidores
+              </div>
             </Link>
 
             {/* Desktop Menu */}
@@ -124,12 +144,13 @@ export default function Navbar() {
               )}
 
               {/* User Info */}
-              {user && (
-                <div className='text-sm'>
-                  <span className='text-gray-300'>Olá, </span>
-                  <span className='font-medium'>{user.nome}</span>
+              <div className='text-sm'>
+                <span className='text-gray-300'>Olá, </span>
+                <span className='font-medium'>{user.nome}</span>
+                <div className='text-xs text-gray-400 capitalize'>
+                  {user.tipo}
                 </div>
-              )}
+              </div>
 
               {/* Logout Button */}
               <button
@@ -191,12 +212,12 @@ export default function Navbar() {
             }`}
           >
             <div className='space-y-2 border-t border-gray-700 pt-4'>
-              {user && (
-                <div className='px-3 py-2 text-sm text-gray-300 border-b border-gray-700 pb-2 mb-2'>
-                  Olá,{' '}
-                  <span className='font-medium text-white'>{user.nome}</span>
+              <div className='px-3 py-2 text-sm text-gray-300 border-b border-gray-700 pb-2 mb-2'>
+                Olá, <span className='font-medium text-white'>{user.nome}</span>
+                <div className='text-xs text-gray-400 capitalize'>
+                  {user.tipo}
                 </div>
-              )}
+              </div>
 
               <Link
                 href='/dashboard'
@@ -238,7 +259,6 @@ export default function Navbar() {
                 </Link>
               )}
 
-              {/* Logout Button - agora está no local correto */}
               <button
                 onClick={() => {
                   handleLogout();
@@ -254,7 +274,9 @@ export default function Navbar() {
       </nav>
 
       {/* Cart Sidebar */}
-      <Cart isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+      {user?.tipo === 'distribuidor' && (
+        <Cart isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+      )}
     </>
   );
 }

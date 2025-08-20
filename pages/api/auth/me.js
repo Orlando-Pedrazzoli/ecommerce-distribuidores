@@ -1,9 +1,17 @@
-// PAGES/API/AUTH/ME.JS - NOVO ENDPOINT PARA DADOS DO USUARIO
-// ===================================
-
 import jwt from 'jsonwebtoken';
-import User from '../../../models/User';
-import dbConnect from '../../../lib/mongodb';
+
+// Mesma função para carregar distribuidores
+const getDistribuidores = () => {
+  const distribuidores = [];
+  for (let i = 1; i <= 10; i++) {
+    const distribuidorEnv = process.env[`DISTRIBUIDOR_${i}`];
+    if (distribuidorEnv) {
+      const [email, password, nome] = distribuidorEnv.split(':');
+      distribuidores.push({ email, password, nome });
+    }
+  }
+  return distribuidores;
+};
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -25,32 +33,42 @@ export default async function handler(req, res) {
         success: true,
         user: {
           id: 'admin',
-          nome: 'Admin',
+          nome: 'Administrador',
           email: decoded.email,
           tipo: 'admin',
         },
       });
     }
 
-    // Se for usuário distribuidor
-    await dbConnect();
-    const user = await User.findById(decoded.id).select('-password');
+    // Se for distribuidor, buscar dados atualizados do .env
+    if (decoded.tipo === 'distribuidor') {
+      const distribuidores = getDistribuidores();
+      const distribuidor = distribuidores.find(d => d.email === decoded.email);
 
-    if (!user) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
+      if (distribuidor) {
+        return res.status(200).json({
+          success: true,
+          user: {
+            id: distribuidor.email,
+            nome: distribuidor.nome,
+            email: distribuidor.email,
+            tipo: 'distribuidor',
+            // Dados fictícios para compatibilidade
+            telefone: '(11) 99999-9999',
+            endereco: {
+              rua: 'Rua Exemplo',
+              numero: '123',
+              bairro: 'Centro',
+              cidade: 'São Paulo',
+              cep: '01000-000',
+              estado: 'SP',
+            },
+          },
+        });
+      }
     }
 
-    return res.status(200).json({
-      success: true,
-      user: {
-        id: user._id,
-        nome: user.nome,
-        email: user.email,
-        telefone: user.telefone,
-        endereco: user.endereco,
-        tipo: user.tipo,
-      },
-    });
+    return res.status(404).json({ message: 'Usuário não encontrado' });
   } catch (error) {
     console.error('Erro ao verificar usuário:', error);
     return res.status(401).json({ message: 'Token inválido' });
