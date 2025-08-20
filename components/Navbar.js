@@ -1,11 +1,11 @@
-// COMPONENTS/NAVBAR.JS - MELHORADO
+// COMPONENTS/NAVBAR.JS - CORRIGIDO
 // ===================================
 
 import Link from 'next/link';
 import Image from 'next/image';
 import { useCart } from '../pages/_app';
 import { useRouter } from 'next/router';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Cart from './Cart';
 
 export default function Navbar() {
@@ -13,6 +13,23 @@ export default function Navbar() {
   const router = useRouter();
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    buscarDadosUsuario();
+  }, []);
+
+  const buscarDadosUsuario = async () => {
+    try {
+      const response = await fetch('/api/auth/me');
+      if (response.ok) {
+        const data = await response.json();
+        setUser(data.user);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar dados do usuário:', error);
+    }
+  };
 
   const handleLogout = () => {
     if (confirm('Deseja realmente sair?')) {
@@ -61,33 +78,58 @@ export default function Navbar() {
                     : 'hover:bg-gray-700'
                 }`}
               >
-                Dashboard
+                🏠 Dashboard
               </Link>
 
-              <Link
-                href='/admin'
-                className={`px-3 py-2 rounded transition ${
-                  isActive('/admin')
-                    ? 'bg-red-600 text-white'
-                    : 'bg-red-500 hover:bg-red-600'
-                }`}
-              >
-                Admin
-              </Link>
+              {user?.tipo === 'distribuidor' && (
+                <Link
+                  href='/meus-pedidos'
+                  className={`px-3 py-2 rounded transition ${
+                    isActive('/meus-pedidos')
+                      ? 'bg-green-600 text-white'
+                      : 'hover:bg-gray-700'
+                  }`}
+                >
+                  📋 Meus Pedidos
+                </Link>
+              )}
 
-              {/* Cart Button */}
-              <button
-                onClick={toggleCart}
-                className='relative p-2 hover:bg-gray-700 rounded transition'
-                title='Abrir carrinho'
-              >
-                <span className='text-2xl'>🛒</span>
-                {cartCount > 0 && (
-                  <span className='absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold animate-pulse'>
-                    {cartCount > 99 ? '99+' : cartCount}
-                  </span>
-                )}
-              </button>
+              {user?.tipo === 'admin' && (
+                <Link
+                  href='/admin'
+                  className={`px-3 py-2 rounded transition ${
+                    isActive('/admin')
+                      ? 'bg-red-600 text-white'
+                      : 'bg-red-500 hover:bg-red-600'
+                  }`}
+                >
+                  ⚙️ Admin
+                </Link>
+              )}
+
+              {/* Cart Button - apenas para distribuidores */}
+              {user?.tipo === 'distribuidor' && (
+                <button
+                  onClick={toggleCart}
+                  className='relative p-2 hover:bg-gray-700 rounded transition'
+                  title='Abrir carrinho'
+                >
+                  <span className='text-2xl'>🛒</span>
+                  {cartCount > 0 && (
+                    <span className='absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold animate-pulse'>
+                      {cartCount > 99 ? '99+' : cartCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {/* User Info */}
+              {user && (
+                <div className='text-sm'>
+                  <span className='text-gray-300'>Olá, </span>
+                  <span className='font-medium'>{user.nome}</span>
+                </div>
+              )}
 
               {/* Logout Button */}
               <button
@@ -101,18 +143,20 @@ export default function Navbar() {
 
             {/* Mobile Menu Button */}
             <div className='md:hidden flex items-center space-x-2'>
-              {/* Mobile Cart Button */}
-              <button
-                onClick={toggleCart}
-                className='relative p-2 hover:bg-gray-700 rounded transition'
-              >
-                <span className='text-xl'>🛒</span>
-                {cartCount > 0 && (
-                  <span className='absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold'>
-                    {cartCount > 9 ? '9+' : cartCount}
-                  </span>
-                )}
-              </button>
+              {/* Mobile Cart Button - apenas para distribuidores */}
+              {user?.tipo === 'distribuidor' && (
+                <button
+                  onClick={toggleCart}
+                  className='relative p-2 hover:bg-gray-700 rounded transition'
+                >
+                  <span className='text-xl'>🛒</span>
+                  {cartCount > 0 && (
+                    <span className='absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold'>
+                      {cartCount > 9 ? '9+' : cartCount}
+                    </span>
+                  )}
+                </button>
+              )}
 
               {/* Hamburger Menu */}
               <button
@@ -147,6 +191,13 @@ export default function Navbar() {
             }`}
           >
             <div className='space-y-2 border-t border-gray-700 pt-4'>
+              {user && (
+                <div className='px-3 py-2 text-sm text-gray-300 border-b border-gray-700 pb-2 mb-2'>
+                  Olá,{' '}
+                  <span className='font-medium text-white'>{user.nome}</span>
+                </div>
+              )}
+
               <Link
                 href='/dashboard'
                 className={`block px-3 py-2 rounded transition ${
@@ -156,21 +207,38 @@ export default function Navbar() {
                 }`}
                 onClick={() => setIsMobileMenuOpen(false)}
               >
-                📊 Dashboard
+                🏠 Dashboard
               </Link>
 
-              <Link
-                href='/admin'
-                className={`block px-3 py-2 rounded transition ${
-                  isActive('/admin')
-                    ? 'bg-red-600 text-white'
-                    : 'bg-red-500 hover:bg-red-600'
-                }`}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                ⚙️ Admin
-              </Link>
+              {user?.tipo === 'distribuidor' && (
+                <Link
+                  href='/meus-pedidos'
+                  className={`block px-3 py-2 rounded transition ${
+                    isActive('/meus-pedidos')
+                      ? 'bg-green-600 text-white'
+                      : 'hover:bg-gray-700'
+                  }`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  📋 Meus Pedidos
+                </Link>
+              )}
 
+              {user?.tipo === 'admin' && (
+                <Link
+                  href='/admin'
+                  className={`block px-3 py-2 rounded transition ${
+                    isActive('/admin')
+                      ? 'bg-red-600 text-white'
+                      : 'bg-red-500 hover:bg-red-600'
+                  }`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  ⚙️ Admin
+                </Link>
+              )}
+
+              {/* Logout Button - agora está no local correto */}
               <button
                 onClick={() => {
                   handleLogout();

@@ -1,19 +1,21 @@
-// MODELS/PEDIDO.JS - SIMPLIFICADO
+// MODELS/PEDIDO.JS - ATUALIZADO PARA USUARIOS
 // ===================================
 
 import mongoose from 'mongoose';
 
 const PedidoSchema = new mongoose.Schema(
   {
-    distribuidorId: {
+    userId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Distribuidor',
+      ref: 'User',
       required: true,
+      index: true,
     },
     fornecedorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Fornecedor',
       required: true,
+      index: true,
     },
     itens: [
       {
@@ -35,6 +37,15 @@ const PedidoSchema = new mongoose.Schema(
         },
       },
     ],
+    endereco: {
+      rua: { type: String, required: true },
+      numero: { type: String, required: true },
+      complemento: String,
+      bairro: { type: String, required: true },
+      cidade: { type: String, required: true },
+      cep: { type: String, required: true },
+      estado: { type: String, required: true },
+    },
     subtotal: {
       type: Number,
       required: true,
@@ -52,20 +63,17 @@ const PedidoSchema = new mongoose.Schema(
       enum: ['boleto', 'transferencia'],
       required: true,
     },
-    endereco: {
-      rua: { type: String, required: true },
-      numero: { type: String, required: true },
-      complemento: String,
-      bairro: { type: String, required: true },
-      cidade: { type: String, required: true },
-      cep: { type: String, required: true },
-      estado: { type: String, required: true },
-    },
     status: {
       type: String,
       enum: ['pendente', 'confirmado', 'enviado', 'entregue'],
       default: 'pendente',
+      index: true,
     },
+    observacoes: String,
+    codigoRastreamento: String,
+    dataConfirmacao: Date,
+    dataEnvio: Date,
+    dataEntrega: Date,
   },
   {
     timestamps: true,
@@ -81,6 +89,16 @@ PedidoSchema.pre('save', function (next) {
   this.royalties = this.subtotal * 0.05; // 5%
   this.total = this.subtotal + this.royalties;
   next();
+});
+
+// Índices compostos
+PedidoSchema.index({ userId: 1, createdAt: -1 });
+PedidoSchema.index({ fornecedorId: 1, createdAt: -1 });
+PedidoSchema.index({ status: 1, createdAt: -1 });
+
+// Virtual para número do pedido
+PedidoSchema.virtual('numeroPedido').get(function () {
+  return this._id.toString().slice(-8).toUpperCase();
 });
 
 export default mongoose.models.Pedido || mongoose.model('Pedido', PedidoSchema);

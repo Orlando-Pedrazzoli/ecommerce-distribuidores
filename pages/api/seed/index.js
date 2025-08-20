@@ -1,9 +1,9 @@
-// PAGES/API/SEED/INDEX.JS - ATUALIZADO COM FORNECEDORES REAIS
+// PAGES/API/SEED/INDEX.JS - ATUALIZADO PARA INCLUIR USUARIOS
 // ===================================
 
 import dbConnect from '../../../lib/mongodb';
 import Fornecedor from '../../../models/Fornecedor';
-import Distribuidor from '../../../models/Distribuidor';
+import User from '../../../models/User';
 import Produto from '../../../models/Produto';
 
 export default async function handler(req, res) {
@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
     // Limpar dados existentes
     await Fornecedor.deleteMany({});
-    await Distribuidor.deleteMany({});
+    await User.deleteMany({});
     await Produto.deleteMany({});
 
     // Criar fornecedores reais com suas categorias específicas
@@ -60,20 +60,54 @@ export default async function handler(req, res) {
       },
     ]);
 
-    // Criar distribuidor padrão
-    const distribuidor = await Distribuidor.create({
-      nome: 'Distribuidor Padrão',
-      email: 'distribuidor@empresa.com',
-      telefone: '(11) 99999-9999',
-      endereco: {
-        rua: 'Rua Exemplo',
-        numero: '123',
-        bairro: 'Centro',
-        cidade: 'São Paulo',
-        cep: '01000-000',
-        estado: 'SP',
+    // Criar usuários distribuidores de exemplo
+    const usuarios = await User.insertMany([
+      {
+        nome: 'João Silva',
+        email: 'joao@distribuidora.com',
+        password: '123456', // Será hasheado automaticamente
+        telefone: '(11) 99999-1111',
+        endereco: {
+          rua: 'Rua das Flores',
+          numero: '123',
+          bairro: 'Centro',
+          cidade: 'São Paulo',
+          cep: '01000-000',
+          estado: 'SP',
+        },
+        tipo: 'distribuidor',
       },
-    });
+      {
+        nome: 'Maria Santos',
+        email: 'maria@distribuidora.com',
+        password: '123456',
+        telefone: '(11) 99999-2222',
+        endereco: {
+          rua: 'Av. Paulista',
+          numero: '456',
+          bairro: 'Bela Vista',
+          cidade: 'São Paulo',
+          cep: '01310-000',
+          estado: 'SP',
+        },
+        tipo: 'distribuidor',
+      },
+      {
+        nome: 'Pedro Costa',
+        email: 'pedro@distribuidora.com',
+        password: '123456',
+        telefone: '(21) 99999-3333',
+        endereco: {
+          rua: 'Rua da Praia',
+          numero: '789',
+          bairro: 'Copacabana',
+          cidade: 'Rio de Janeiro',
+          cep: '22000-000',
+          estado: 'RJ',
+        },
+        tipo: 'distribuidor',
+      },
+    ]);
 
     // Produtos do Vitor - Pandawa (Decks)
     const produtosPandawa = [
@@ -235,15 +269,26 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       success: true,
-      message: 'Sistema inicializado com fornecedores reais!',
+      message: 'Sistema inicializado com usuários e fornecedores reais!',
       dados: {
         fornecedores: fornecedores.length,
-        distribuidores: 1,
+        usuarios: usuarios.length,
         produtos: produtos.length,
         detalhes: {
           'Vitor - Pandawa': produtosPandawa.length,
           'Mauricio - Maos Acessórios': produtosMaos.length,
           'Rodrigo - Godas': produtosGodas.length,
+        },
+        credenciaisExemplo: {
+          distribuidores: [
+            { email: 'joao@distribuidora.com', senha: '123456' },
+            { email: 'maria@distribuidora.com', senha: '123456' },
+            { email: 'pedro@distribuidora.com', senha: '123456' },
+          ],
+          admin: {
+            email: process.env.ADMIN_USERNAME,
+            senha: process.env.ADMIN_PASSWORD,
+          },
         },
       },
     });

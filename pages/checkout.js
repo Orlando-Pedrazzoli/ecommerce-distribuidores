@@ -1,4 +1,4 @@
-// PAGES/CHECKOUT.JS - MELHORADO
+// PAGES/CHECKOUT.JS - ATUALIZADO COM USUARIO
 // ===================================
 
 import { useState, useEffect } from 'react';
@@ -8,6 +8,7 @@ import { useRouter } from 'next/router';
 
 export default function Checkout() {
   const { cart, cartTotal, clearCart, cartCount } = useCart();
+  const [user, setUser] = useState(null);
   const [endereco, setEndereco] = useState({
     rua: '',
     numero: '',
@@ -19,19 +20,49 @@ export default function Checkout() {
   });
   const [formaPagamento, setFormaPagamento] = useState('boleto');
   const [loading, setLoading] = useState(false);
+  const [loadingUser, setLoadingUser] = useState(true);
   const [errors, setErrors] = useState({});
-  const [step, setStep] = useState(1); // 1: endereço, 2: pagamento, 3: confirmação
+  const [step, setStep] = useState(1);
   const router = useRouter();
+
+  // Buscar dados do usuário
+  useEffect(() => {
+    buscarDadosUsuario();
+  }, []);
 
   // Verificar se há itens no carrinho
   useEffect(() => {
-    if (cart.length === 0) {
+    if (!loadingUser && cart.length === 0) {
       const timer = setTimeout(() => {
         router.push('/dashboard');
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [cart.length, router]);
+  }, [cart.length, router, loadingUser]);
+
+  const buscarDadosUsuario = async () => {
+    try {
+      setLoadingUser(true);
+      const response = await fetch('/api/auth/me');
+      if (response.ok) {
+        const data = await response.json();
+        setUser(data.user);
+
+        // Pré-preencher endereço se existir
+        if (data.user.endereco) {
+          setEndereco(data.user.endereco);
+        }
+      } else {
+        // Se não estiver logado, redirecionar para login
+        router.push('/');
+      }
+    } catch (error) {
+      console.error('Erro ao buscar dados do usuário:', error);
+      router.push('/');
+    } finally {
+      setLoadingUser(false);
+    }
+  };
 
   // Agrupar produtos por fornecedor
   const produtosPorFornecedor = cart.reduce((acc, item) => {
@@ -68,7 +99,6 @@ export default function Checkout() {
     if (!endereco.cep.trim()) newErrors.cep = 'CEP é obrigatório';
     if (!endereco.estado.trim()) newErrors.estado = 'Estado é obrigatório';
 
-    // Validar CEP (formato básico)
     const cepRegex = /^\d{5}-?\d{3}$/;
     if (endereco.cep && !cepRegex.test(endereco.cep)) {
       newErrors.cep = 'CEP inválido (formato: 00000-000)';
@@ -89,6 +119,22 @@ export default function Checkout() {
     setEndereco({ ...endereco, cep: formatted });
   };
 
+  const salvarEndereco = async () => {
+    try {
+      await fetch('/api/user/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome: user.nome,
+          telefone: user.telefone,
+          endereco: endereco,
+        }),
+      });
+    } catch (error) {
+      console.error('Erro ao salvar endereço:', error);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!validateEndereco()) {
       alert('Por favor, corrija os erros no endereço');
@@ -99,19 +145,23 @@ export default function Checkout() {
     setLoading(true);
 
     try {
+      // Salvar endereço no perfil do usuário
+      await salvarEndereco();
+
       const pedidosPromises = Object.entries(produtosPorFornecedor).map(
         async ([fornecedorId, dados]) => {
           const itensFormatados = dados.itens.map(item => ({
             produtoId: item._id,
+            codigo: item.codigo,
             nome: item.nome,
             quantidade: item.quantidade,
             precoUnitario: item.preco,
           }));
 
           const pedidoData = {
+            userId: user.id, // ID do usuário logado
             itens: itensFormatados,
             fornecedorId,
-            distribuidorId: '507f1f77bcf86cd799439011', // ID fixo do distribuidor
             formaPagamento,
             endereco,
           };
@@ -135,12 +185,11 @@ export default function Checkout() {
 
       clearCart();
 
-      // Mostrar mensagem de sucesso
       alert(
-        '🎉 Pedido realizado com sucesso!\n\nVocê receberá uma confirmação por email em breve.\n\nObrigado pela sua compra!'
+        '🎉 Pedido realizado com sucesso!\n\nVocê pode acompanhar o status em "Meus Pedidos".\n\nObrigado pela sua compra!'
       );
 
-      router.push('/dashboard');
+      router.push('/meus-pedidos');
     } catch (error) {
       console.error('Erro ao criar pedidos:', error);
       alert(
@@ -150,6 +199,19 @@ export default function Checkout() {
       setLoading(false);
     }
   };
+
+  if (loadingUser) {
+    return (
+      <Layout>
+        <div className='flex justify-center items-center h-64'>
+          <div className='text-center'>
+            <div className='animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4'></div>
+            <p className='text-gray-600'>Carregando...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   if (cart.length === 0) {
     return (
@@ -188,8 +250,8 @@ export default function Checkout() {
             Finalizar Pedido
           </h1>
           <p className='text-gray-600'>
-            {cartCount} {cartCount === 1 ? 'item' : 'itens'} • Total: R${' '}
-            {total.toFixed(2)}
+            Olá, <span className='font-medium'>{user?.nome}</span> • {cartCount}{' '}
+            {cartCount === 1 ? 'item' : 'itens'} • Total: R$ {total.toFixed(2)}
           </p>
         </div>
 
@@ -238,10 +300,17 @@ export default function Checkout() {
             {/* Step 1: Endereço */}
             {step === 1 && (
               <div className='bg-white rounded-lg shadow-md p-6'>
-                <h2 className='text-xl font-bold text-gray-800 mb-6 flex items-center gap-2'>
-                  <span>📍</span>
-                  Endereço de Entrega
-                </h2>
+                <div className='flex justify-between items-center mb-6'>
+                  <h2 className='text-xl font-bold text-gray-800 flex items-center gap-2'>
+                    <span>📍</span>
+                    Endereço de Entrega
+                  </h2>
+                  {user?.endereco && (
+                    <span className='text-sm text-green-600 bg-green-100 px-2 py-1 rounded'>
+                      ✓ Endereço salvo
+                    </span>
+                  )}
+                </div>
 
                 <div className='grid md:grid-cols-2 gap-4'>
                   <div className='md:col-span-2'>
@@ -523,6 +592,16 @@ export default function Checkout() {
                   Confirmação do Pedido
                 </h2>
 
+                {/* Resumo do Usuário */}
+                <div className='mb-6 p-4 bg-gray-50 rounded-lg'>
+                  <h3 className='font-medium mb-2'>👤 Dados do Pedido:</h3>
+                  <p className='text-sm text-gray-700'>
+                    <strong>Cliente:</strong> {user?.nome}
+                    <br />
+                    <strong>Email:</strong> {user?.email}
+                  </p>
+                </div>
+
                 {/* Resumo do Endereço */}
                 <div className='mb-6 p-4 bg-gray-50 rounded-lg'>
                   <h3 className='font-medium mb-2'>📍 Endereço de Entrega:</h3>
@@ -650,7 +729,7 @@ export default function Checkout() {
                 <ul className='text-xs text-blue-700 space-y-1'>
                   <li>• Prazo: 5-10 dias úteis</li>
                   <li>• Frete por conta do fornecedor</li>
-                  <li>• Acompanhamento por email</li>
+                  <li>• Acompanhe em "Meus Pedidos"</li>
                 </ul>
               </div>
 
@@ -661,8 +740,8 @@ export default function Checkout() {
                 </h4>
                 <ul className='text-xs text-green-700 space-y-1'>
                   <li>• Dados protegidos</li>
-                  <li>• Transação criptografada</li>
-                  <li>• Suporte dedicado</li>
+                  <li>• Endereço salvo automaticamente</li>
+                  <li>• Histórico em "Meus Pedidos"</li>
                 </ul>
               </div>
             </div>
