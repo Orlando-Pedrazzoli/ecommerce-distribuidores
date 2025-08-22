@@ -39,7 +39,7 @@ export default async function handler(req, res) {
       {
         nome: 'Mauricio - Maos Acessórios',
         codigo: 'B',
-        email: 'mauricio@maosacessorios.com.br',
+        email: 'mauricio.maos@uol.com.br',
         categorias: [
           'Capa Toalha',
           'Capa Simples',
@@ -51,7 +51,7 @@ export default async function handler(req, res) {
       {
         nome: 'Rodrigo - Godas',
         codigo: 'C',
-        email: 'rodrigo@godas.com.br',
+        email: 'godassurfproducts@hotmail.com',
         categorias: [
           'Leash Superior 5ft x 5,5mm',
           'Leash Superior 6ft x 6,3mm',
@@ -113,8 +113,8 @@ export default async function handler(req, res) {
       // ADICIONAR USUÁRIO ADMIN NO BANCO TAMBÉM
       {
         nome: 'Administrador do Sistema',
-        email: 'admin@sistema.com',
-        password: 'senha123', // Mesma senha do .env
+        email: 'contact.elitesurfing@gmail.com',
+        password: 'senha123',
         telefone: '(11) 99999-0000',
         endereco: {
           rua: 'Rua Admin',
@@ -143,14 +143,6 @@ export default async function handler(req, res) {
       },
       {
         fornecedorId: fornecedores[0]._id,
-        codigo: 'DECK-P-002',
-        nome: 'Deck Saquarema Classic',
-        descricao: 'Deck clássico para as ondas pesadas de Saquarema.',
-        categoria: 'Deck Saquarema',
-        preco: 169.9,
-      },
-      {
-        fornecedorId: fornecedores[0]._id,
         codigo: 'DECK-P-003',
         nome: 'Deck J-bay Performance',
         descricao: 'Deck de alta performance para ondas longas como J-bay.',
@@ -168,14 +160,6 @@ export default async function handler(req, res) {
         descricao: 'Capa que funciona como toalha, absorve água rapidamente.',
         categoria: 'Capa Toalha',
         preco: 79.9,
-      },
-      {
-        fornecedorId: fornecedores[1]._id,
-        codigo: 'CAPA-M-002',
-        nome: 'Capa Simples Básica',
-        descricao: 'Capa simples e econômica para proteção básica.',
-        categoria: 'Capa Simples',
-        preco: 49.9,
       },
       {
         fornecedorId: fornecedores[1]._id,
@@ -239,9 +223,8 @@ export default async function handler(req, res) {
           password: 'senha123',
         },
         distribuidores: [
-          { email: 'joao@distribuidora.com', senha: '123456' },
-          { email: 'maria@distribuidora.com', senha: '123456' },
-          { email: 'pedro@distribuidora.com', senha: '123456' },
+          { email: 'elitesurfingrj@yahoo.com.br', senha: '0123456789' },
+          { email: 'amaurysoulsurf@bol.com.br', senha: '0123456789' },
         ],
       },
     });
