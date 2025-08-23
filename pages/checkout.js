@@ -1,4 +1,4 @@
-// 2. CORREÇÃO: pages/checkout.js - SEM PROFILE API
+// pages/checkout.js - COMPLETO COM AUTO-SAVE DE ENDEREÇO
 // ===================================
 
 import { useState, useEffect } from 'react';
@@ -9,7 +9,7 @@ import Head from 'next/head';
 import { useToastContext } from '../pages/_app';
 
 export default function Checkout() {
-  const toast = useToastContext(); // ✅ ADICIONADO
+  const toast = useToastContext();
   const { cart, cartTotal, clearCart, cartCount } = useCart();
   const [user, setUser] = useState(null);
   const [endereco, setEndereco] = useState({
@@ -21,6 +21,7 @@ export default function Checkout() {
     cep: '',
     estado: '',
   });
+  const [enderecoOriginal, setEnderecoOriginal] = useState(null); // Para comparar mudanças
   const [formaPagamento, setFormaPagamento] = useState('boleto');
   const [loading, setLoading] = useState(false);
   const [loadingUser, setLoadingUser] = useState(true);
@@ -54,6 +55,7 @@ export default function Checkout() {
         // Pré-preencher endereço se existir
         if (data.user.endereco) {
           setEndereco(data.user.endereco);
+          setEnderecoOriginal(data.user.endereco); // Salvar original para comparação
         }
       } else {
         router.push('/');
@@ -64,6 +66,44 @@ export default function Checkout() {
     } finally {
       setLoadingUser(false);
     }
+  };
+
+  // 🆕 FUNÇÃO PARA SALVAR ENDEREÇO
+  const salvarEndereco = async novoEndereco => {
+    try {
+      console.log('💾 Salvando endereço:', novoEndereco);
+
+      const response = await fetch('/api/user/endereco', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endereco: novoEndereco }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        console.log('✅ Endereço salvo com sucesso');
+        setEnderecoOriginal(novoEndereco); // Atualizar referência
+        toast.success('📍 Endereço atualizado com sucesso!');
+      } else {
+        console.error('❌ Erro ao salvar endereço:', data.message);
+        toast.warning(
+          'Não foi possível salvar o endereço, mas o pedido continuará normalmente.'
+        );
+      }
+    } catch (error) {
+      console.error('❌ Erro ao salvar endereço:', error);
+      toast.warning(
+        'Erro ao salvar endereço, mas o pedido continuará normalmente.'
+      );
+    }
+  };
+
+  // 🆕 VERIFICAR SE ENDEREÇO MUDOU
+  const enderecoMudou = () => {
+    if (!enderecoOriginal) return false;
+
+    return JSON.stringify(endereco) !== JSON.stringify(enderecoOriginal);
   };
 
   // Agrupar produtos por fornecedor
@@ -123,7 +163,6 @@ export default function Checkout() {
 
   const handleSubmit = async () => {
     if (!validateEndereco()) {
-      // ✅ SUBSTITUÍDO: alert por toast
       toast.warning('Por favor, corrija os erros no endereço');
       setStep(1);
       return;
@@ -132,7 +171,11 @@ export default function Checkout() {
     setLoading(true);
 
     try {
-      // ✅ CORREÇÃO: NÃO SALVAR ENDEREÇO NO PERFIL (API não existe mais)
+      // 🔥 SALVAR ENDEREÇO SE MUDOU (ANTES DE CRIAR PEDIDO)
+      if (enderecoMudou()) {
+        console.log('📍 Endereço foi alterado, salvando...');
+        await salvarEndereco(endereco);
+      }
 
       const pedidosPromises = Object.entries(produtosPorFornecedor).map(
         async ([fornecedorId, dados]) => {
@@ -178,19 +221,17 @@ export default function Checkout() {
 
       clearCart();
 
-      // ✅ SUBSTITUÍDO: alert por toast
       toast.success(
         '🎉 Pedido realizado com sucesso!\n\n' +
           '📧 Emails foram enviados automaticamente.\n' +
           'Acompanhe o status em "Meus Pedidos".\n\n' +
           'Obrigado pela sua compra!',
-        6000 // 6 segundos para toast longo
+        6000
       );
 
       router.push('/meus-pedidos');
     } catch (error) {
       console.error('💥 Erro ao criar pedidos:', error);
-      // ✅ SUBSTITUÍDO: alert por toast
       toast.error(
         `❌ Erro ao processar pedido:\n\n${error.message}\n\n` +
           'Tente novamente ou entre em contato.'
@@ -200,7 +241,7 @@ export default function Checkout() {
     }
   };
 
-  // Resto do componente permanece igual...
+  // Loading state
   if (loadingUser) {
     return (
       <Layout>
@@ -214,6 +255,7 @@ export default function Checkout() {
     );
   }
 
+  // Empty cart state
   if (cart.length === 0) {
     return (
       <Layout>
@@ -259,6 +301,12 @@ export default function Checkout() {
               {cartCount} {cartCount === 1 ? 'item' : 'itens'} • Total: R${' '}
               {total.toFixed(2)}
             </p>
+            {/* 🆕 INDICADOR DE ENDEREÇO ALTERADO */}
+            {enderecoMudou() && (
+              <p className='text-sm text-blue-600 mt-2'>
+                📍 Endereço será atualizado automaticamente
+              </p>
+            )}
           </div>
 
           {/* Progress Steps */}
@@ -311,6 +359,12 @@ export default function Checkout() {
                       <span>📍</span>
                       Endereço de Entrega
                     </h2>
+                    {/* 🆕 INDICADOR DE MUDANÇA */}
+                    {enderecoMudou() && (
+                      <span className='text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded'>
+                        Alterado
+                      </span>
+                    )}
                   </div>
 
                   <div className='grid md:grid-cols-2 gap-4'>
@@ -611,8 +665,13 @@ export default function Checkout() {
 
                   {/* Resumo do Endereço */}
                   <div className='mb-6 p-4 bg-gray-50 rounded-lg'>
-                    <h3 className='font-medium mb-2'>
+                    <h3 className='font-medium mb-2 flex items-center gap-2'>
                       📍 Endereço de Entrega:
+                      {enderecoMudou() && (
+                        <span className='text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded'>
+                          Será atualizado
+                        </span>
+                      )}
                     </h3>
                     <p className='text-sm text-gray-700'>
                       {endereco.rua}, {endereco.numero}
