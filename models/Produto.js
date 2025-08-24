@@ -1,4 +1,4 @@
-// MODELS/PRODUTO.JS - SIMPLIFICADO
+// MODELS/PRODUTO.JS - ATUALIZADO COM PREÇO SEM NF
 // ===================================
 
 import mongoose from 'mongoose';
@@ -31,6 +31,12 @@ const ProdutoSchema = new mongoose.Schema(
       trim: true,
     },
     preco: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    // 🆕 NOVO CAMPO: Preço sem nota fiscal
+    precoSemNF: {
       type: Number,
       required: true,
       min: 0,

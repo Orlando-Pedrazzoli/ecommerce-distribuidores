@@ -1,4 +1,4 @@
-// COMPONENTS/PRODUCTCARD.JS - COM DESCRIÇÃO EXPANSÍVEL
+// COMPONENTS/PRODUCTCARD.JS - ATUALIZADO COM DUPLO PREÇO
 // ===================================
 
 import { useState } from 'react';
@@ -37,6 +37,10 @@ export default function ProductCard({ produto }) {
   const descricaoCompleta = produto.descricao || '';
   const descricaoPreview = getDescricaoPreview(descricaoCompleta);
   const temDescricaoLonga = descricaoCompleta.length > 60;
+
+  // 🆕 CALCULAR ECONOMIA
+  const economia = produto.preco - produto.precoSemNF;
+  const percentualEconomia = ((economia / produto.preco) * 100).toFixed(1);
 
   return (
     <div className='bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow'>
@@ -93,42 +97,85 @@ export default function ProductCard({ produto }) {
           {produto.nome}
         </h3>
 
-        {/* DESCRIÇÃO EXPANSÍVEL */}
+        {/* 🆕 DESCRIÇÃO COM BOTÃO EXPANSÍVEL */}
         <div className='mb-3'>
-          {temDescricaoLonga ? (
-            <div>
-              {/* Descrição Preview/Completa */}
-              <p
-                className={`text-gray-600 text-sm leading-relaxed transition-all duration-300 ${
-                  showFullDescription ? 'mb-3' : 'mb-2'
-                }`}
+          {/* Botão para expandir descrição */}
+          <button
+            onClick={() => setShowFullDescription(!showFullDescription)}
+            className='w-full flex items-center justify-between p-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors duration-200'
+          >
+            <span className='text-sm text-gray-700 font-medium flex items-center gap-2'>
+              📄 Ver descrição
+            </span>
+            <span
+              className={`text-gray-500 transition-transform duration-200 ${
+                showFullDescription ? 'rotate-180' : ''
+              }`}
+            >
+              <svg
+                className='w-4 h-4'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
               >
-                {showFullDescription ? descricaoCompleta : descricaoPreview}
-              </p>
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M19 9l-7 7-7-7'
+                />
+              </svg>
+            </span>
+          </button>
 
-              {/* Botão Ver Mais/Menos - Design minimalista */}
-              <button
-                onClick={() => setShowFullDescription(!showFullDescription)}
-                className='text-xs text-gray-500 hover:text-gray-700 font-medium border-b border-dotted border-gray-400 hover:border-gray-600 transition-all duration-200 pb-0.5'
-              >
-                {showFullDescription
-                  ? 'Mostrar menos'
-                  : 'Ver descrição completa'}
-              </button>
+          {/* Descrição Expansível */}
+          {showFullDescription && (
+            <div className='mt-2 p-3 bg-gray-50 rounded-lg border-l-4 border-blue-200'>
+              <p className='text-gray-600 text-sm leading-relaxed'>
+                {descricaoCompleta || 'Sem descrição disponível'}
+              </p>
             </div>
-          ) : (
-            // Descrição curta (sem botão)
-            <p className='text-gray-600 text-sm leading-relaxed'>
-              {descricaoCompleta || 'Sem descrição disponível'}
-            </p>
           )}
         </div>
 
-        {/* Preço */}
+        {/* 🆕 SEÇÃO DE PREÇOS - DESIGN DUPLO */}
         <div className='mb-4'>
-          <p className='text-green-600 font-bold text-xl'>
-            R$ {produto.preco?.toFixed(2) || '0.00'}
-          </p>
+          {/* Container dos dois preços */}
+          <div className='bg-gradient-to-r from-blue-50 to-green-50 rounded-lg p-3 border'>
+            <div className='grid grid-cols-2 gap-3'>
+              {/* Preço COM NF */}
+              <div className='text-center'>
+                <p className='text-xs text-blue-600 font-medium mb-1'>
+                  💳 COM NF
+                </p>
+                <p className='text-lg font-bold text-blue-600'>
+                  R$ {produto.preco?.toFixed(2) || '0.00'}
+                </p>
+              </div>
+
+              {/* Preço SEM NF */}
+              <div className='text-center relative'>
+                <p className='text-xs text-green-600 font-medium mb-1'>
+                  🏷️ SEM NF
+                </p>
+                <p className='text-lg font-bold text-green-600'>
+                  R$ {produto.precoSemNF?.toFixed(2) || '0.00'}
+                </p>
+              </div>
+            </div>
+
+            {/* Linha de economia */}
+            {economia > 0 && (
+              <div className='mt-2 pt-2 border-t border-gray-200 text-center'>
+                <p className='text-xs text-gray-600'>
+                  💰 <strong>Economia:</strong> R$ {economia.toFixed(2)}{' '}
+                  <span className='text-red-600 font-bold'>
+                    (-{percentualEconomia}%)
+                  </span>
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Controles de quantidade */}
@@ -162,13 +209,32 @@ export default function ProductCard({ produto }) {
           </div>
         </div>
 
-        {/* Subtotal */}
+        {/* 🆕 SUBTOTAIS PARA AMBOS OS PREÇOS */}
         {quantidade > 1 && (
-          <div className='mb-4 text-sm text-gray-600'>
-            Subtotal:{' '}
-            <span className='font-medium'>
-              R$ {((produto.preco || 0) * quantidade).toFixed(2)}
-            </span>
+          <div className='mb-4 text-sm'>
+            <div className='bg-gray-50 rounded-lg p-3'>
+              <h4 className='font-medium text-gray-700 mb-2'>📊 Subtotais:</h4>
+              <div className='grid grid-cols-2 gap-3 text-xs'>
+                <div className='text-center'>
+                  <p className='text-blue-600 font-medium'>COM NF</p>
+                  <p className='font-bold text-blue-600'>
+                    R$ {((produto.preco || 0) * quantidade).toFixed(2)}
+                  </p>
+                </div>
+                <div className='text-center'>
+                  <p className='text-green-600 font-medium'>SEM NF</p>
+                  <p className='font-bold text-green-600'>
+                    R$ {((produto.precoSemNF || 0) * quantidade).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+              <div className='mt-2 pt-2 border-t border-gray-200 text-center'>
+                <p className='text-gray-600'>
+                  💰 <strong>Economia total:</strong> R${' '}
+                  {(economia * quantidade).toFixed(2)}
+                </p>
+              </div>
+            </div>
           </div>
         )}
 

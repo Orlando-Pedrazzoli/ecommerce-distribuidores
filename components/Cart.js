@@ -1,4 +1,4 @@
-// COMPONENTS/CART.JS - ATUALIZADO COM TOAST SYSTEM
+// COMPONENTS/CART.JS - ATUALIZADO COM CÁLCULO DUPLO DE PREÇOS
 // ===================================
 
 import { useCart } from '../pages/_app';
@@ -17,10 +17,10 @@ export default function Cart({ isOpen, onClose }) {
     currentUser,
   } = useCart();
 
-  const toast = useToastContext(); // ✅ Hook do toast
+  const toast = useToastContext();
   const [isAnimating, setIsAnimating] = useState(false);
-  const [pendingRemoval, setPendingRemoval] = useState(null); // ✅ Para controlar remoção
-  const [pendingClearCart, setPendingClearCart] = useState(false); // ✅ Para controlar limpeza
+  const [pendingRemoval, setPendingRemoval] = useState(null);
+  const [pendingClearCart, setPendingClearCart] = useState(false);
 
   // Animação de entrada
   useEffect(() => {
@@ -51,21 +51,17 @@ export default function Cart({ isOpen, onClose }) {
 
   const handleQuantityChange = (itemId, newQuantity) => {
     if (newQuantity < 1) {
-      // ✅ NOVO: Sistema de confirmação com toast
       const item = cart.find(item => item._id === itemId);
       if (pendingRemoval === itemId) {
-        // Segunda vez clicando - confirmar remoção
         removeFromCart(itemId);
         setPendingRemoval(null);
         toast.info(`${item?.nome} removido do carrinho`);
       } else {
-        // Primeira vez - mostrar aviso
         setPendingRemoval(itemId);
         toast.warning(
           `Clique novamente no "-" para remover ${item?.nome}`,
           3000
         );
-        // Auto-cancelar após 3 segundos
         setTimeout(() => {
           setPendingRemoval(null);
         }, 3000);
@@ -73,23 +69,19 @@ export default function Cart({ isOpen, onClose }) {
       return;
     }
     updateQuantity(itemId, newQuantity);
-    setPendingRemoval(null); // Cancelar remoção pendente se aumentar quantidade
+    setPendingRemoval(null);
   };
 
   const handleClearCart = () => {
     if (pendingClearCart) {
-      // Segunda vez clicando - confirmar limpeza
       clearCart();
       setPendingClearCart(false);
-      // Toast já é chamado automaticamente no clearCart
     } else {
-      // Primeira vez - mostrar aviso
       setPendingClearCart(true);
       toast.warning(
         'Clique novamente em "Limpar carrinho" para confirmar',
         4000
       );
-      // Auto-cancelar após 4 segundos
       setTimeout(() => {
         setPendingClearCart(false);
       }, 4000);
@@ -99,23 +91,36 @@ export default function Cart({ isOpen, onClose }) {
   const handleRemoveItem = itemId => {
     const item = cart.find(item => item._id === itemId);
     if (pendingRemoval === itemId) {
-      // Segunda vez clicando - confirmar remoção
       removeFromCart(itemId);
       setPendingRemoval(null);
       toast.info(`${item?.nome} removido do carrinho`);
     } else {
-      // Primeira vez - mostrar aviso
       setPendingRemoval(itemId);
       toast.warning(`Clique novamente no 🗑️ para remover ${item?.nome}`, 3000);
-      // Auto-cancelar após 3 segundos
       setTimeout(() => {
         setPendingRemoval(null);
       }, 3000);
     }
   };
 
-  const royalties = cartTotal * 0.05;
-  const total = cartTotal + royalties;
+  // 🆕 CÁLCULOS DUPLOS
+  const subtotalComNF = cart.reduce(
+    (total, item) => total + (item.preco || 0) * item.quantidade,
+    0
+  );
+
+  const subtotalSemNF = cart.reduce(
+    (total, item) => total + (item.precoSemNF || 0) * item.quantidade,
+    0
+  );
+
+  const royaltiesComNF = subtotalComNF * 0.05;
+  const royaltiesSemNF = subtotalSemNF * 0.05;
+
+  const totalComNF = subtotalComNF + royaltiesComNF;
+  const totalSemNF = subtotalSemNF + royaltiesSemNF;
+
+  const economiaTotal = totalComNF - totalSemNF;
 
   // Agrupar itens por fornecedor
   const itemsPorFornecedor = cart.reduce((acc, item) => {
@@ -253,9 +258,28 @@ export default function Cart({ isOpen, onClose }) {
                               >
                                 {item.nome}
                               </h4>
-                              <p className='text-green-600 font-bold text-sm mb-2'>
-                                R$ {item.preco?.toFixed(2) || '0.00'}
-                              </p>
+
+                              {/* 🆕 PREÇOS DUPLOS NO CARRINHO */}
+                              <div className='mb-2'>
+                                <div className='grid grid-cols-2 gap-2 text-xs'>
+                                  <div className='text-center bg-blue-50 rounded p-1'>
+                                    <p className='text-blue-600 font-medium'>
+                                      COM NF
+                                    </p>
+                                    <p className='font-bold text-blue-600'>
+                                      R$ {(item.preco || 0).toFixed(2)}
+                                    </p>
+                                  </div>
+                                  <div className='text-center bg-green-50 rounded p-1'>
+                                    <p className='text-green-600 font-medium'>
+                                      SEM NF
+                                    </p>
+                                    <p className='font-bold text-green-600'>
+                                      R$ {(item.precoSemNF || 0).toFixed(2)}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
 
                               {/* Quantity Controls */}
                               <div className='flex items-center gap-2'>
@@ -292,13 +316,38 @@ export default function Cart({ isOpen, onClose }) {
                                 </button>
                               </div>
 
-                              {/* Subtotal */}
-                              <p className='text-xs text-gray-600 mt-1'>
-                                Subtotal: R${' '}
-                                {((item.preco || 0) * item.quantidade).toFixed(
-                                  2
-                                )}
-                              </p>
+                              {/* 🆕 SUBTOTAIS DUPLOS */}
+                              <div className='text-xs text-gray-600 mt-2 space-y-1'>
+                                <div className='flex justify-between'>
+                                  <span>Subtotal COM NF:</span>
+                                  <span className='font-medium text-blue-600'>
+                                    R${' '}
+                                    {(
+                                      (item.preco || 0) * item.quantidade
+                                    ).toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className='flex justify-between'>
+                                  <span>Subtotal SEM NF:</span>
+                                  <span className='font-medium text-green-600'>
+                                    R${' '}
+                                    {(
+                                      (item.precoSemNF || 0) * item.quantidade
+                                    ).toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className='flex justify-between pt-1 border-t'>
+                                  <span>💰 Economia:</span>
+                                  <span className='font-bold text-red-600'>
+                                    R${' '}
+                                    {(
+                                      ((item.preco || 0) -
+                                        (item.precoSemNF || 0)) *
+                                      item.quantidade
+                                    ).toFixed(2)}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
 
                             {/* Remove Button */}
@@ -325,24 +374,77 @@ export default function Cart({ isOpen, onClose }) {
                 )}
               </div>
 
-              {/* Total */}
-              <div className='border-t border-gray-200 pt-4 mb-6 bg-gray-50 p-4 rounded-lg'>
-                <div className='space-y-2'>
-                  <div className='flex justify-between items-center'>
-                    <span className='font-medium'>Subtotal:</span>
-                    <span>R$ {cartTotal.toFixed(2)}</span>
+              {/* 🆕 TOTAIS DUPLOS - DESIGN MELHORADO */}
+              <div className='border-t border-gray-200 pt-4 mb-6'>
+                <div className='bg-gradient-to-r from-blue-50 to-green-50 rounded-lg p-4 border'>
+                  <h3 className='text-lg font-bold text-gray-800 mb-3 text-center'>
+                    📊 Resumo de Preços
+                  </h3>
+
+                  <div className='grid grid-cols-2 gap-4 mb-4'>
+                    {/* Coluna COM NF */}
+                    <div className='text-center bg-blue-100 rounded-lg p-3'>
+                      <h4 className='text-sm font-bold text-blue-800 mb-2'>
+                        💳 COM NF
+                      </h4>
+                      <div className='space-y-1 text-sm'>
+                        <div className='flex justify-between'>
+                          <span>Subtotal:</span>
+                          <span className='font-medium'>
+                            R$ {subtotalComNF.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className='flex justify-between'>
+                          <span>Royalties (5%):</span>
+                          <span>R$ {royaltiesComNF.toFixed(2)}</span>
+                        </div>
+                        <div className='border-t pt-1'>
+                          <div className='flex justify-between font-bold text-blue-600'>
+                            <span>Total:</span>
+                            <span>R$ {totalComNF.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Coluna SEM NF */}
+                    <div className='text-center bg-green-100 rounded-lg p-3'>
+                      <h4 className='text-sm font-bold text-green-800 mb-2'>
+                        🏷️ SEM NF
+                      </h4>
+                      <div className='space-y-1 text-sm'>
+                        <div className='flex justify-between'>
+                          <span>Subtotal:</span>
+                          <span className='font-medium'>
+                            R$ {subtotalSemNF.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className='flex justify-between'>
+                          <span>Royalties (5%):</span>
+                          <span>R$ {royaltiesSemNF.toFixed(2)}</span>
+                        </div>
+                        <div className='border-t pt-1'>
+                          <div className='flex justify-between font-bold text-green-600'>
+                            <span>Total:</span>
+                            <span>R$ {totalSemNF.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className='flex justify-between items-center'>
-                    <span className='text-sm text-gray-600'>
-                      Royalties (5%):
-                    </span>
-                    <span className='text-sm'>R$ {royalties.toFixed(2)}</span>
-                  </div>
-                  <div className='flex justify-between items-center font-bold text-lg border-t pt-2'>
-                    <span>Total:</span>
-                    <span className='text-green-600'>
-                      R$ {total.toFixed(2)}
-                    </span>
+
+                  {/* Economia Total */}
+                  <div className='bg-white rounded-lg p-3 text-center border-2 border-red-200'>
+                    <h4 className='text-lg font-bold text-red-600 mb-1'>
+                      💰 ECONOMIA TOTAL
+                    </h4>
+                    <p className='text-2xl font-bold text-red-600'>
+                      R$ {economiaTotal.toFixed(2)}
+                    </p>
+                    <p className='text-xs text-gray-600'>
+                      {((economiaTotal / totalComNF) * 100).toFixed(1)}% de
+                      desconto
+                    </p>
                   </div>
                 </div>
               </div>
@@ -368,6 +470,14 @@ export default function Cart({ isOpen, onClose }) {
                 >
                   Continuar Comprando
                 </button>
+
+                {/* Nota importante sobre escolha de preço */}
+                <div className='bg-yellow-50 border border-yellow-200 rounded-lg p-3'>
+                  <p className='text-xs text-yellow-800 text-center'>
+                    💡 <strong>Importante:</strong> Você escolherá entre preço
+                    COM ou SEM NF durante o checkout.
+                  </p>
+                </div>
               </div>
             </>
           )}

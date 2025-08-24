@@ -1,4 +1,4 @@
-// pages/checkout.js - COMPLETO COM AUTO-SAVE DE ENDEREÇO
+// pages/checkout.js - ATUALIZADO COM SELEÇÃO DE TIPO DE PREÇO
 // ===================================
 
 import { useState, useEffect } from 'react';
@@ -21,8 +21,10 @@ export default function Checkout() {
     cep: '',
     estado: '',
   });
-  const [enderecoOriginal, setEnderecoOriginal] = useState(null); // Para comparar mudanças
+  const [enderecoOriginal, setEnderecoOriginal] = useState(null);
   const [formaPagamento, setFormaPagamento] = useState('boleto');
+  // 🆕 NOVO ESTADO: Tipo de preço
+  const [tipoPreco, setTipoPreco] = useState('comNF'); // 'comNF' ou 'semNF'
   const [loading, setLoading] = useState(false);
   const [loadingUser, setLoadingUser] = useState(true);
   const [errors, setErrors] = useState({});
@@ -52,10 +54,9 @@ export default function Checkout() {
         const data = await response.json();
         setUser(data.user);
 
-        // Pré-preencher endereço se existir
         if (data.user.endereco) {
           setEndereco(data.user.endereco);
-          setEnderecoOriginal(data.user.endereco); // Salvar original para comparação
+          setEnderecoOriginal(data.user.endereco);
         }
       } else {
         router.push('/');
@@ -68,7 +69,6 @@ export default function Checkout() {
     }
   };
 
-  // 🆕 FUNÇÃO PARA SALVAR ENDEREÇO
   const salvarEndereco = async novoEndereco => {
     try {
       console.log('💾 Salvando endereço:', novoEndereco);
@@ -83,7 +83,7 @@ export default function Checkout() {
 
       if (response.ok) {
         console.log('✅ Endereço salvo com sucesso');
-        setEnderecoOriginal(novoEndereco); // Atualizar referência
+        setEnderecoOriginal(novoEndereco);
         toast.success('📍 Endereço atualizado com sucesso!');
       } else {
         console.error('❌ Erro ao salvar endereço:', data.message);
@@ -99,10 +99,8 @@ export default function Checkout() {
     }
   };
 
-  // 🆕 VERIFICAR SE ENDEREÇO MUDOU
   const enderecoMudou = () => {
     if (!enderecoOriginal) return false;
-
     return JSON.stringify(endereco) !== JSON.stringify(enderecoOriginal);
   };
 
@@ -117,19 +115,38 @@ export default function Checkout() {
       acc[fornecedorId] = {
         nome: fornecedorNome,
         itens: [],
-        subtotal: 0,
+        subtotalComNF: 0,
+        subtotalSemNF: 0,
       };
     }
 
     acc[fornecedorId].itens.push(item);
-    acc[fornecedorId].subtotal += item.preco * item.quantidade;
+    acc[fornecedorId].subtotalComNF += (item.preco || 0) * item.quantidade;
+    acc[fornecedorId].subtotalSemNF += (item.precoSemNF || 0) * item.quantidade;
 
     return acc;
   }, {});
 
-  const subtotal = cartTotal;
+  // 🆕 CÁLCULOS BASEADOS NO TIPO DE PREÇO SELECIONADO
+  const subtotalComNF = cart.reduce(
+    (acc, item) => acc + (item.preco || 0) * item.quantidade,
+    0
+  );
+
+  const subtotalSemNF = cart.reduce(
+    (acc, item) => acc + (item.precoSemNF || 0) * item.quantidade,
+    0
+  );
+
+  const royaltiesComNF = subtotalComNF * 0.05;
+  const royaltiesSemNF = subtotalSemNF * 0.05;
+  const totalComNF = subtotalComNF + royaltiesComNF;
+  const totalSemNF = subtotalSemNF + royaltiesSemNF;
+
+  const subtotal = tipoPreco === 'comNF' ? subtotalComNF : subtotalSemNF;
   const royalties = subtotal * 0.05;
   const total = subtotal + royalties;
+  const economia = totalComNF - totalSemNF;
 
   const validateEndereco = () => {
     const newErrors = {};
@@ -171,7 +188,6 @@ export default function Checkout() {
     setLoading(true);
 
     try {
-      // 🔥 SALVAR ENDEREÇO SE MUDOU (ANTES DE CRIAR PEDIDO)
       if (enderecoMudou()) {
         console.log('📍 Endereço foi alterado, salvando...');
         await salvarEndereco(endereco);
@@ -179,12 +195,14 @@ export default function Checkout() {
 
       const pedidosPromises = Object.entries(produtosPorFornecedor).map(
         async ([fornecedorId, dados]) => {
+          // 🆕 USAR PREÇO BASEADO NA SELEÇÃO
           const itensFormatados = dados.itens.map(item => ({
             produtoId: item._id,
             codigo: item.codigo,
             nome: item.nome,
             quantidade: item.quantidade,
-            precoUnitario: item.preco,
+            precoUnitario: tipoPreco === 'comNF' ? item.preco : item.precoSemNF,
+            tipoPreco: tipoPreco, // 🆕 SALVAR TIPO DE PREÇO ESCOLHIDO
           }));
 
           const pedidoData = {
@@ -193,12 +211,15 @@ export default function Checkout() {
             fornecedorId,
             formaPagamento,
             endereco,
+            tipoPreco, // 🆕 SALVAR TIPO DE PREÇO NO PEDIDO
           };
 
           console.log('📦 Enviando pedido:', {
             fornecedor: dados.nome,
             itens: itensFormatados.length,
-            total: dados.subtotal,
+            total:
+              tipoPreco === 'comNF' ? dados.subtotalComNF : dados.subtotalSemNF,
+            tipoPreco,
           });
 
           const response = await fetch('/api/pedidos/criar', {
@@ -221,12 +242,17 @@ export default function Checkout() {
 
       clearCart();
 
+      const tipoPrecoTexto =
+        tipoPreco === 'comNF' ? 'COM Nota Fiscal' : 'SEM Nota Fiscal';
+
       toast.success(
-        '🎉 Pedido realizado com sucesso!\n\n' +
-          '📧 Emails foram enviados automaticamente.\n' +
-          'Acompanhe o status em "Meus Pedidos".\n\n' +
-          'Obrigado pela sua compra!',
-        6000
+        `🎉 Pedido realizado com sucesso!\n\n` +
+          `💰 Tipo de preço: ${tipoPrecoTexto}\n` +
+          `💵 Total: R$ ${total.toFixed(2)}\n\n` +
+          `📧 Emails foram enviados automaticamente.\n` +
+          `Acompanhe o status em "Meus Pedidos".\n\n` +
+          `Obrigado pela sua compra!`,
+        8000
       );
 
       router.push('/meus-pedidos');
@@ -301,7 +327,6 @@ export default function Checkout() {
               {cartCount} {cartCount === 1 ? 'item' : 'itens'} • Total: R${' '}
               {total.toFixed(2)}
             </p>
-            {/* 🆕 INDICADOR DE ENDEREÇO ALTERADO */}
             {enderecoMudou() && (
               <p className='text-sm text-blue-600 mt-2'>
                 📍 Endereço será atualizado automaticamente
@@ -315,7 +340,8 @@ export default function Checkout() {
               {[
                 { num: 1, label: 'Endereço', icon: '📍' },
                 { num: 2, label: 'Pagamento', icon: '💳' },
-                { num: 3, label: 'Confirmação', icon: '✅' },
+                { num: 3, label: 'Tipo de Preço', icon: '💰' }, // 🆕 NOVO STEP
+                { num: 4, label: 'Confirmação', icon: '✅' },
               ].map(stepInfo => (
                 <div key={stepInfo.num} className='flex items-center'>
                   <div
@@ -336,7 +362,7 @@ export default function Checkout() {
                   >
                     {stepInfo.label}
                   </span>
-                  {stepInfo.num < 3 && (
+                  {stepInfo.num < 4 && (
                     <div
                       className={`w-8 h-px mx-4 ${
                         step > stepInfo.num ? 'bg-blue-500' : 'bg-gray-300'
@@ -359,7 +385,6 @@ export default function Checkout() {
                       <span>📍</span>
                       Endereço de Entrega
                     </h2>
-                    {/* 🆕 INDICADOR DE MUDANÇA */}
                     {enderecoMudou() && (
                       <span className='text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded'>
                         Alterado
@@ -639,14 +664,181 @@ export default function Checkout() {
                       onClick={() => setStep(3)}
                       className='bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition'
                     >
+                      Escolher Tipo de Preço
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 🆕 Step 3: Tipo de Preço */}
+              {step === 3 && (
+                <div className='bg-white rounded-lg shadow-md p-6'>
+                  <h2 className='text-xl font-bold text-gray-800 mb-6 flex items-center gap-2'>
+                    <span>💰</span>
+                    Escolha o Tipo de Preço
+                  </h2>
+
+                  <div className='bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6'>
+                    <div className='flex items-start'>
+                      <span className='text-yellow-600 text-xl mr-3'>💡</span>
+                      <div>
+                        <h3 className='font-medium text-yellow-800 mb-2'>
+                          Escolha importante:
+                        </h3>
+                        <p className='text-sm text-yellow-700'>
+                          Selecione se você deseja comprar COM ou SEM nota
+                          fiscal. Esta escolha afetará o preço final do seu
+                          pedido.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className='grid md:grid-cols-2 gap-6 mb-6'>
+                    {/* Opção COM NF */}
+                    <label
+                      className={`border-2 rounded-lg p-6 cursor-pointer transition ${
+                        tipoPreco === 'comNF'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-300 hover:border-gray-400'
+                      }`}
+                    >
+                      <input
+                        type='radio'
+                        name='tipoPreco'
+                        value='comNF'
+                        checked={tipoPreco === 'comNF'}
+                        onChange={e => setTipoPreco(e.target.value)}
+                        className='sr-only'
+                      />
+                      <div className='text-center'>
+                        <div className='text-4xl mb-3'>💳</div>
+                        <h3 className='font-bold text-lg mb-3 text-blue-700'>
+                          COM Nota Fiscal
+                        </h3>
+                        <div className='bg-white rounded-lg p-4 border'>
+                          <p className='text-2xl font-bold text-blue-600 mb-2'>
+                            R$ {subtotalComNF.toFixed(2)}
+                          </p>
+                          <p className='text-sm text-gray-600 mb-2'>
+                            + Royalties: R$ {(subtotalComNF * 0.05).toFixed(2)}
+                          </p>
+                          <p className='text-lg font-bold text-blue-600 border-t pt-2'>
+                            Total: R${' '}
+                            {(subtotalComNF + subtotalComNF * 0.05).toFixed(2)}
+                          </p>
+                        </div>
+                        <div className='mt-3'>
+                          <p className='text-xs text-blue-700 font-medium'>
+                            ✓ Nota fiscal inclusa
+                          </p>
+                          <p className='text-xs text-blue-700'>
+                            ✓ Garantia completa
+                          </p>
+                        </div>
+                      </div>
+                    </label>
+
+                    {/* Opção SEM NF */}
+                    <label
+                      className={`border-2 rounded-lg p-6 cursor-pointer transition relative ${
+                        tipoPreco === 'semNF'
+                          ? 'border-green-500 bg-green-50'
+                          : 'border-gray-300 hover:border-gray-400'
+                      }`}
+                    >
+                      <input
+                        type='radio'
+                        name='tipoPreco'
+                        value='semNF'
+                        checked={tipoPreco === 'semNF'}
+                        onChange={e => setTipoPreco(e.target.value)}
+                        className='sr-only'
+                      />
+
+                      {/* Badge de economia */}
+                      {economia > 0 && (
+                        <span className='absolute -top-3 -right-3 bg-red-500 text-white text-sm px-3 py-1 rounded-full font-bold shadow-lg'>
+                          ECONOMIZE R$ {economia.toFixed(2)}
+                        </span>
+                      )}
+
+                      <div className='text-center'>
+                        <div className='text-4xl mb-3'>🏷️</div>
+                        <h3 className='font-bold text-lg mb-3 text-green-700'>
+                          SEM Nota Fiscal
+                        </h3>
+                        <div className='bg-white rounded-lg p-4 border'>
+                          <p className='text-2xl font-bold text-green-600 mb-2'>
+                            R$ {subtotalSemNF.toFixed(2)}
+                          </p>
+                          <p className='text-sm text-gray-600 mb-2'>
+                            + Royalties: R$ {(subtotalSemNF * 0.05).toFixed(2)}
+                          </p>
+                          <p className='text-lg font-bold text-green-600 border-t pt-2'>
+                            Total: R${' '}
+                            {(subtotalSemNF + subtotalSemNF * 0.05).toFixed(2)}
+                          </p>
+                        </div>
+                        <div className='mt-3'>
+                          <p className='text-xs text-green-700 font-medium'>
+                            💰 Preço reduzido
+                          </p>
+                          <p className='text-xs text-green-700'>
+                            💸 Economia de{' '}
+                            {((economia / subtotalComNF) * 100).toFixed(1)}%
+                          </p>
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Comparação */}
+                  <div className='bg-gray-50 rounded-lg p-4 mb-6'>
+                    <h4 className='font-medium text-gray-800 mb-3 text-center'>
+                      📊 Comparação de Preços
+                    </h4>
+                    <div className='grid grid-cols-3 gap-4 text-center text-sm'>
+                      <div>
+                        <p className='text-gray-600'>COM NF</p>
+                        <p className='text-lg font-bold text-blue-600'>
+                          R$ {(subtotalComNF + subtotalComNF * 0.05).toFixed(2)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className='text-gray-600'>SEM NF</p>
+                        <p className='text-lg font-bold text-green-600'>
+                          R$ {(subtotalSemNF + subtotalSemNF * 0.05).toFixed(2)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className='text-gray-600'>ECONOMIA</p>
+                        <p className='text-lg font-bold text-red-600'>
+                          R$ {economia.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className='flex justify-between'>
+                    <button
+                      onClick={() => setStep(2)}
+                      className='bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-600 transition'
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      onClick={() => setStep(4)}
+                      className='bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition'
+                    >
                       Revisar Pedido
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Step 3: Confirmação */}
-              {step === 3 && (
+              {/* Step 4: Confirmação */}
+              {step === 4 && (
                 <div className='bg-white rounded-lg shadow-md p-6'>
                   <h2 className='text-xl font-bold text-gray-800 mb-6 flex items-center gap-2'>
                     <span>✅</span>
@@ -693,9 +885,35 @@ export default function Checkout() {
                     </p>
                   </div>
 
+                  {/* 🆕 Resumo do Tipo de Preço */}
+                  <div className='mb-6 p-4 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border'>
+                    <h3 className='font-medium mb-3 flex items-center gap-2'>
+                      💰 Tipo de Preço Selecionado:
+                    </h3>
+                    <div className='text-center'>
+                      {tipoPreco === 'comNF' ? (
+                        <div>
+                          <span className='inline-flex items-center px-4 py-2 bg-blue-100 text-blue-800 rounded-full font-bold'>
+                            💳 COM Nota Fiscal - R$ {total.toFixed(2)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className='inline-flex items-center px-4 py-2 bg-green-100 text-green-800 rounded-full font-bold'>
+                            🏷️ SEM Nota Fiscal - R$ {total.toFixed(2)}
+                          </span>
+                          <p className='text-sm text-green-700 mt-2'>
+                            💰 Economizando R$ {economia.toFixed(2)} em relação
+                            ao preço com NF
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   <div className='flex justify-between'>
                     <button
-                      onClick={() => setStep(2)}
+                      onClick={() => setStep(3)}
                       className='bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-600 transition'
                     >
                       Voltar
@@ -722,12 +940,43 @@ export default function Checkout() {
               )}
             </div>
 
-            {/* Resumo do Pedido - Sidebar */}
+            {/* 🆕 Resumo do Pedido - Sidebar Atualizada */}
             <div className='lg:col-span-1'>
               <div className='bg-white rounded-lg shadow-md p-6 sticky top-4'>
                 <h2 className='text-xl font-bold text-gray-800 mb-4'>
                   Resumo do Pedido
                 </h2>
+
+                {/* Seletor de Visualização de Preço */}
+                <div className='mb-4'>
+                  <div className='flex rounded-lg overflow-hidden border'>
+                    <button
+                      onClick={() => setTipoPreco('comNF')}
+                      className={`flex-1 py-2 px-3 text-xs font-medium transition ${
+                        tipoPreco === 'comNF'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      💳 COM NF
+                    </button>
+                    <button
+                      onClick={() => setTipoPreco('semNF')}
+                      className={`flex-1 py-2 px-3 text-xs font-medium transition ${
+                        tipoPreco === 'semNF'
+                          ? 'bg-green-500 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      🏷️ SEM NF
+                    </button>
+                  </div>
+                  {economia > 0 && tipoPreco === 'semNF' && (
+                    <p className='text-xs text-green-600 text-center mt-2'>
+                      💰 Economizando R$ {economia.toFixed(2)}
+                    </p>
+                  )}
+                </div>
 
                 {/* Itens agrupados por fornecedor */}
                 <div className='space-y-4 mb-6'>
@@ -752,11 +1001,20 @@ export default function Checkout() {
                                   {item.nome}
                                 </p>
                                 <p className='text-gray-600'>
-                                  {item.quantidade}x R$ {item.preco.toFixed(2)}
+                                  {item.quantidade}x R${' '}
+                                  {(tipoPreco === 'comNF'
+                                    ? item.preco
+                                    : item.precoSemNF
+                                  ).toFixed(2)}
                                 </p>
                               </div>
                               <p className='font-medium text-green-600'>
-                                R$ {(item.preco * item.quantidade).toFixed(2)}
+                                R${' '}
+                                {(
+                                  (tipoPreco === 'comNF'
+                                    ? item.preco
+                                    : item.precoSemNF) * item.quantidade
+                                ).toFixed(2)}
                               </p>
                             </div>
                           ))}
@@ -765,7 +1023,13 @@ export default function Checkout() {
                         <div className='border-t mt-2 pt-2'>
                           <div className='flex justify-between text-sm font-medium'>
                             <span>Subtotal:</span>
-                            <span>R$ {dados.subtotal.toFixed(2)}</span>
+                            <span>
+                              R${' '}
+                              {(tipoPreco === 'comNF'
+                                ? dados.subtotalComNF
+                                : dados.subtotalSemNF
+                              ).toFixed(2)}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -787,10 +1051,29 @@ export default function Checkout() {
                   </div>
                   <div className='flex justify-between items-center font-bold text-lg border-t pt-2'>
                     <span>Total:</span>
-                    <span className='text-green-600'>
+                    <span
+                      className={
+                        tipoPreco === 'comNF'
+                          ? 'text-blue-600'
+                          : 'text-green-600'
+                      }
+                    >
                       R$ {total.toFixed(2)}
                     </span>
                   </div>
+
+                  {/* Indicador de economia */}
+                  {tipoPreco === 'semNF' && economia > 0 && (
+                    <div className='bg-red-50 rounded p-2 text-center'>
+                      <p className='text-sm font-medium text-red-600'>
+                        💰 Economizando R$ {economia.toFixed(2)}
+                      </p>
+                      <p className='text-xs text-red-500'>
+                        {((economia / totalComNF) * 100).toFixed(1)}% de
+                        desconto
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Informações de entrega */}
@@ -816,6 +1099,26 @@ export default function Checkout() {
                     <li>• Histórico em "Meus Pedidos"</li>
                   </ul>
                 </div>
+
+                {/* Tipo de preço selecionado */}
+                {step >= 3 && (
+                  <div className='mt-4 p-3 bg-yellow-50 rounded-lg'>
+                    <h4 className='font-medium text-yellow-800 mb-2 text-sm'>
+                      💰 Preço Selecionado
+                    </h4>
+                    <div className='text-center'>
+                      <span
+                        className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ${
+                          tipoPreco === 'comNF'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-green-100 text-green-800'
+                        }`}
+                      >
+                        {tipoPreco === 'comNF' ? '💳 COM NF' : '🏷️ SEM NF'}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

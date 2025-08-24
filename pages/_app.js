@@ -1,4 +1,4 @@
-// 4. INTEGRAÇÃO: pages/_app.js - ATUALIZADO
+// pages/_app.js - ATUALIZADO COM SUPORTE A PREÇO SEM NF
 // ===================================
 
 import '../styles/globals.css';
@@ -17,7 +17,6 @@ export default function App({ Component, pageProps }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [isClient, setIsClient] = useState(false);
 
-  // ✅ ADICIONADO: Sistema de Toast
   const toast = useToast();
 
   // Verificar se estamos no cliente
@@ -121,8 +120,14 @@ export default function App({ Component, pageProps }) {
 
   const addToCart = (produto, quantidade) => {
     if (!currentUser) {
-      // ✅ SUBSTITUÍDO: alert por toast
       toast.warning('Você precisa estar logado para adicionar ao carrinho');
+      return;
+    }
+
+    // 🆕 VALIDAÇÃO: Verificar se produto tem precoSemNF
+    if (!produto.precoSemNF && produto.precoSemNF !== 0) {
+      console.warn('⚠️ Produto sem precoSemNF:', produto.nome);
+      toast.warning('Este produto não possui preço sem NF definido');
       return;
     }
 
@@ -130,7 +135,6 @@ export default function App({ Component, pageProps }) {
       const existingItem = prevCart.find(item => item._id === produto._id);
 
       if (existingItem) {
-        // ✅ ADICIONADO: Toast de sucesso
         toast.success(`${produto.nome} - quantidade atualizada!`);
         return prevCart.map(item =>
           item._id === produto._id
@@ -138,16 +142,24 @@ export default function App({ Component, pageProps }) {
             : item
         );
       } else {
-        // ✅ ADICIONADO: Toast de sucesso
         toast.success(`${produto.nome} adicionado ao carrinho!`);
-        return [...prevCart, { ...produto, quantidade }];
+        // 🆕 GARANTIR QUE precoSemNF SEJA INCLUÍDO NO CARRINHO
+        return [
+          ...prevCart,
+          {
+            ...produto,
+            quantidade,
+            // Garantir que ambos os preços existam
+            preco: produto.preco || 0,
+            precoSemNF: produto.precoSemNF || 0,
+          },
+        ];
       }
     });
   };
 
   const removeFromCart = produtoId => {
     setCart(prevCart => prevCart.filter(item => item._id !== produtoId));
-    // ✅ ADICIONADO: Toast de info
     toast.info('Item removido do carrinho');
   };
 
@@ -171,9 +183,19 @@ export default function App({ Component, pageProps }) {
       const chaveCarrinho = `cart_${currentUser.id}`;
       localStorage.removeItem(chaveCarrinho);
     }
-    // ✅ ADICIONADO: Toast de info
     toast.info('Carrinho limpo com sucesso');
   };
+
+  // 🆕 CÁLCULOS ATUALIZADOS COM AMBOS OS PREÇOS
+  const cartTotalComNF = cart.reduce(
+    (total, item) => total + (item.preco || 0) * item.quantidade,
+    0
+  );
+
+  const cartTotalSemNF = cart.reduce(
+    (total, item) => total + (item.precoSemNF || 0) * item.quantidade,
+    0
+  );
 
   const cartValue = {
     cart,
@@ -182,10 +204,11 @@ export default function App({ Component, pageProps }) {
     updateQuantity,
     clearCart,
     currentUser,
-    cartTotal: cart.reduce(
-      (total, item) => total + item.preco * item.quantidade,
-      0
-    ),
+    // Manter compatibilidade com código existente (usa preço com NF como padrão)
+    cartTotal: cartTotalComNF,
+    // 🆕 NOVOS VALORES PARA AMBOS OS PREÇOS
+    cartTotalComNF,
+    cartTotalSemNF,
     cartCount: cart.reduce((count, item) => count + item.quantidade, 0),
     isClient,
   };
@@ -194,7 +217,6 @@ export default function App({ Component, pageProps }) {
     <CartContext.Provider value={cartValue}>
       <ToastContext.Provider value={toast}>
         <Component {...pageProps} />
-        {/* ✅ ADICIONADO: Container de Toasts */}
         <ToastContainer toasts={toast.toasts} removeToast={toast.removeToast} />
       </ToastContext.Provider>
     </CartContext.Provider>
