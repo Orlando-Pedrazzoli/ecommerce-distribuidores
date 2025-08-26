@@ -259,28 +259,6 @@ export default function Cart({ isOpen, onClose }) {
                                 {item.nome}
                               </h4>
 
-                              {/* 🆕 PREÇOS DUPLOS NO CARRINHO */}
-                              <div className='mb-2'>
-                                <div className='grid grid-cols-2 gap-2 text-xs'>
-                                  <div className='text-center bg-blue-50 rounded p-1'>
-                                    <p className='text-blue-600 font-medium'>
-                                      COM NF
-                                    </p>
-                                    <p className='font-bold text-blue-600'>
-                                      R$ {(item.preco || 0).toFixed(2)}
-                                    </p>
-                                  </div>
-                                  <div className='text-center bg-green-50 rounded p-1'>
-                                    <p className='text-green-600 font-medium'>
-                                      SEM NF
-                                    </p>
-                                    <p className='font-bold text-green-600'>
-                                      R$ {(item.precoSemNF || 0).toFixed(2)}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-
                               {/* Quantity Controls */}
                               <div className='flex items-center gap-2'>
                                 <button
@@ -333,17 +311,6 @@ export default function Cart({ isOpen, onClose }) {
                                     R${' '}
                                     {(
                                       (item.precoSemNF || 0) * item.quantidade
-                                    ).toFixed(2)}
-                                  </span>
-                                </div>
-                                <div className='flex justify-between pt-1 border-t'>
-                                  <span>💰 Economia:</span>
-                                  <span className='font-bold text-red-600'>
-                                    R${' '}
-                                    {(
-                                      ((item.preco || 0) -
-                                        (item.precoSemNF || 0)) *
-                                      item.quantidade
                                     ).toFixed(2)}
                                   </span>
                                 </div>
@@ -431,20 +398,6 @@ export default function Cart({ isOpen, onClose }) {
                         </div>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Economia Total */}
-                  <div className='bg-white rounded-lg p-3 text-center border-2 border-red-200'>
-                    <h4 className='text-lg font-bold text-red-600 mb-1'>
-                      💰 ECONOMIA TOTAL
-                    </h4>
-                    <p className='text-2xl font-bold text-red-600'>
-                      R$ {economiaTotal.toFixed(2)}
-                    </p>
-                    <p className='text-xs text-gray-600'>
-                      {((economiaTotal / totalComNF) * 100).toFixed(1)}% de
-                      desconto
-                    </p>
                   </div>
                 </div>
               </div>

@@ -44,8 +44,8 @@ export default function ProductCard({ produto }) {
 
   return (
     <div className='bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow'>
-      {/* Imagem */}
-      <div className='h-48 bg-gray-200 relative'>
+      {/* Imagem - AJUSTADA PARA FORMATO QUADRADO */}
+      <div className='aspect-square bg-gray-200 relative'>
         {produto.imagem ? (
           <Image
             src={produto.imagem}
