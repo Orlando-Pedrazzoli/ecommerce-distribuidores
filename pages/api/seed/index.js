@@ -31,6 +31,7 @@ export default async function handler(req, res) {
         'Capa Simples',
         'Capa Premium',
         'Capa Sarcófago',
+        'Capa Sarcófago/Rodas',
         'Capa Sarcófago Simples',
         'Leash Nó',
         'Acessórios',
