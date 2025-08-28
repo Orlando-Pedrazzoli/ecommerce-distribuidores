@@ -1,5 +1,5 @@
-// PAGES/MEUS-PEDIDOS.JS - SINTAXE CORRIGIDA
-// ===================================
+// PAGES/MEUS-PEDIDOS.JS - COM SEPARADOR ENTRE ITENS
+// ================================================
 
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
@@ -177,44 +177,47 @@ export default function MeusPedidos() {
                     <h4 className='font-medium text-gray-800 mb-3'>
                       Itens ({pedido.itens?.length || 0})
                     </h4>
-                    <div className='grid gap-3'>
+                    <div className='space-y-3'>
                       {pedido.itens?.map((item, index) => (
-                        <div
-                          key={index}
-                          className='flex items-center gap-3 p-3 bg-gray-50 rounded-lg'
-                        >
-                          {item.produtoId?.imagem ? (
-                            <img
-                              src={item.produtoId.imagem}
-                              alt={item.nome}
-                              className='w-12 h-12 object-cover rounded'
-                            />
-                          ) : (
-                            <div className='w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs'>
-                              📦
+                        <div key={index}>
+                          <div className='flex items-center gap-3 p-3 bg-gray-50 rounded-lg'>
+                            {item.produtoId?.imagem ? (
+                              <img
+                                src={item.produtoId.imagem}
+                                alt={item.nome}
+                                className='w-12 h-12 object-cover rounded'
+                              />
+                            ) : (
+                              <div className='w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs'>
+                                📦
+                              </div>
+                            )}
+                            <div className='flex-1'>
+                              <p className='font-medium text-gray-900'>
+                                {item.nome}
+                              </p>
+                              <p className='text-sm text-gray-600'>
+                                Código: {item.codigo}
+                              </p>
                             </div>
+                            <div className='text-right'>
+                              <p className='font-medium'>
+                                {item.quantidade}x R${' '}
+                                {item.precoUnitario?.toFixed(2)}
+                              </p>
+                              <p className='text-sm text-gray-600'>
+                                Total: R${' '}
+                                {(
+                                  (item.quantidade || 0) *
+                                  (item.precoUnitario || 0)
+                                ).toFixed(2)}
+                              </p>
+                            </div>
+                          </div>
+                          {/* Linha separadora entre itens (não mostra no último item) */}
+                          {index < pedido.itens.length - 1 && (
+                            <hr className='my-2 border-gray-200' />
                           )}
-                          <div className='flex-1'>
-                            <p className='font-medium text-gray-900'>
-                              {item.nome}
-                            </p>
-                            <p className='text-sm text-gray-600'>
-                              Código: {item.codigo}
-                            </p>
-                          </div>
-                          <div className='text-right'>
-                            <p className='font-medium'>
-                              {item.quantidade}x R${' '}
-                              {item.precoUnitario?.toFixed(2)}
-                            </p>
-                            <p className='text-sm text-gray-600'>
-                              Total: R${' '}
-                              {(
-                                (item.quantidade || 0) *
-                                (item.precoUnitario || 0)
-                              ).toFixed(2)}
-                            </p>
-                          </div>
                         </div>
                       ))}
                     </div>

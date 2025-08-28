@@ -33,6 +33,7 @@ export default async function handler(req, res) {
         'Capa Sarcófago',
         'Capa Sarcófago/Rodas',
         'Capa Sarcófago Simples',
+        'Sarcófago Simples/Rodas',
         'Leash Nó',
         'Acessórios',
       ],
