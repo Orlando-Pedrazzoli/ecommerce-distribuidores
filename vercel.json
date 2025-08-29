@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "pages/api/admin/upload.js": {
+      "maxDuration": 30
+    },
+    "pages/api/pedidos/criar.js": {
+      "maxDuration": 30
+    }
+  }
+}
