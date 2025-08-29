@@ -1,4 +1,4 @@
-// PAGES/API/ADMIN/PRODUTOS.JS - SIMPLIFICADO
+// PAGES/API/ADMIN/PRODUTOS.JS - CORRIGIDO
 // ===================================
 
 import dbConnect from '../../../lib/mongodb';
@@ -9,7 +9,13 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     try {
-      const produto = new Produto(req.body);
+      // Garantir que novo produto tenha ativo: true
+      const produtoData = {
+        ...req.body,
+        ativo: true, // Garantir que sempre seja true para novos produtos
+      };
+
+      const produto = new Produto(produtoData);
       await produto.save();
 
       const produtoPopulado = await Produto.findById(produto._id).populate(
@@ -32,9 +38,14 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     try {
-      const produtos = await Produto.find({ ativo: true })
+      // 🔥 CORREÇÃO: Buscar produtos que tenham ativo: true OU que não tenham o campo ativo
+      const produtos = await Produto.find({
+        $or: [{ ativo: true }, { ativo: { $exists: false } }],
+      })
         .populate('fornecedorId', 'nome codigo')
         .sort({ createdAt: -1 });
+
+      console.log(`📦 Produtos encontrados: ${produtos.length}`);
 
       return res.status(200).json({
         produtos,
@@ -54,7 +65,13 @@ export default async function handler(req, res) {
         return res.status(400).json({ message: 'ID do produto é obrigatório' });
       }
 
-      const produto = await Produto.findByIdAndUpdate(id, req.body, {
+      // Garantir que ativo seja true ao atualizar
+      const updateData = {
+        ...req.body,
+        ativo: true,
+      };
+
+      const produto = await Produto.findByIdAndUpdate(id, updateData, {
         new: true,
       }).populate('fornecedorId', 'nome codigo');
 
