@@ -72,7 +72,7 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className='bg-gray-800 text-white shadow-lg relative z-40'>
+      <nav className='sticky top-0 bg-gray-800 text-white shadow-lg z-40'>
         <div className='max-w-7xl mx-auto px-4'>
           <div className='flex justify-between items-center py-4'>
             {/* Logo */}
