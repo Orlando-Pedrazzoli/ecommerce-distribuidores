@@ -1,4 +1,4 @@
-// 1. CORREÇÃO: pages/api/pedidos/criar.js - SEM MONGOOSE USER
+// pages/api/pedidos/criar.js - CORRIGIDO PARA PEGAR TELEFONE DO .ENV
 // ===================================
 
 import dbConnect from '../../../lib/mongodb';
@@ -7,20 +7,32 @@ import Fornecedor from '../../../models/Fornecedor';
 import { enviarEmailPedido } from '../../../lib/email';
 import jwt from 'jsonwebtoken';
 
-// Função para obter dados do distribuidor do .env
+// 🔥 FUNÇÃO CORRIGIDA: Agora pega TODOS os campos do .env incluindo telefone
 const getDistribuidor = usuario => {
   for (let i = 1; i <= 20; i++) {
     const distribuidorEnv = process.env[`DISTRIBUIDOR_${i}`];
     if (distribuidorEnv) {
       const parts = distribuidorEnv.split(':');
-      const [user, password, nomeCompleto, email] = parts;
-      if (user && user.trim() === usuario) {
-        return {
-          usuario: user.trim(),
-          nome: nomeCompleto ? nomeCompleto.trim() : user.trim(),
-          email: email ? email.trim() : `${user.trim()}@distribuidora.com`,
-          telefone: '(11) 99999-9999',
-        };
+
+      // Verificar se tem todos os campos necessários
+      if (parts.length >= 5) {
+        const [
+          user,
+          password,
+          nomeCompleto,
+          email,
+          telefone,
+          // Os outros campos existem mas não precisamos aqui
+        ] = parts;
+
+        if (user && user.trim() === usuario) {
+          return {
+            usuario: user.trim(),
+            nome: nomeCompleto ? nomeCompleto.trim() : user.trim(),
+            email: email ? email.trim() : `${user.trim()}@distribuidora.com`,
+            telefone: telefone ? telefone.trim() : '(11) 99999-9999', // 🔥 Agora pega o telefone correto!
+          };
+        }
       }
     }
   }
@@ -67,7 +79,11 @@ export default async function handler(req, res) {
       return res.status(404).json({ message: 'Distribuidor não encontrado' });
     }
 
-    console.log('👤 Distribuidor encontrado:', distribuidor.nome);
+    console.log('👤 Distribuidor encontrado:', {
+      nome: distribuidor.nome,
+      email: distribuidor.email,
+      telefone: distribuidor.telefone, // 🔥 Agora vai mostrar o telefone correto
+    });
 
     // Calcular totais
     const subtotal = itens.reduce(
@@ -114,6 +130,10 @@ export default async function handler(req, res) {
 
         if (resultadoEmail.sucesso) {
           console.log(`✅ Emails enviados: ${resultadoEmail.totalEnviados}`);
+          console.log(
+            '📧 Email enviado para distribuidor com telefone:',
+            distribuidor.telefone
+          );
         } else {
           console.error('❌ Erro no envio de emails:', resultadoEmail.erro);
         }

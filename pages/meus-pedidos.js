@@ -1,4 +1,4 @@
-// PAGES/MEUS-PEDIDOS.JS - COM SEPARADOR ENTRE ITENS
+// PAGES/MEUS-PEDIDOS.JS - ORGANIZADO POR CATEGORIA
 // ================================================
 
 import { useState, useEffect } from 'react';
@@ -55,6 +55,26 @@ export default function MeusPedidos() {
       entregue: '📦',
     };
     return icons[status] || '📋';
+  };
+
+  // 🆕 FUNÇÃO PARA ORGANIZAR ITENS POR CATEGORIA
+  const organizarItensPorCategoria = itens => {
+    const itensPorCategoria = {};
+
+    itens.forEach(item => {
+      const categoria = item.categoria || 'Sem categoria';
+      if (!itensPorCategoria[categoria]) {
+        itensPorCategoria[categoria] = {
+          itens: [],
+          subtotal: 0,
+        };
+      }
+      itensPorCategoria[categoria].itens.push(item);
+      itensPorCategoria[categoria].subtotal +=
+        (item.quantidade || 0) * (item.precoUnitario || 0);
+    });
+
+    return itensPorCategoria;
   };
 
   return (
@@ -129,125 +149,174 @@ export default function MeusPedidos() {
             </div>
           ) : (
             <div className='space-y-4'>
-              {pedidos.map(pedido => (
-                <div
-                  key={pedido._id}
-                  className='bg-white rounded-lg shadow-md p-6'
-                >
-                  {/* Header do Pedido */}
-                  <div className='flex justify-between items-start mb-4'>
-                    <div>
-                      <h3 className='text-lg font-semibold text-gray-900'>
-                        Pedido #{pedido._id.slice(-8).toUpperCase()}
-                      </h3>
-                      <p className='text-sm text-gray-600'>
-                        {new Date(pedido.createdAt).toLocaleDateString(
-                          'pt-BR',
-                          {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          }
-                        )}
-                      </p>
-                      <p className='text-sm text-gray-600'>
-                        Fornecedor: {pedido.fornecedorId?.nome}
-                      </p>
-                    </div>
-                    <div className='text-right'>
-                      <span
-                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
-                          pedido.status
-                        )}`}
-                      >
-                        <span>{getStatusIcon(pedido.status)}</span>
-                        {pedido.status.charAt(0).toUpperCase() +
-                          pedido.status.slice(1)}
-                      </span>
-                      <p className='text-lg font-bold text-green-600 mt-2'>
-                        R$ {pedido.total?.toFixed(2)}
-                      </p>
-                    </div>
-                  </div>
+              {pedidos.map(pedido => {
+                // 🆕 Organizar itens por categoria
+                const itensPorCategoria = organizarItensPorCategoria(
+                  pedido.itens || []
+                );
 
-                  {/* Itens do Pedido */}
-                  <div className='border-t pt-4'>
-                    <h4 className='font-medium text-gray-800 mb-3'>
-                      Itens ({pedido.itens?.length || 0})
-                    </h4>
-                    <div className='space-y-3'>
-                      {pedido.itens?.map((item, index) => (
-                        <div key={index}>
-                          <div className='flex items-center gap-3 p-3 bg-gray-50 rounded-lg'>
-                            {item.produtoId?.imagem ? (
-                              <img
-                                src={item.produtoId.imagem}
-                                alt={item.nome}
-                                className='w-12 h-12 object-cover rounded'
-                              />
-                            ) : (
-                              <div className='w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs'>
-                                📦
+                return (
+                  <div
+                    key={pedido._id}
+                    className='bg-white rounded-lg shadow-md p-6'
+                  >
+                    {/* Header do Pedido */}
+                    <div className='flex justify-between items-start mb-4'>
+                      <div>
+                        <h3 className='text-lg font-semibold text-gray-900'>
+                          Pedido #{pedido._id.slice(-8).toUpperCase()}
+                        </h3>
+                        <p className='text-sm text-gray-600'>
+                          {new Date(pedido.createdAt).toLocaleDateString(
+                            'pt-BR',
+                            {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            }
+                          )}
+                        </p>
+                        <p className='text-sm text-gray-600'>
+                          Fornecedor: {pedido.fornecedorId?.nome}
+                        </p>
+                      </div>
+                      <div className='text-right'>
+                        <span
+                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
+                            pedido.status
+                          )}`}
+                        >
+                          <span>{getStatusIcon(pedido.status)}</span>
+                          {pedido.status.charAt(0).toUpperCase() +
+                            pedido.status.slice(1)}
+                        </span>
+                        <p className='text-lg font-bold text-green-600 mt-2'>
+                          R$ {pedido.total?.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 🆕 ITENS ORGANIZADOS POR CATEGORIA */}
+                    <div className='border-t pt-4'>
+                      <h4 className='font-medium text-gray-800 mb-3'>
+                        Itens ({pedido.itens?.length || 0}) - Organizados por
+                        Categoria
+                      </h4>
+
+                      {Object.entries(itensPorCategoria).map(
+                        ([categoria, catData]) => (
+                          <div
+                            key={categoria}
+                            className='mb-4 border border-gray-200 rounded-lg overflow-hidden'
+                          >
+                            {/* Header da Categoria */}
+                            <div className='bg-gray-100 px-4 py-2 border-b border-gray-200'>
+                              <div className='flex justify-between items-center'>
+                                <h5 className='font-semibold text-gray-700 flex items-center gap-2'>
+                                  <span>📂</span>
+                                  {categoria}
+                                </h5>
+                                <span className='text-sm text-gray-600'>
+                                  {catData.itens.length}{' '}
+                                  {catData.itens.length === 1
+                                    ? 'item'
+                                    : 'itens'}
+                                </span>
                               </div>
-                            )}
-                            <div className='flex-1'>
-                              <p className='font-medium text-gray-900'>
-                                {item.nome}
-                              </p>
-                              <p className='text-sm text-gray-600'>
-                                Código: {item.codigo}
-                              </p>
                             </div>
-                            <div className='text-right'>
-                              <p className='font-medium'>
-                                {item.quantidade}x R${' '}
-                                {item.precoUnitario?.toFixed(2)}
-                              </p>
-                              <p className='text-sm text-gray-600'>
-                                Total: R${' '}
-                                {(
-                                  (item.quantidade || 0) *
-                                  (item.precoUnitario || 0)
-                                ).toFixed(2)}
-                              </p>
+
+                            {/* Itens da Categoria */}
+                            <div className='p-3 space-y-2'>
+                              {catData.itens.map((item, index) => (
+                                <div key={index}>
+                                  <div className='flex items-center gap-3 p-2 hover:bg-gray-50 rounded'>
+                                    {item.produtoId?.imagem ? (
+                                      <img
+                                        src={item.produtoId.imagem}
+                                        alt={item.nome}
+                                        className='w-12 h-12 object-cover rounded'
+                                      />
+                                    ) : (
+                                      <div className='w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs'>
+                                        📦
+                                      </div>
+                                    )}
+                                    <div className='flex-1'>
+                                      <p className='font-medium text-gray-900'>
+                                        {item.nome}
+                                      </p>
+                                      <p className='text-sm text-gray-600'>
+                                        Código: {item.codigo}
+                                      </p>
+                                    </div>
+                                    <div className='text-right'>
+                                      <p className='font-medium'>
+                                        {item.quantidade}x R${' '}
+                                        {item.precoUnitario?.toFixed(2)}
+                                      </p>
+                                      <p className='text-sm text-gray-600'>
+                                        Total: R${' '}
+                                        {(
+                                          (item.quantidade || 0) *
+                                          (item.precoUnitario || 0)
+                                        ).toFixed(2)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {/* Linha separadora entre itens da mesma categoria */}
+                                  {index < catData.itens.length - 1 && (
+                                    <hr className='mx-2 border-gray-100' />
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Subtotal da Categoria */}
+                            <div className='bg-gray-50 px-4 py-2 border-t border-gray-200'>
+                              <div className='flex justify-between items-center text-sm font-semibold'>
+                                <span className='text-gray-700'>
+                                  Subtotal {categoria}:
+                                </span>
+                                <span className='text-green-600'>
+                                  R$ {catData.subtotal.toFixed(2)}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                          {/* Linha separadora entre itens (não mostra no último item) */}
-                          {index < pedido.itens.length - 1 && (
-                            <hr className='my-2 border-gray-200' />
-                          )}
-                        </div>
-                      ))}
+                        )
+                      )}
                     </div>
-                  </div>
 
-                  {/* Resumo do Pedido */}
-                  <div className='border-t pt-4 mt-4'>
-                    <div className='flex justify-between items-center text-sm'>
-                      <span>Subtotal:</span>
-                      <span>R$ {pedido.subtotal?.toFixed(2)}</span>
-                    </div>
-                    <div className='flex justify-between items-center text-sm'>
-                      <span>Royalties (5%):</span>
-                      <span>R$ {pedido.royalties?.toFixed(2)}</span>
-                    </div>
-                    <div className='flex justify-between items-center font-bold text-lg border-t pt-2 mt-2'>
-                      <span>Total:</span>
-                      <span className='text-green-600'>
-                        R$ {pedido.total?.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className='flex justify-between items-center text-sm mt-2'>
-                      <span>Forma de Pagamento:</span>
-                      <span className='capitalize'>
-                        {pedido.formaPagamento}
-                      </span>
+                    {/* Resumo do Pedido */}
+                    <div className='border-t pt-4 mt-4'>
+                      <div className='flex justify-between items-center text-sm'>
+                        <span>Subtotal Geral:</span>
+                        <span>R$ {pedido.subtotal?.toFixed(2)}</span>
+                      </div>
+                      <div className='flex justify-between items-center text-sm'>
+                        <span>Royalties (5%):</span>
+                        <span>R$ {pedido.royalties?.toFixed(2)}</span>
+                      </div>
+                      <div className='flex justify-between items-center font-bold text-lg border-t pt-2 mt-2'>
+                        <span>Total:</span>
+                        <span className='text-green-600'>
+                          R$ {pedido.total?.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className='flex justify-between items-center text-sm mt-2'>
+                        <span>Forma de Pagamento:</span>
+                        <span className='capitalize'>
+                          {pedido.formaPagamento === 'boleto'
+                            ? '💳 Boleto Bancário'
+                            : '🏦 Transferência'}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

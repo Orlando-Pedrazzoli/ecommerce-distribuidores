@@ -1,4 +1,4 @@
-// 3. CORREÇÃO: models/Pedido.js - SEM REFERÊNCIA A USER
+// models/Pedido.js - ATUALIZADO COM CATEGORIA NOS ITENS
 // ===================================
 
 import mongoose from 'mongoose';
@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 const PedidoSchema = new mongoose.Schema(
   {
     userId: {
-      type: String, // ← MUDANÇA: String em vez de ObjectId
+      type: String, // String em vez de ObjectId
       required: true,
       index: true,
     },
@@ -25,6 +25,7 @@ const PedidoSchema = new mongoose.Schema(
         },
         codigo: String,
         nome: String,
+        categoria: String, // 🆕 CAMPO CATEGORIA ADICIONADO
         quantidade: {
           type: Number,
           required: true,

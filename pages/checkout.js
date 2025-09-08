@@ -1,4 +1,4 @@
-// pages/checkout.js - VERSÃO RESPONSIVA CORRIGIDA
+// pages/checkout.js - VERSÃO ORGANIZADA POR CATEGORIA
 // ===================================
 
 import { useState, useEffect } from 'react';
@@ -102,27 +102,57 @@ export default function Checkout() {
     return JSON.stringify(endereco) !== JSON.stringify(enderecoOriginal);
   };
 
-  const produtosPorFornecedor = cart.reduce((acc, item) => {
-    const fornecedorId =
-      item.fornecedorId?._id || item.fornecedorId || 'unknown';
-    const fornecedorNome =
-      item.fornecedorId?.nome || 'Fornecedor não identificado';
+  // 🆕 FUNÇÃO MELHORADA: Organizar produtos por fornecedor E categoria
+  const organizarProdutosPorFornecedorECategoria = () => {
+    const resultado = {};
 
-    if (!acc[fornecedorId]) {
-      acc[fornecedorId] = {
-        nome: fornecedorNome,
-        itens: [],
-        subtotalComNF: 0,
-        subtotalSemNF: 0,
-      };
-    }
+    cart.forEach(item => {
+      const fornecedorId =
+        item.fornecedorId?._id || item.fornecedorId || 'unknown';
+      const fornecedorNome =
+        item.fornecedorId?.nome || 'Fornecedor não identificado';
+      const categoria = item.categoria || 'Sem categoria';
 
-    acc[fornecedorId].itens.push(item);
-    acc[fornecedorId].subtotalComNF += (item.preco || 0) * item.quantidade;
-    acc[fornecedorId].subtotalSemNF += (item.precoSemNF || 0) * item.quantidade;
+      // Inicializar fornecedor se não existir
+      if (!resultado[fornecedorId]) {
+        resultado[fornecedorId] = {
+          nome: fornecedorNome,
+          categorias: {},
+          subtotalComNF: 0,
+          subtotalSemNF: 0,
+        };
+      }
 
-    return acc;
-  }, {});
+      // Inicializar categoria se não existir
+      if (!resultado[fornecedorId].categorias[categoria]) {
+        resultado[fornecedorId].categorias[categoria] = {
+          itens: [],
+          subtotalComNF: 0,
+          subtotalSemNF: 0,
+        };
+      }
+
+      // Adicionar item à categoria
+      resultado[fornecedorId].categorias[categoria].itens.push(item);
+
+      // Calcular subtotais da categoria
+      const subtotalItemComNF = (item.preco || 0) * item.quantidade;
+      const subtotalItemSemNF = (item.precoSemNF || 0) * item.quantidade;
+
+      resultado[fornecedorId].categorias[categoria].subtotalComNF +=
+        subtotalItemComNF;
+      resultado[fornecedorId].categorias[categoria].subtotalSemNF +=
+        subtotalItemSemNF;
+
+      // Atualizar subtotais do fornecedor
+      resultado[fornecedorId].subtotalComNF += subtotalItemComNF;
+      resultado[fornecedorId].subtotalSemNF += subtotalItemSemNF;
+    });
+
+    return resultado;
+  };
+
+  const produtosOrganizados = organizarProdutosPorFornecedorECategoria();
 
   const subtotalComNF = cart.reduce(
     (acc, item) => acc + (item.preco || 0) * item.quantidade,
@@ -189,16 +219,25 @@ export default function Checkout() {
         await salvarEndereco(endereco);
       }
 
-      const pedidosPromises = Object.entries(produtosPorFornecedor).map(
+      const pedidosPromises = Object.entries(produtosOrganizados).map(
         async ([fornecedorId, dados]) => {
-          const itensFormatados = dados.itens.map(item => ({
-            produtoId: item._id,
-            codigo: item.codigo,
-            nome: item.nome,
-            quantidade: item.quantidade,
-            precoUnitario: tipoPreco === 'comNF' ? item.preco : item.precoSemNF,
-            tipoPreco: tipoPreco,
-          }));
+          // Formatar itens mantendo a categoria
+          const itensFormatados = [];
+
+          Object.entries(dados.categorias).forEach(([categoria, catData]) => {
+            catData.itens.forEach(item => {
+              itensFormatados.push({
+                produtoId: item._id,
+                codigo: item.codigo,
+                nome: item.nome,
+                categoria: categoria, // 🆕 Incluir categoria
+                quantidade: item.quantidade,
+                precoUnitario:
+                  tipoPreco === 'comNF' ? item.preco : item.precoSemNF,
+                tipoPreco: tipoPreco,
+              });
+            });
+          });
 
           const pedidoData = {
             userId: user.id,
@@ -262,7 +301,7 @@ export default function Checkout() {
     }
   };
 
-  // Componente de Resumo (reutilizável para mobile e desktop)
+  // 🆕 COMPONENTE ATUALIZADO: Resumo organizado por categoria
   function ResumoContent() {
     return (
       <>
@@ -301,63 +340,93 @@ export default function Checkout() {
           )}
         </div>
 
-        {/* Itens agrupados por fornecedor */}
+        {/* 🆕 ITENS ORGANIZADOS POR FORNECEDOR E CATEGORIA */}
         <div className='space-y-4 mb-6 max-h-64 overflow-y-auto'>
-          {Object.entries(produtosPorFornecedor).map(
-            ([fornecedorId, dados]) => (
-              <div
-                key={fornecedorId}
-                className='border border-gray-200 rounded-lg p-3'
-              >
-                <h3 className='font-medium text-gray-800 mb-3 text-sm border-b pb-2'>
-                  {dados.nome}
-                </h3>
+          {Object.entries(produtosOrganizados).map(([fornecedorId, dados]) => (
+            <div
+              key={fornecedorId}
+              className='border border-gray-200 rounded-lg p-3'
+            >
+              <h3 className='font-medium text-gray-800 mb-3 text-sm border-b pb-2'>
+                {dados.nome}
+              </h3>
 
-                <div className='space-y-2'>
-                  {dados.itens.map(item => (
-                    <div
-                      key={item._id}
-                      className='flex justify-between items-center text-sm'
-                    >
-                      <div className='flex-1'>
-                        <p className='font-medium text-gray-900 truncate'>
-                          {item.nome}
-                        </p>
-                        <p className='text-gray-600 text-xs'>
-                          {item.quantidade}x R${' '}
-                          {(tipoPreco === 'comNF'
-                            ? item.preco
-                            : item.precoSemNF
+              {/* Itens agrupados por categoria */}
+              {Object.entries(dados.categorias).map(([categoria, catData]) => (
+                <div key={categoria} className='mb-3'>
+                  {/* Header da categoria */}
+                  <div className='bg-gray-50 px-2 py-1 rounded mb-2'>
+                    <h4 className='text-xs font-semibold text-gray-700 flex items-center justify-between'>
+                      <span>📂 {categoria}</span>
+                      <span className='text-gray-500'>
+                        ({catData.itens.length}{' '}
+                        {catData.itens.length === 1 ? 'item' : 'itens'})
+                      </span>
+                    </h4>
+                  </div>
+
+                  {/* Itens da categoria */}
+                  <div className='space-y-2 pl-3'>
+                    {catData.itens.map((item, index) => (
+                      <div
+                        key={`${item._id}-${index}`}
+                        className='flex justify-between items-center text-sm'
+                      >
+                        <div className='flex-1'>
+                          <p className='font-medium text-gray-900 truncate'>
+                            {item.nome}
+                          </p>
+                          <p className='text-gray-600 text-xs'>
+                            {item.quantidade}x R${' '}
+                            {(tipoPreco === 'comNF'
+                              ? item.preco
+                              : item.precoSemNF
+                            ).toFixed(2)}
+                          </p>
+                        </div>
+                        <p className='font-medium text-green-600'>
+                          R${' '}
+                          {(
+                            (tipoPreco === 'comNF'
+                              ? item.preco
+                              : item.precoSemNF) * item.quantidade
                           ).toFixed(2)}
                         </p>
                       </div>
-                      <p className='font-medium text-green-600'>
-                        R${' '}
-                        {(
-                          (tipoPreco === 'comNF'
-                            ? item.preco
-                            : item.precoSemNF) * item.quantidade
-                        ).toFixed(2)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
 
-                <div className='border-t mt-2 pt-2'>
-                  <div className='flex justify-between text-sm font-medium'>
-                    <span>Subtotal:</span>
-                    <span>
-                      R${' '}
-                      {(tipoPreco === 'comNF'
-                        ? dados.subtotalComNF
-                        : dados.subtotalSemNF
-                      ).toFixed(2)}
-                    </span>
+                  {/* Subtotal da categoria */}
+                  <div className='mt-2 pt-2 border-t border-gray-100'>
+                    <div className='flex justify-between text-xs font-medium text-gray-600'>
+                      <span>Subtotal {categoria}:</span>
+                      <span>
+                        R${' '}
+                        {(tipoPreco === 'comNF'
+                          ? catData.subtotalComNF
+                          : catData.subtotalSemNF
+                        ).toFixed(2)}
+                      </span>
+                    </div>
                   </div>
                 </div>
+              ))}
+
+              {/* Subtotal do fornecedor */}
+              <div className='border-t mt-2 pt-2'>
+                <div className='flex justify-between text-sm font-bold text-gray-800'>
+                  <span>Total {dados.nome}:</span>
+                  <span>
+                    R${' '}
+                    {(tipoPreco === 'comNF'
+                      ? dados.subtotalComNF
+                      : dados.subtotalSemNF
+                    ).toFixed(2)}
+                  </span>
+                </div>
               </div>
-            )
-          )}
+            </div>
+          ))}
         </div>
 
         {/* Totais */}
