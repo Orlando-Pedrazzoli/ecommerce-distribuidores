@@ -341,50 +341,50 @@ export default function Checkout() {
         </div>
 
         {/* 🆕 ITENS ORGANIZADOS POR FORNECEDOR E CATEGORIA */}
-        <div className='space-y-4 mb-6 max-h-64 overflow-y-auto'>
+        <div className='space-y-4 mb-6 max-h-96 overflow-y-auto'>
           {Object.entries(produtosOrganizados).map(([fornecedorId, dados]) => (
             <div
               key={fornecedorId}
-              className='border border-gray-200 rounded-lg p-3'
+              className='border border-gray-200 rounded-lg p-4'
             >
-              <h3 className='font-medium text-gray-800 mb-3 text-sm border-b pb-2'>
+              <h3 className='font-medium text-gray-800 mb-3 text-base border-b pb-2'>
                 {dados.nome}
               </h3>
 
               {/* Itens agrupados por categoria */}
               {Object.entries(dados.categorias).map(([categoria, catData]) => (
-                <div key={categoria} className='mb-3'>
+                <div key={categoria} className='mb-4'>
                   {/* Header da categoria */}
-                  <div className='bg-gray-50 px-2 py-1 rounded mb-2'>
-                    <h4 className='text-xs font-semibold text-gray-700 flex items-center justify-between'>
+                  <div className='bg-gray-50 px-3 py-2 rounded mb-2'>
+                    <h4 className='text-sm font-semibold text-gray-700 flex items-center justify-between'>
                       <span>📂 {categoria}</span>
-                      <span className='text-gray-500'>
+                      <span className='text-gray-500 text-xs'>
                         ({catData.itens.length}{' '}
                         {catData.itens.length === 1 ? 'item' : 'itens'})
                       </span>
                     </h4>
                   </div>
 
-                  {/* Itens da categoria */}
+                  {/* Itens da categoria - Layout melhorado para mais espaço */}
                   <div className='space-y-2 pl-3'>
                     {catData.itens.map((item, index) => (
                       <div
                         key={`${item._id}-${index}`}
-                        className='flex justify-between items-center text-sm'
+                        className='flex justify-between items-start text-sm hover:bg-gray-50 p-2 rounded'
                       >
-                        <div className='flex-1'>
-                          <p className='font-medium text-gray-900 truncate'>
+                        <div className='flex-1 mr-4'>
+                          <p className='font-medium text-gray-900'>
                             {item.nome}
                           </p>
-                          <p className='text-gray-600 text-xs'>
-                            {item.quantidade}x R${' '}
+                          <p className='text-gray-600 text-xs mt-1'>
+                            Qtd: {item.quantidade} × R${' '}
                             {(tipoPreco === 'comNF'
                               ? item.preco
                               : item.precoSemNF
                             ).toFixed(2)}
                           </p>
                         </div>
-                        <p className='font-medium text-green-600'>
+                        <p className='font-bold text-green-600 text-right whitespace-nowrap'>
                           R${' '}
                           {(
                             (tipoPreco === 'comNF'
@@ -398,9 +398,9 @@ export default function Checkout() {
 
                   {/* Subtotal da categoria */}
                   <div className='mt-2 pt-2 border-t border-gray-100'>
-                    <div className='flex justify-between text-xs font-medium text-gray-600'>
+                    <div className='flex justify-between text-sm font-medium text-gray-600'>
                       <span>Subtotal {categoria}:</span>
-                      <span>
+                      <span className='font-bold'>
                         R${' '}
                         {(tipoPreco === 'comNF'
                           ? catData.subtotalComNF
@@ -413,10 +413,10 @@ export default function Checkout() {
               ))}
 
               {/* Subtotal do fornecedor */}
-              <div className='border-t mt-2 pt-2'>
+              <div className='border-t mt-3 pt-3 bg-blue-50 -mx-4 px-4 pb-3'>
                 <div className='flex justify-between text-sm font-bold text-gray-800'>
                   <span>Total {dados.nome}:</span>
-                  <span>
+                  <span className='text-blue-600'>
                     R${' '}
                     {(tipoPreco === 'comNF'
                       ? dados.subtotalComNF
