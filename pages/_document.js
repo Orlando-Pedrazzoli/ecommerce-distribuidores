@@ -10,8 +10,7 @@ export default function Document() {
         {/* 🎯 FAVICON SVG */}
         <link rel='icon' href='/ES_Icon.svg' type='image/svg+xml' />
 
-        {/* 🎯 TÍTULO PADRÃO */}
-        <title>Elite Surfing - Distribuidores</title>
+        {/* NÃO colocar <title> aqui - deve ser em cada página */}
       </Head>
       <body className='antialiased'>
         <Main />

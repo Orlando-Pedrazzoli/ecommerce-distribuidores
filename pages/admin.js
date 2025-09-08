@@ -1,18 +1,25 @@
-// PAGES/ADMIN.JS - SIMPLIFICADO
+// PAGES/ADMIN.JS - ATUALIZADO COM GERENCIAMENTO DE PEDIDOS
 // ===================================
 
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import ProductForm from '../components/Admin/ProductForm';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 
 export default function Admin() {
   const [produtos, setProdutos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [stats, setStats] = useState({
+    totalPedidos: 0,
+    pedidosPendentes: 0,
+  });
+  const router = useRouter();
 
   useEffect(() => {
     buscarProdutos();
+    buscarEstatisticas();
   }, []);
 
   const buscarProdutos = async () => {
@@ -32,6 +39,21 @@ export default function Admin() {
       setProdutos([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const buscarEstatisticas = async () => {
+    try {
+      const response = await fetch('/api/admin/pedidos/todos');
+      if (response.ok) {
+        const data = await response.json();
+        setStats({
+          totalPedidos: data.stats?.total || 0,
+          pedidosPendentes: data.stats?.pendentes || 0,
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao buscar estatísticas:', error);
     }
   };
 
@@ -75,13 +97,76 @@ export default function Admin() {
           <div className='bg-gradient-to-r from-red-500 to-red-600 text-white p-6 rounded-lg mb-8 shadow-lg'>
             <h1 className='text-3xl font-bold flex items-center gap-3'>
               <span>⚙️</span>
-              Administração de Produtos
+              Painel de Administração
             </h1>
             <p className='mt-2 opacity-90'>
-              Gerencie o catálogo de produtos dos fornecedores
+              Gerencie produtos e pedidos do sistema
             </p>
           </div>
 
+          {/* Cards de Acesso Rápido */}
+          <div className='grid md:grid-cols-3 gap-6 mb-8'>
+            {/* Card Produtos */}
+            <div className='bg-white rounded-lg shadow-md p-6 border-l-4 border-blue-500'>
+              <div className='flex items-center justify-between mb-4'>
+                <div className='text-3xl'>📦</div>
+                <span className='text-2xl font-bold text-gray-800'>
+                  {produtos.length}
+                </span>
+              </div>
+              <h3 className='text-lg font-semibold text-gray-800 mb-2'>
+                Produtos Cadastrados
+              </h3>
+              <p className='text-sm text-gray-600'>
+                Gerencie o catálogo de produtos
+              </p>
+            </div>
+
+            {/* Card Pedidos */}
+            <div
+              onClick={() => router.push('/admin-pedidos')}
+              className='bg-white rounded-lg shadow-md p-6 border-l-4 border-green-500 cursor-pointer hover:shadow-lg transition-shadow'
+            >
+              <div className='flex items-center justify-between mb-4'>
+                <div className='text-3xl'>📋</div>
+                <span className='text-2xl font-bold text-gray-800'>
+                  {stats.totalPedidos}
+                </span>
+              </div>
+              <h3 className='text-lg font-semibold text-gray-800 mb-2'>
+                Total de Pedidos
+              </h3>
+              <p className='text-sm text-gray-600 mb-2'>
+                Visualize e gerencie todos os pedidos
+              </p>
+              {stats.pedidosPendentes > 0 && (
+                <p className='text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded inline-block'>
+                  ⚠️ {stats.pedidosPendentes} pendente(s)
+                </p>
+              )}
+              <div className='mt-3 text-blue-600 text-sm font-medium flex items-center gap-1'>
+                Gerenciar Pedidos →
+              </div>
+            </div>
+
+            {/* Card Relatórios (Futuro) */}
+            <div className='bg-white rounded-lg shadow-md p-6 border-l-4 border-purple-500 opacity-75'>
+              <div className='flex items-center justify-between mb-4'>
+                <div className='text-3xl'>📊</div>
+                <span className='text-sm bg-gray-200 text-gray-600 px-2 py-1 rounded'>
+                  Em breve
+                </span>
+              </div>
+              <h3 className='text-lg font-semibold text-gray-800 mb-2'>
+                Relatórios
+              </h3>
+              <p className='text-sm text-gray-600'>
+                Análises e estatísticas detalhadas
+              </p>
+            </div>
+          </div>
+
+          {/* Seção de Produtos */}
           <div className='grid lg:grid-cols-2 gap-8'>
             {/* Formulário de Produto */}
             <ProductForm
@@ -166,9 +251,16 @@ export default function Admin() {
                           <p className='text-sm text-gray-500'>
                             {produto.fornecedorId?.nome}
                           </p>
-                          <p className='text-sm font-medium text-green-600 mt-1'>
-                            R$ {produto.preco?.toFixed(2) || '0.00'}
-                          </p>
+                          <div className='text-sm mt-1'>
+                            <span className='font-medium text-blue-600'>
+                              COM NF: R$ {produto.preco?.toFixed(2) || '0.00'}
+                            </span>
+                            <span className='mx-2'>|</span>
+                            <span className='font-medium text-green-600'>
+                              SEM NF: R${' '}
+                              {produto.precoSemNF?.toFixed(2) || '0.00'}
+                            </span>
+                          </div>
                         </div>
 
                         {/* Ações */}
@@ -199,26 +291,25 @@ export default function Admin() {
           {/* Informações úteis */}
           <div className='mt-8 bg-blue-50 rounded-lg p-6'>
             <h3 className='text-lg font-semibold text-blue-800 mb-3'>
-              ℹ️ Instruções de Uso
+              ℹ️ Áreas do Admin
             </h3>
             <div className='grid md:grid-cols-2 gap-4 text-sm text-blue-700'>
               <div>
-                <h4 className='font-medium mb-2'>
-                  ✅ Para adicionar produtos:
-                </h4>
+                <h4 className='font-medium mb-2'>📦 Gestão de Produtos:</h4>
                 <ul className='space-y-1 ml-4'>
-                  <li>• Selecione o fornecedor</li>
-                  <li>• As categorias serão carregadas automaticamente</li>
-                  <li>• Preencha código, nome, descrição e preço</li>
-                  <li>• Faça upload de uma imagem</li>
+                  <li>• Adicionar novos produtos</li>
+                  <li>• Editar produtos existentes</li>
+                  <li>• Definir preços com e sem NF</li>
+                  <li>• Upload de imagens</li>
                 </ul>
               </div>
               <div>
-                <h4 className='font-medium mb-2'>🔧 Para gerenciar:</h4>
+                <h4 className='font-medium mb-2'>📋 Gestão de Pedidos:</h4>
                 <ul className='space-y-1 ml-4'>
-                  <li>• Clique no ✏️ para editar</li>
-                  <li>• Clique no 🗑️ para deletar</li>
-                  <li>• Use "Cancelar Edição" para sair do modo edição</li>
+                  <li>• Visualizar todos os pedidos</li>
+                  <li>• Atualizar status (pendente → entregue)</li>
+                  <li>• Filtrar por status e fornecedor</li>
+                  <li>• Acompanhar valores e estatísticas</li>
                 </ul>
               </div>
             </div>
