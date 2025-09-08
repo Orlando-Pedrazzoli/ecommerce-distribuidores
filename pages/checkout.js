@@ -864,7 +864,7 @@ export default function Checkout() {
                       onClick={() => setStep(3)}
                       className='w-full sm:flex-1 bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition text-sm lg:text-base'
                     >
-                      Escolher Tipo de Preço
+                      Escolher Forma de Pagamento
                     </button>
                   </div>
                 </div>
@@ -875,7 +875,7 @@ export default function Checkout() {
                 <div className='bg-white rounded-lg shadow-md p-4 lg:p-6'>
                   <h2 className='text-lg lg:text-xl font-bold text-gray-800 mb-4 lg:mb-6 flex items-center gap-2'>
                     <span>💰</span>
-                    Escolha o Tipo de Preço
+                    Escolher Forma de Pagamento
                   </h2>
 
                   <div className='bg-yellow-50 border border-yellow-200 rounded-lg p-3 lg:p-4 mb-4 lg:mb-6'>
