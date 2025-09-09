@@ -1,7 +1,8 @@
-// components/Layout.js - COM FOOTER NAVEGÁVEL
+// components/Layout.js - COM FOOTER NAVEGÁVEL E WHATSAPP
 // ===================================
 
 import Navbar from './Navbar';
+import WhatsAppButton from './WhatsAppButton';
 
 export default function Layout({ children }) {
   // Função para rolar até o footer
@@ -38,6 +39,9 @@ export default function Layout({ children }) {
           </p>
         </div>
       </footer>
+
+      {/* Botão do WhatsApp */}
+      <WhatsAppButton />
     </div>
   );
 }
