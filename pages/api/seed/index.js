@@ -44,6 +44,8 @@ export default async function handler(req, res) {
         'Leash Superior 6ft x 7mm',
         'Leash Superior 7ft x 7mm',
         'Leash Superior 8ft x 7,5mm',
+        'Deck Superior One',
+        'Deck Superior Two',
       ],
     };
 
