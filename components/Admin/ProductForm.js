@@ -1,4 +1,4 @@
-// COMPONENTS/ADMIN/PRODUCTFORM.JS - ATUALIZADO COM PREÇO SEM NF
+// COMPONENTS/ADMIN/PRODUCTFORM.JS - ATUALIZADO COM EDIÇÃO PARCIAL
 // ===================================
 
 import { useState, useEffect } from 'react';
@@ -9,18 +9,21 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
   const [fornecedores, setFornecedores] = useState([]);
   const [selectedFornecedor, setSelectedFornecedor] = useState(null);
   const [formData, setFormData] = useState({
-    fornecedorId: editingProduct?.fornecedorId || '',
+    fornecedorId: editingProduct?.fornecedorId?._id || editingProduct?.fornecedorId || '',
     codigo: editingProduct?.codigo || '',
     nome: editingProduct?.nome || '',
     descricao: editingProduct?.descricao || '',
     categoria: editingProduct?.categoria || '',
     preco: editingProduct?.preco || '',
-    precoSemNF: editingProduct?.precoSemNF || '', // 🆕 NOVO CAMPO
+    precoSemNF: editingProduct?.precoSemNF || '',
   });
   const [selectedFile, setSelectedFile] = useState(null);
   const [currentImage, setCurrentImage] = useState(
     editingProduct?.imagem || ''
   );
+
+  // 🆕 Estado para rastrear campos modificados
+  const [modifiedFields, setModifiedFields] = useState(new Set());
 
   useEffect(() => {
     buscarFornecedores();
@@ -37,6 +40,24 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
       }
     }
   }, [formData.fornecedorId, fornecedores]);
+
+  // 🆕 Resetar campos modificados quando trocar de produto
+  useEffect(() => {
+    if (editingProduct) {
+      setFormData({
+        fornecedorId: editingProduct.fornecedorId?._id || editingProduct.fornecedorId || '',
+        codigo: editingProduct.codigo || '',
+        nome: editingProduct.nome || '',
+        descricao: editingProduct.descricao || '',
+        categoria: editingProduct.categoria || '',
+        preco: editingProduct.preco || '',
+        precoSemNF: editingProduct.precoSemNF || '',
+      });
+      setCurrentImage(editingProduct.imagem || '');
+      setSelectedFile(null);
+      setModifiedFields(new Set());
+    }
+  }, [editingProduct]);
 
   const buscarFornecedores = async () => {
     try {
@@ -56,6 +77,11 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
       ...prev,
       [name]: value,
     }));
+
+    // 🆕 Marcar campo como modificado
+    if (editingProduct) {
+      setModifiedFields(prev => new Set([...prev, name]));
+    }
   };
 
   const handleFileSelect = e => {
@@ -66,6 +92,10 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         return;
       }
       setSelectedFile(file);
+      // 🆕 Marcar imagem como modificada
+      if (editingProduct) {
+        setModifiedFields(prev => new Set([...prev, 'imagem']));
+      }
     }
   };
 
@@ -112,16 +142,60 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
     setLoading(true);
 
     try {
-      // Upload da imagem
+      // Upload da imagem (só se houver nova imagem selecionada)
       const imageUrl = await uploadImage();
 
-      // Preparar dados do produto
-      const productData = {
-        ...formData,
-        preco: precoNormal,
-        precoSemNF: precoSemNota, // 🆕 NOVO CAMPO
-        imagem: imageUrl,
-      };
+      // 🆕 MODO EDIÇÃO: Enviar apenas campos modificados
+      let productData;
+
+      if (editingProduct) {
+        // Criar objeto apenas com campos que foram modificados
+        productData = {};
+
+        // Verificar cada campo individualmente
+        const fornecedorIdAtual = editingProduct.fornecedorId?._id || editingProduct.fornecedorId;
+        
+        if (formData.fornecedorId !== fornecedorIdAtual) {
+          productData.fornecedorId = formData.fornecedorId;
+        }
+        if (formData.codigo !== editingProduct.codigo) {
+          productData.codigo = formData.codigo;
+        }
+        if (formData.nome !== editingProduct.nome) {
+          productData.nome = formData.nome;
+        }
+        if (formData.descricao !== editingProduct.descricao) {
+          productData.descricao = formData.descricao;
+        }
+        if (formData.categoria !== editingProduct.categoria) {
+          productData.categoria = formData.categoria;
+        }
+        if (precoNormal !== editingProduct.preco) {
+          productData.preco = precoNormal;
+        }
+        if (precoSemNota !== editingProduct.precoSemNF) {
+          productData.precoSemNF = precoSemNota;
+        }
+        // Só atualizar imagem se houver nova
+        if (selectedFile) {
+          productData.imagem = imageUrl;
+        }
+
+        // 🔥 Se nenhum campo foi modificado
+        if (Object.keys(productData).length === 0) {
+          alert('⚠️ Nenhum campo foi modificado!');
+          setLoading(false);
+          return;
+        }
+      } else {
+        // MODO CRIAÇÃO: Enviar todos os dados
+        productData = {
+          ...formData,
+          preco: precoNormal,
+          precoSemNF: precoSemNota,
+          imagem: imageUrl,
+        };
+      }
 
       // Salvar produto
       const url = editingProduct
@@ -137,10 +211,15 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
       });
 
       if (response.ok) {
+        const fieldsChanged = Object.keys(productData).length;
+        const fieldNames = Object.keys(productData).join(', ');
+        
         alert(
           editingProduct
-            ? 'Produto atualizado com sucesso!'
-            : 'Produto criado com sucesso!'
+            ? `✅ Produto atualizado com sucesso!\n\n${fieldsChanged} campo${
+                fieldsChanged > 1 ? 's' : ''
+              } modificado${fieldsChanged > 1 ? 's' : ''}:\n${fieldNames}`
+            : '✅ Produto criado com sucesso!'
         );
 
         // Reset form apenas se não estiver editando
@@ -152,15 +231,20 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             descricao: '',
             categoria: '',
             preco: '',
-            precoSemNF: '', // 🆕 RESET NOVO CAMPO
+            precoSemNF: '',
           });
           setCurrentImage('');
           setSelectedFile(null);
           setSelectedFornecedor(null);
+          setModifiedFields(new Set());
 
           // Reset file input
           const fileInput = document.getElementById('imageFile');
           if (fileInput) fileInput.value = '';
+        } else {
+          // Limpar campos modificados após sucesso
+          setModifiedFields(new Set());
+          setSelectedFile(null);
         }
 
         onSuccess && onSuccess();
@@ -170,7 +254,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
       }
     } catch (error) {
       console.error('Erro:', error);
-      alert(`Erro ao salvar produto: ${error.message}`);
+      alert(`❌ Erro ao salvar produto: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -178,21 +262,42 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
 
   return (
     <div className='bg-white rounded-lg shadow-md p-6'>
-      <h2 className='text-xl font-bold text-gray-800 mb-6'>
-        {editingProduct ? 'Editar Produto' : 'Adicionar Produto'}
-      </h2>
+      <div className='flex justify-between items-center mb-6'>
+        <h2 className='text-xl font-bold text-gray-800'>
+          {editingProduct ? '✏️ Editar Produto' : '➕ Adicionar Produto'}
+        </h2>
+        {editingProduct && modifiedFields.size > 0 && (
+          <span className='text-sm bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full'>
+            {modifiedFields.size} campo{modifiedFields.size > 1 ? 's' : ''} modificado{modifiedFields.size > 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
+      {editingProduct && (
+        <div className='mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg'>
+          <p className='text-sm text-blue-800'>
+            <strong>ℹ️ Modo Edição:</strong> Modifique apenas os campos que deseja atualizar. 
+            Os campos não alterados manterão seus valores originais.
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className='space-y-4'>
         {/* Fornecedor */}
         <div>
           <label className='block text-gray-700 font-medium mb-2'>
             Fornecedor *
+            {editingProduct && modifiedFields.has('fornecedorId') && (
+              <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
+            )}
           </label>
           <select
             name='fornecedorId'
             value={formData.fornecedorId}
             onChange={handleInputChange}
-            className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
+            className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
+              modifiedFields.has('fornecedorId') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+            }`}
             required
           >
             <option value=''>Selecione um fornecedor</option>
@@ -209,12 +314,17 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
           <div>
             <label className='block text-gray-700 font-medium mb-2'>
               Categoria *
+              {editingProduct && modifiedFields.has('categoria') && (
+                <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
+              )}
             </label>
             <select
               name='categoria'
               value={formData.categoria}
               onChange={handleInputChange}
-              className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
+              className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
+                modifiedFields.has('categoria') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+              }`}
               required
             >
               <option value=''>Selecione uma categoria</option>
@@ -231,6 +341,9 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         <div>
           <label className='block text-gray-700 font-medium mb-2'>
             Código do Produto *
+            {editingProduct && modifiedFields.has('codigo') && (
+              <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
+            )}
           </label>
           <input
             type='text'
@@ -238,7 +351,9 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             value={formData.codigo}
             onChange={handleInputChange}
             placeholder='Ex: CAP-A-001'
-            className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
+            className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
+              modifiedFields.has('codigo') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+            }`}
             required
           />
         </div>
@@ -247,13 +362,18 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         <div>
           <label className='block text-gray-700 font-medium mb-2'>
             Nome do Produto *
+            {editingProduct && modifiedFields.has('nome') && (
+              <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
+            )}
           </label>
           <input
             type='text'
             name='nome'
             value={formData.nome}
             onChange={handleInputChange}
-            className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
+            className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
+              modifiedFields.has('nome') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+            }`}
             required
           />
         </div>
@@ -262,18 +382,23 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         <div>
           <label className='block text-gray-700 font-medium mb-2'>
             Descrição *
+            {editingProduct && modifiedFields.has('descricao') && (
+              <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
+            )}
           </label>
           <textarea
             rows='3'
             name='descricao'
             value={formData.descricao}
             onChange={handleInputChange}
-            className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
+            className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
+              modifiedFields.has('descricao') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+            }`}
             required
           />
         </div>
 
-        {/* 🆕 SEÇÃO DE PREÇOS - DESIGN MELHORADO */}
+        {/* 🆕 SEÇÃO DE PREÇOS */}
         <div className='bg-blue-50 border border-blue-200 rounded-lg p-4'>
           <h3 className='text-lg font-semibold text-blue-800 mb-3 flex items-center gap-2'>
             <span>💰</span>
@@ -289,6 +414,9 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             <div>
               <label className='block text-gray-700 font-medium mb-2'>
                 💳 Preço COM Nota Fiscal (R$) *
+                {editingProduct && modifiedFields.has('preco') && (
+                  <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
+                )}
               </label>
               <input
                 type='number'
@@ -297,7 +425,9 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
                 name='preco'
                 value={formData.preco}
                 onChange={handleInputChange}
-                className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
+                className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
+                  modifiedFields.has('preco') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+                }`}
                 placeholder='Ex: 89.90'
                 required
               />
@@ -310,6 +440,9 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             <div>
               <label className='block text-gray-700 font-medium mb-2'>
                 🏷️ Preço SEM Nota Fiscal (R$) *
+                {editingProduct && modifiedFields.has('precoSemNF') && (
+                  <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
+                )}
               </label>
               <input
                 type='number'
@@ -318,7 +451,9 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
                 name='precoSemNF'
                 value={formData.precoSemNF}
                 onChange={handleInputChange}
-                className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
+                className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
+                  modifiedFields.has('precoSemNF') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+                }`}
                 placeholder='Ex: 79.90'
                 required
               />
@@ -328,7 +463,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             </div>
           </div>
 
-          {/* 🆕 PREVIEW DA DIFERENÇA */}
+          {/* Preview da diferença */}
           {formData.preco && formData.precoSemNF && (
             <div className='mt-4 p-3 bg-white rounded border'>
               <h4 className='text-sm font-medium text-gray-800 mb-2'>
@@ -356,7 +491,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
                       parseFloat(formData.preco || 0) -
                       parseFloat(formData.precoSemNF || 0)
                     ).toFixed(2)}
-                    (
+                    {' ('}
                     {(
                       ((parseFloat(formData.preco || 0) -
                         parseFloat(formData.precoSemNF || 0)) /
@@ -389,6 +524,9 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         <div>
           <label className='block text-gray-700 font-medium mb-2'>
             {currentImage ? 'Alterar Imagem' : 'Imagem do Produto'}
+            {editingProduct && selectedFile && (
+              <span className='ml-2 text-xs text-yellow-600'>● Será atualizada</span>
+            )}
           </label>
           <input
             type='file'
@@ -399,6 +537,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
           />
           <p className='text-xs text-gray-500 mt-1'>
             Máximo 5MB. Formatos: JPG, PNG, WEBP
+            {editingProduct && ' (deixe em branco para manter a imagem atual)'}
           </p>
         </div>
 
@@ -424,11 +563,13 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         >
           {loading || uploadingImage
             ? uploadingImage
-              ? 'Fazendo upload...'
-              : 'Salvando...'
+              ? '⏳ Fazendo upload...'
+              : '⏳ Salvando...'
             : editingProduct
-            ? 'Atualizar Produto'
-            : 'Salvar Produto'}
+            ? modifiedFields.size > 0
+              ? `💾 Atualizar ${modifiedFields.size} Campo${modifiedFields.size > 1 ? 's' : ''}`
+              : '💾 Atualizar Produto'
+            : '✅ Salvar Produto'}
         </button>
       </form>
     </div>

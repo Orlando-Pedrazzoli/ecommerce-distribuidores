@@ -39,13 +39,13 @@ export default async function handler(req, res) {
       ],
       C: [
         // Categorias existentes do Rodrigo - Godas (LEASHES)
-        'Leash Superior 5ft x 5,5mm',
-        'Leash Superior 6ft x 6,3mm',
-        'Leash Superior 6ft x 7mm',
-        'Leash Superior 7ft x 7mm',
-        'Leash Superior 8ft x 7,5mm',
-        'Deck Superior One',
-        'Deck Superior Two',
+        'Leash One Piece 5 x 5,5mm',
+        'Leash One Piece 6 x 6,3mm',
+        'Leash One Piece 6 x 7mm',
+        'Leash One Piece 7 x 7mm',
+        'Leash One Piece 8 x 7,5mm',
+        'Deck Mentawai',
+        'Deck Maldivas',
       ],
     };
 
