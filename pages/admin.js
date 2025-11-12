@@ -1,372 +1,318 @@
-// PAGES/ADMIN.JS - LAYOUT OTIMIZADO PARA MOBILE
-// ===================================
+// PAGES/ADMIN.JS - DASHBOARD ADMIN ATUALIZADO
+// ================================================
 
 import { useState, useEffect } from 'react';
-import Layout from '../components/Layout';
-import ProductForm from '../components/Admin/ProductForm';
-import Head from 'next/head';
 import { useRouter } from 'next/router';
+import ProductForm from '../components/Admin/ProductForm';
 
 export default function Admin() {
-  const [produtos, setProdutos] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [editingProduct, setEditingProduct] = useState(null);
-  const [showMobileForm, setShowMobileForm] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [stats, setStats] = useState({
+    totalProdutos: 0,
+    totalFornecedores: 0,
     totalPedidos: 0,
     pedidosPendentes: 0,
   });
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    buscarProdutos();
+    verificarAuth();
     buscarEstatisticas();
   }, []);
 
-  const buscarProdutos = async () => {
+  const verificarAuth = async () => {
     try {
-      setLoading(true);
-      const response = await fetch('/api/admin/produtos');
-
-      if (response.ok) {
-        const data = await response.json();
-        setProdutos(data.produtos || []);
+      const response = await fetch('/api/auth/me');
+      if (!response.ok) {
+        console.log('❌ Não autenticado');
+        router.push('/');
+        return;
+      }
+      
+      const data = await response.json();
+      console.log('📦 Dados do usuário:', data);
+      
+      // Verificar diferentes estruturas possíveis de resposta
+      const isAdmin = 
+        data.isAdmin === true || 
+        data.user?.isAdmin === true || 
+        data.tipo === 'admin' || 
+        data.user?.tipo === 'admin';
+      
+      if (!isAdmin) {
+        console.log('❌ Usuário não é admin');
+        router.push('/');
       } else {
-        console.error('Erro ao buscar produtos:', response.status);
-        setProdutos([]);
+        console.log('✅ Usuário admin verificado');
       }
     } catch (error) {
-      console.error('Erro ao buscar produtos:', error);
-      setProdutos([]);
+      console.error('❌ Erro ao verificar auth:', error);
+      router.push('/');
+    }
+  };
+
+  const buscarEstatisticas = async () => {
+    setLoading(true);
+    try {
+      // Buscar estatísticas de produtos
+      const produtosRes = await fetch('/api/admin/produtos');
+      if (produtosRes.ok) {
+        const produtosData = await produtosRes.json();
+        setStats(prev => ({ ...prev, totalProdutos: produtosData.total || 0 }));
+      }
+
+      // Buscar estatísticas de fornecedores
+      const fornecedoresRes = await fetch('/api/admin/fornecedores');
+      if (fornecedoresRes.ok) {
+        const fornecedoresData = await fornecedoresRes.json();
+        setStats(prev => ({ ...prev, totalFornecedores: fornecedoresData.length || 0 }));
+      }
+
+      // Buscar estatísticas de pedidos
+      const pedidosRes = await fetch('/api/admin/pedidos/todos');
+      if (pedidosRes.ok) {
+        const pedidosData = await pedidosRes.json();
+        setStats(prev => ({ 
+          ...prev, 
+          totalPedidos: pedidosData.stats?.total || 0,
+          pedidosPendentes: pedidosData.stats?.pendentes || 0
+        }));
+      }
+    } catch (error) {
+      console.error('Erro ao buscar estatísticas:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const buscarEstatisticas = async () => {
-    try {
-      const response = await fetch('/api/admin/pedidos/todos');
-      if (response.ok) {
-        const data = await response.json();
-        setStats({
-          totalPedidos: data.stats?.total || 0,
-          pedidosPendentes: data.stats?.pendentes || 0,
-        });
-      }
-    } catch (error) {
-      console.error('Erro ao buscar estatísticas:', error);
-    }
+  const handleLogout = async () => {
+    document.cookie = 'auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+    router.push('/');
   };
 
-  const deletarProduto = async id => {
-    if (confirm('Tem certeza que deseja deletar este produto?')) {
-      try {
-        const response = await fetch(`/api/admin/produtos?id=${id}`, {
-          method: 'DELETE',
-        });
+  const menuItems = [
+    {
+      id: 'dashboard',
+      label: 'Dashboard',
+      icon: '📊',
+      color: 'blue',
+    },
+    {
+      id: 'produtos',
+      label: 'Gestão de Produtos',
+      icon: '📦',
+      color: 'green',
+      badge: stats.totalProdutos,
+      action: () => router.push('/admin-produtos'),
+    },
+    {
+      id: 'pedidos',
+      label: 'Gestão de Pedidos',
+      icon: '🛒',
+      color: 'purple',
+      badge: stats.pedidosPendentes > 0 ? stats.pedidosPendentes : null,
+      badgeColor: 'red',
+      action: () => router.push('/admin-pedidos'),
+    },
+    {
+      id: 'fornecedores',
+      label: 'Fornecedores',
+      icon: '🏢',
+      color: 'orange',
+      badge: stats.totalFornecedores,
+    },
+    {
+      id: 'relatorios',
+      label: 'Relatórios',
+      icon: '📈',
+      color: 'indigo',
+    },
+    {
+      id: 'configuracoes',
+      label: 'Configurações',
+      icon: '⚙️',
+      color: 'gray',
+    },
+  ];
 
-        if (response.ok) {
-          buscarProdutos();
-          alert('Produto deletado com sucesso!');
-        } else {
-          alert('Erro ao deletar produto');
-        }
-      } catch (error) {
-        console.error('Erro ao deletar produto:', error);
-        alert('Erro ao deletar produto');
-      }
-    }
-  };
-
-  const handleEditProduct = produto => {
-    setEditingProduct(produto);
-    // Em mobile, abrir o formulário ao editar
-    if (window.innerWidth < 1024) {
-      setShowMobileForm(true);
-    }
-  };
-
-  const handleProductSuccess = () => {
-    buscarProdutos();
-    setEditingProduct(null);
-    // Em mobile, fechar o formulário após sucesso
-    if (window.innerWidth < 1024) {
-      setShowMobileForm(false);
-    }
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Carregando dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <Head>
-        <title>Admin - Elite Surfing</title>
-      </Head>
-      <Layout>
-        <div className='max-w-7xl mx-auto px-4 py-4 sm:py-8'>
-          {/* Header */}
-          <div className='bg-gradient-to-r from-red-500 to-red-600 text-white p-4 sm:p-6 rounded-lg mb-6 sm:mb-8 shadow-lg'>
-            <h1 className='text-2xl sm:text-3xl font-bold flex items-center gap-2 sm:gap-3'>
-              <span>⚙️</span>
-              Painel de Administração
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white shadow-md">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <h1 className="text-2xl font-bold text-gray-800">
+              🛠️ Painel Administrativo
             </h1>
-            <p className='mt-1 sm:mt-2 opacity-90 text-sm sm:text-base'>
-              Gerencie produtos e pedidos do sistema
-            </p>
-          </div>
-
-          {/* Cards de Acesso Rápido */}
-          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8'>
-            {/* Card Produtos */}
-            <div className='bg-white rounded-lg shadow-md p-4 sm:p-6 border-l-4 border-blue-500'>
-              <div className='flex items-center justify-between mb-3 sm:mb-4'>
-                <div className='text-2xl sm:text-3xl'>📦</div>
-                <span className='text-xl sm:text-2xl font-bold text-gray-800'>
-                  {produtos.length}
-                </span>
-              </div>
-              <h3 className='text-base sm:text-lg font-semibold text-gray-800 mb-1 sm:mb-2'>
-                Produtos Cadastrados
-              </h3>
-              <p className='text-xs sm:text-sm text-gray-600'>
-                Gerencie o catálogo de produtos
-              </p>
-            </div>
-
-            {/* Card Pedidos */}
-            <div
-              onClick={() => router.push('/admin-pedidos')}
-              className='bg-white rounded-lg shadow-md p-4 sm:p-6 border-l-4 border-green-500 cursor-pointer hover:shadow-lg transition-shadow'
-            >
-              <div className='flex items-center justify-between mb-3 sm:mb-4'>
-                <div className='text-2xl sm:text-3xl'>📋</div>
-                <span className='text-xl sm:text-2xl font-bold text-gray-800'>
-                  {stats.totalPedidos}
-                </span>
-              </div>
-              <h3 className='text-base sm:text-lg font-semibold text-gray-800 mb-1 sm:mb-2'>
-                Total de Pedidos
-              </h3>
-              <p className='text-xs sm:text-sm text-gray-600 mb-2'>
-                Visualize e gerencie todos os pedidos
-              </p>
-              {stats.pedidosPendentes > 0 && (
-                <p className='text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded inline-block'>
-                  ⚠️ {stats.pedidosPendentes} pendente(s)
-                </p>
-              )}
-              <div className='mt-2 sm:mt-3 text-blue-600 text-xs sm:text-sm font-medium flex items-center gap-1'>
-                Gerenciar Pedidos →
-              </div>
-            </div>
-
-            {/* Card Relatórios (Futuro) */}
-            <div className='bg-white rounded-lg shadow-md p-4 sm:p-6 border-l-4 border-purple-500 opacity-75 col-span-1 sm:col-span-2 lg:col-span-1'>
-              <div className='flex items-center justify-between mb-3 sm:mb-4'>
-                <div className='text-2xl sm:text-3xl'>📊</div>
-                <span className='text-xs sm:text-sm bg-gray-200 text-gray-600 px-2 py-1 rounded'>
-                  Em breve
-                </span>
-              </div>
-              <h3 className='text-base sm:text-lg font-semibold text-gray-800 mb-1 sm:mb-2'>
-                Relatórios
-              </h3>
-              <p className='text-xs sm:text-sm text-gray-600'>
-                Análises e estatísticas detalhadas
-              </p>
-            </div>
-          </div>
-
-          {/* Botão Mobile para mostrar/esconder formulário */}
-          <div className='lg:hidden mb-4'>
-            <button
-              onClick={() => setShowMobileForm(!showMobileForm)}
-              className='w-full bg-blue-500 text-white py-3 px-4 rounded-lg font-medium flex items-center justify-between hover:bg-blue-600 transition'
-            >
-              <span className='flex items-center gap-2'>
-                <span>{showMobileForm ? '✕' : '➕'}</span>
-                {editingProduct ? 'Editar Produto' : 'Adicionar Novo Produto'}
-              </span>
-              <span
-                className={`transform transition-transform ${
-                  showMobileForm ? 'rotate-180' : ''
-                }`}
-              >
-                ▼
-              </span>
-            </button>
-
-            {editingProduct && (
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-gray-600">👤 Admin</span>
               <button
-                onClick={() => {
-                  setEditingProduct(null);
-                  setShowMobileForm(false);
-                }}
-                className='w-full mt-2 bg-gray-500 text-white py-2 px-4 rounded-lg font-medium hover:bg-gray-600 transition'
+                onClick={handleLogout}
+                className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
               >
-                Cancelar Edição
+                Sair
               </button>
-            )}
-          </div>
-
-          {/* Seção de Produtos */}
-          <div className='grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8'>
-            {/* Formulário de Produto - Condicional em mobile */}
-            <div className={`${showMobileForm ? 'block' : 'hidden'} lg:block`}>
-              <ProductForm
-                onSuccess={handleProductSuccess}
-                editingProduct={editingProduct}
-              />
-            </div>
-
-            {/* Lista de Produtos */}
-            <div className='bg-white rounded-lg shadow-md p-4 sm:p-6'>
-              <div className='flex justify-between items-center mb-4 sm:mb-6'>
-                <h2 className='text-lg sm:text-xl font-bold text-gray-800'>
-                  Produtos ({produtos.length})
-                </h2>
-                {editingProduct && window.innerWidth >= 1024 && (
-                  <button
-                    onClick={() => setEditingProduct(null)}
-                    className='text-sm bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600 transition'
-                  >
-                    Cancelar Edição
-                  </button>
-                )}
-              </div>
-
-              {loading ? (
-                <div className='text-center py-8'>
-                  <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto'></div>
-                  <p className='mt-2 text-gray-600 text-sm'>
-                    Carregando produtos...
-                  </p>
-                </div>
-              ) : produtos.length === 0 ? (
-                <div className='text-center py-8'>
-                  <div className='text-4xl mb-4'>📦</div>
-                  <p className='text-gray-500 mb-4 text-sm sm:text-base'>
-                    Nenhum produto cadastrado
-                  </p>
-                  <p className='text-xs sm:text-sm text-gray-400'>
-                    Use o formulário para adicionar produtos
-                  </p>
-                  <div className='mt-4'>
-                    <button
-                      onClick={() => setShowMobileForm(true)}
-                      className='lg:hidden inline-block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition text-sm'
-                    >
-                      Adicionar Primeiro Produto
-                    </button>
-                    <a
-                      href='/seed'
-                      className='hidden lg:inline-block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition text-sm'
-                    >
-                      Criar Dados de Exemplo
-                    </a>
-                  </div>
-                </div>
-              ) : (
-                <div className='max-h-96 overflow-y-auto space-y-3'>
-                  {produtos.map(produto => (
-                    <div
-                      key={produto._id}
-                      className={`border rounded-lg p-3 sm:p-4 transition ${
-                        editingProduct?._id === produto._id
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className='flex items-start gap-3 sm:gap-4'>
-                        {/* Imagem */}
-                        <div className='w-12 h-12 sm:w-16 sm:h-16 bg-gray-200 rounded flex-shrink-0 overflow-hidden'>
-                          {produto.imagem ? (
-                            <img
-                              src={produto.imagem}
-                              alt={produto.nome}
-                              className='w-full h-full object-cover'
-                            />
-                          ) : (
-                            <div className='w-full h-full flex items-center justify-center text-gray-400 text-xs'>
-                              📦
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Informações */}
-                        <div className='flex-1 min-w-0'>
-                          <h3 className='font-medium text-gray-900 truncate text-sm sm:text-base'>
-                            {produto.nome}
-                          </h3>
-                          <p className='text-xs sm:text-sm text-gray-600'>
-                            {produto.codigo} • {produto.categoria}
-                          </p>
-                          <p className='text-xs sm:text-sm text-gray-500'>
-                            {produto.fornecedorId?.nome}
-                          </p>
-                          <div className='text-xs sm:text-sm mt-1'>
-                            <span className='font-medium text-blue-600'>
-                              COM NF: R$ {produto.preco?.toFixed(2) || '0.00'}
-                            </span>
-                            <span className='mx-1 sm:mx-2'>|</span>
-                            <span className='font-medium text-green-600'>
-                              SEM NF: R${' '}
-                              {produto.precoSemNF?.toFixed(2) || '0.00'}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Ações */}
-                        <div className='flex flex-col gap-1 sm:gap-2'>
-                          <button
-                            onClick={() => handleEditProduct(produto)}
-                            className='bg-blue-500 text-white px-2 sm:px-3 py-1 rounded text-xs sm:text-sm hover:bg-blue-600 transition'
-                            title='Editar produto'
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            onClick={() => deletarProduto(produto._id)}
-                            className='bg-red-500 text-white px-2 sm:px-3 py-1 rounded text-xs sm:text-sm hover:bg-red-600 transition'
-                            title='Deletar produto'
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Informações úteis */}
-          <div className='mt-6 sm:mt-8 bg-blue-50 rounded-lg p-4 sm:p-6'>
-            <h3 className='text-base sm:text-lg font-semibold text-blue-800 mb-3'>
-              ℹ️ Áreas do Admin
-            </h3>
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4 text-xs sm:text-sm text-blue-700'>
-              <div>
-                <h4 className='font-medium mb-2'>📦 Gestão de Produtos:</h4>
-                <ul className='space-y-1 ml-4'>
-                  <li>• Adicionar novos produtos</li>
-                  <li>• Editar produtos existentes</li>
-                  <li>• Definir preços com e sem NF</li>
-                  <li>• Upload de imagens</li>
-                </ul>
-              </div>
-              <div>
-                <h4 className='font-medium mb-2'>📋 Gestão de Pedidos:</h4>
-                <ul className='space-y-1 ml-4'>
-                  <li>• Visualizar todos os pedidos</li>
-                  <li>• Atualizar status (pendente → entregue)</li>
-                  <li>• Filtrar por status e fornecedor</li>
-                  <li>• Acompanhar valores e estatísticas</li>
-                </ul>
-              </div>
             </div>
           </div>
         </div>
-      </Layout>
-    </>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Cards de Estatísticas */}
+        <div className="grid md:grid-cols-4 gap-6 mb-8">
+          <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6 rounded-lg shadow-md">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-blue-100">Total de Produtos</p>
+                <p className="text-3xl font-bold">{stats.totalProdutos}</p>
+              </div>
+              <span className="text-4xl opacity-75">📦</span>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-6 rounded-lg shadow-md">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-green-100">Fornecedores</p>
+                <p className="text-3xl font-bold">{stats.totalFornecedores}</p>
+              </div>
+              <span className="text-4xl opacity-75">🏢</span>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-6 rounded-lg shadow-md">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-purple-100">Total de Pedidos</p>
+                <p className="text-3xl font-bold">{stats.totalPedidos}</p>
+              </div>
+              <span className="text-4xl opacity-75">🛒</span>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-6 rounded-lg shadow-md">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-orange-100">Pendentes</p>
+                <p className="text-3xl font-bold">{stats.pedidosPendentes}</p>
+              </div>
+              <span className="text-4xl opacity-75">⏳</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Menu de Navegação */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Menu Principal</h2>
+          <div className="grid md:grid-cols-3 gap-4">
+            {menuItems.map(item => (
+              <button
+                key={item.id}
+                onClick={item.action || (() => setActiveTab(item.id))}
+                className={`bg-${item.color}-50 hover:bg-${item.color}-100 border border-${item.color}-200 rounded-lg p-6 transition text-left relative group`}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-3xl mb-2 block">{item.icon}</span>
+                    <h3 className="font-semibold text-gray-800">{item.label}</h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {item.id === 'produtos' && 'Gerenciar catálogo completo'}
+                      {item.id === 'pedidos' && 'Ver e processar pedidos'}
+                      {item.id === 'fornecedores' && 'Cadastro de fornecedores'}
+                      {item.id === 'relatorios' && 'Análises e métricas'}
+                      {item.id === 'configuracoes' && 'Ajustes do sistema'}
+                      {item.id === 'dashboard' && 'Visão geral do sistema'}
+                    </p>
+                  </div>
+                  {item.badge && (
+                    <span className={`bg-${item.badgeColor || item.color}-100 text-${item.badgeColor || item.color}-800 px-3 py-1 rounded-full text-sm font-semibold`}>
+                      {item.badge}
+                    </span>
+                  )}
+                </div>
+                {item.action && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent to-white/10 opacity-0 group-hover:opacity-100 transition rounded-lg pointer-events-none"></div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Seção de Conteúdo Baseada na Tab Ativa */}
+        {activeTab === 'dashboard' && (
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">📊 Resumo do Sistema</h2>
+            <div className="space-y-4">
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <h3 className="font-medium text-blue-800 mb-2">Ações Rápidas</h3>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => router.push('/admin-produtos')}
+                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
+                  >
+                    + Novo Produto
+                  </button>
+                  <button
+                    onClick={() => router.push('/admin-pedidos')}
+                    className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 transition"
+                  >
+                    Ver Pedidos
+                  </button>
+                </div>
+              </div>
+
+              {stats.pedidosPendentes > 0 && (
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <h3 className="font-medium text-yellow-800 mb-1">⚠️ Atenção Necessária</h3>
+                  <p className="text-sm text-yellow-700">
+                    Você tem {stats.pedidosPendentes} pedido(s) pendente(s) aguardando processamento.
+                  </p>
+                </div>
+              )}
+
+              <div className="p-4 bg-green-50 rounded-lg">
+                <h3 className="font-medium text-green-800 mb-2">✅ Status do Sistema</h3>
+                <p className="text-sm text-green-700">
+                  Todos os sistemas estão operacionais. Última sincronização: {new Date().toLocaleString('pt-BR')}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'fornecedores' && (
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">🏢 Gestão de Fornecedores</h2>
+            <p className="text-gray-600">Funcionalidade em desenvolvimento...</p>
+          </div>
+        )}
+
+        {activeTab === 'relatorios' && (
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">📈 Relatórios</h2>
+            <p className="text-gray-600">Funcionalidade em desenvolvimento...</p>
+          </div>
+        )}
+
+        {activeTab === 'configuracoes' && (
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">⚙️ Configurações</h2>
+            <p className="text-gray-600">Funcionalidade em desenvolvimento...</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
