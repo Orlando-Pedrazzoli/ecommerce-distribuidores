@@ -21,7 +21,7 @@ export default async function handler(req, res) {
         'Deck Noronha',
         'Deck Saquarema',
         'Deck J-bay',
-        'Deck Fiji',
+        'Deck Fiji Classic',
         'Deck Hawaii',
         'Deck Peniche',
       ],
