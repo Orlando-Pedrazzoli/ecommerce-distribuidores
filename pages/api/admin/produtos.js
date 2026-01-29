@@ -3,6 +3,7 @@
 
 import dbConnect from '../../../lib/mongodb';
 import Produto from '../../../models/Produto';
+import Fornecedor from '../../../models/Fornecedor'; 
 
 export default async function handler(req, res) {
   await dbConnect();
