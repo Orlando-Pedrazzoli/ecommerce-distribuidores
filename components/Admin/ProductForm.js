@@ -1,5 +1,7 @@
-// COMPONENTS/ADMIN/PRODUCTFORM.JS - ATUALIZADO COM EDIÇÃO PARCIAL
+// COMPONENTS/ADMIN/PRODUCTFORM.JS - ATUALIZADO COM ETIQUETA E EMBALAGEM
 // ===================================
+// Removido: precoSemNF
+// Adicionado: precoEtiqueta, precoEmbalagem
 
 import { useState, useEffect } from 'react';
 
@@ -15,14 +17,13 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
     descricao: editingProduct?.descricao || '',
     categoria: editingProduct?.categoria || '',
     preco: editingProduct?.preco || '',
-    precoSemNF: editingProduct?.precoSemNF || '',
+    precoEtiqueta: editingProduct?.precoEtiqueta || 0,
+    precoEmbalagem: editingProduct?.precoEmbalagem || 0,
   });
   const [selectedFile, setSelectedFile] = useState(null);
-  const [currentImage, setCurrentImage] = useState(
-    editingProduct?.imagem || ''
-  );
+  const [currentImage, setCurrentImage] = useState(editingProduct?.imagem || '');
 
-  // 🆕 Estado para rastrear campos modificados
+  // Estado para rastrear campos modificados
   const [modifiedFields, setModifiedFields] = useState(new Set());
 
   useEffect(() => {
@@ -31,9 +32,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
 
   useEffect(() => {
     if (formData.fornecedorId) {
-      const fornecedor = fornecedores.find(
-        f => f._id === formData.fornecedorId
-      );
+      const fornecedor = fornecedores.find(f => f._id === formData.fornecedorId);
       setSelectedFornecedor(fornecedor);
       if (fornecedor && !editingProduct) {
         setFormData(prev => ({ ...prev, categoria: '' }));
@@ -41,7 +40,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
     }
   }, [formData.fornecedorId, fornecedores]);
 
-  // 🆕 Resetar campos modificados quando trocar de produto
+  // Resetar campos quando trocar de produto
   useEffect(() => {
     if (editingProduct) {
       setFormData({
@@ -51,7 +50,8 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         descricao: editingProduct.descricao || '',
         categoria: editingProduct.categoria || '',
         preco: editingProduct.preco || '',
-        precoSemNF: editingProduct.precoSemNF || '',
+        precoEtiqueta: editingProduct.precoEtiqueta || 0,
+        precoEmbalagem: editingProduct.precoEmbalagem || 0,
       });
       setCurrentImage(editingProduct.imagem || '');
       setSelectedFile(null);
@@ -78,7 +78,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
       [name]: value,
     }));
 
-    // 🆕 Marcar campo como modificado
+    // Marcar campo como modificado
     if (editingProduct) {
       setModifiedFields(prev => new Set([...prev, name]));
     }
@@ -92,7 +92,6 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         return;
       }
       setSelectedFile(file);
-      // 🆕 Marcar imagem como modificada
       if (editingProduct) {
         setModifiedFields(prev => new Set([...prev, 'imagem']));
       }
@@ -130,31 +129,35 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
   const handleSubmit = async e => {
     e.preventDefault();
 
-    // 🆕 VALIDAÇÃO: Verificar se precoSemNF é menor que preco
-    const precoNormal = parseFloat(formData.preco);
-    const precoSemNota = parseFloat(formData.precoSemNF);
+    // Validações
+    const precoBase = parseFloat(formData.preco);
+    const precoEtiqueta = parseFloat(formData.precoEtiqueta) || 0;
+    const precoEmbalagem = parseFloat(formData.precoEmbalagem) || 0;
 
-    if (precoSemNota >= precoNormal) {
-      alert('❌ O preço sem NF deve ser menor que o preço com NF!');
+    if (isNaN(precoBase) || precoBase <= 0) {
+      alert('❌ O preço base deve ser maior que zero!');
+      return;
+    }
+
+    if (precoEtiqueta < 0 || precoEmbalagem < 0) {
+      alert('❌ Os valores de etiqueta e embalagem não podem ser negativos!');
       return;
     }
 
     setLoading(true);
 
     try {
-      // Upload da imagem (só se houver nova imagem selecionada)
+      // Upload da imagem (só se houver nova imagem)
       const imageUrl = await uploadImage();
 
-      // 🆕 MODO EDIÇÃO: Enviar apenas campos modificados
       let productData;
 
       if (editingProduct) {
-        // Criar objeto apenas com campos que foram modificados
+        // MODO EDIÇÃO: Enviar apenas campos modificados
         productData = {};
 
-        // Verificar cada campo individualmente
         const fornecedorIdAtual = editingProduct.fornecedorId?._id || editingProduct.fornecedorId;
-        
+
         if (formData.fornecedorId !== fornecedorIdAtual) {
           productData.fornecedorId = formData.fornecedorId;
         }
@@ -170,18 +173,19 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         if (formData.categoria !== editingProduct.categoria) {
           productData.categoria = formData.categoria;
         }
-        if (precoNormal !== editingProduct.preco) {
-          productData.preco = precoNormal;
+        if (precoBase !== editingProduct.preco) {
+          productData.preco = precoBase;
         }
-        if (precoSemNota !== editingProduct.precoSemNF) {
-          productData.precoSemNF = precoSemNota;
+        if (precoEtiqueta !== (editingProduct.precoEtiqueta || 0)) {
+          productData.precoEtiqueta = precoEtiqueta;
         }
-        // Só atualizar imagem se houver nova
+        if (precoEmbalagem !== (editingProduct.precoEmbalagem || 0)) {
+          productData.precoEmbalagem = precoEmbalagem;
+        }
         if (selectedFile) {
           productData.imagem = imageUrl;
         }
 
-        // 🔥 Se nenhum campo foi modificado
         if (Object.keys(productData).length === 0) {
           alert('⚠️ Nenhum campo foi modificado!');
           setLoading(false);
@@ -191,8 +195,9 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         // MODO CRIAÇÃO: Enviar todos os dados
         productData = {
           ...formData,
-          preco: precoNormal,
-          precoSemNF: precoSemNota,
+          preco: precoBase,
+          precoEtiqueta: precoEtiqueta,
+          precoEmbalagem: precoEmbalagem,
           imagem: imageUrl,
         };
       }
@@ -213,7 +218,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
       if (response.ok) {
         const fieldsChanged = Object.keys(productData).length;
         const fieldNames = Object.keys(productData).join(', ');
-        
+
         alert(
           editingProduct
             ? `✅ Produto atualizado com sucesso!\n\n${fieldsChanged} campo${
@@ -222,7 +227,6 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             : '✅ Produto criado com sucesso!'
         );
 
-        // Reset form apenas se não estiver editando
         if (!editingProduct) {
           setFormData({
             fornecedorId: '',
@@ -231,18 +235,17 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             descricao: '',
             categoria: '',
             preco: '',
-            precoSemNF: '',
+            precoEtiqueta: 0,
+            precoEmbalagem: 0,
           });
           setCurrentImage('');
           setSelectedFile(null);
           setSelectedFornecedor(null);
           setModifiedFields(new Set());
 
-          // Reset file input
           const fileInput = document.getElementById('imageFile');
           if (fileInput) fileInput.value = '';
         } else {
-          // Limpar campos modificados após sucesso
           setModifiedFields(new Set());
           setSelectedFile(null);
         }
@@ -260,24 +263,31 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
     }
   };
 
+  // Calcular preço total para preview
+  const precoBase = parseFloat(formData.preco) || 0;
+  const precoEtiqueta = parseFloat(formData.precoEtiqueta) || 0;
+  const precoEmbalagem = parseFloat(formData.precoEmbalagem) || 0;
+  const precoTotal = precoBase + precoEtiqueta + precoEmbalagem;
+
   return (
-    <div className='bg-white rounded-lg shadow-md p-6'>
-      <div className='flex justify-between items-center mb-6'>
-        <h2 className='text-xl font-bold text-gray-800'>
+    <div className='bg-white rounded-lg shadow-md p-4 sm:p-6'>
+      <div className='flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-6'>
+        <h2 className='text-lg sm:text-xl font-bold text-gray-800'>
           {editingProduct ? '✏️ Editar Produto' : '➕ Adicionar Produto'}
         </h2>
         {editingProduct && modifiedFields.size > 0 && (
-          <span className='text-sm bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full'>
-            {modifiedFields.size} campo{modifiedFields.size > 1 ? 's' : ''} modificado{modifiedFields.size > 1 ? 's' : ''}
+          <span className='text-xs sm:text-sm bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full self-start sm:self-auto'>
+            {modifiedFields.size} campo{modifiedFields.size > 1 ? 's' : ''} modificado
+            {modifiedFields.size > 1 ? 's' : ''}
           </span>
         )}
       </div>
 
       {editingProduct && (
         <div className='mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg'>
-          <p className='text-sm text-blue-800'>
-            <strong>ℹ️ Modo Edição:</strong> Modifique apenas os campos que deseja atualizar. 
-            Os campos não alterados manterão seus valores originais.
+          <p className='text-xs sm:text-sm text-blue-800'>
+            <strong>ℹ️ Modo Edição:</strong> Modifique apenas os campos que deseja
+            atualizar.
           </p>
         </div>
       )}
@@ -285,7 +295,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
       <form onSubmit={handleSubmit} className='space-y-4'>
         {/* Fornecedor */}
         <div>
-          <label className='block text-gray-700 font-medium mb-2'>
+          <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
             Fornecedor *
             {editingProduct && modifiedFields.has('fornecedorId') && (
               <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
@@ -295,8 +305,10 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             name='fornecedorId'
             value={formData.fornecedorId}
             onChange={handleInputChange}
-            className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
-              modifiedFields.has('fornecedorId') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+            className={`w-full border rounded px-3 py-2 text-sm sm:text-base focus:outline-none focus:border-blue-500 ${
+              modifiedFields.has('fornecedorId')
+                ? 'border-yellow-400 bg-yellow-50'
+                : 'border-gray-300'
             }`}
             required
           >
@@ -309,10 +321,10 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
           </select>
         </div>
 
-        {/* Categoria - só aparece quando fornecedor selecionado */}
+        {/* Categoria */}
         {selectedFornecedor && (
           <div>
-            <label className='block text-gray-700 font-medium mb-2'>
+            <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
               Categoria *
               {editingProduct && modifiedFields.has('categoria') && (
                 <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
@@ -322,8 +334,10 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
               name='categoria'
               value={formData.categoria}
               onChange={handleInputChange}
-              className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
-                modifiedFields.has('categoria') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+              className={`w-full border rounded px-3 py-2 text-sm sm:text-base focus:outline-none focus:border-blue-500 ${
+                modifiedFields.has('categoria')
+                  ? 'border-yellow-400 bg-yellow-50'
+                  : 'border-gray-300'
               }`}
               required
             >
@@ -337,50 +351,55 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
           </div>
         )}
 
-        {/* Código */}
-        <div>
-          <label className='block text-gray-700 font-medium mb-2'>
-            Código do Produto *
-            {editingProduct && modifiedFields.has('codigo') && (
-              <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
-            )}
-          </label>
-          <input
-            type='text'
-            name='codigo'
-            value={formData.codigo}
-            onChange={handleInputChange}
-            placeholder='Ex: CAP-A-001'
-            className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
-              modifiedFields.has('codigo') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
-            }`}
-            required
-          />
-        </div>
+        {/* Grid: Código e Nome */}
+        <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+          <div>
+            <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
+              Código do Produto *
+              {editingProduct && modifiedFields.has('codigo') && (
+                <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
+              )}
+            </label>
+            <input
+              type='text'
+              name='codigo'
+              value={formData.codigo}
+              onChange={handleInputChange}
+              placeholder='Ex: CAP-A-001'
+              className={`w-full border rounded px-3 py-2 text-sm sm:text-base focus:outline-none focus:border-blue-500 ${
+                modifiedFields.has('codigo')
+                  ? 'border-yellow-400 bg-yellow-50'
+                  : 'border-gray-300'
+              }`}
+              required
+            />
+          </div>
 
-        {/* Nome */}
-        <div>
-          <label className='block text-gray-700 font-medium mb-2'>
-            Nome do Produto *
-            {editingProduct && modifiedFields.has('nome') && (
-              <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
-            )}
-          </label>
-          <input
-            type='text'
-            name='nome'
-            value={formData.nome}
-            onChange={handleInputChange}
-            className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
-              modifiedFields.has('nome') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
-            }`}
-            required
-          />
+          <div>
+            <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
+              Nome do Produto *
+              {editingProduct && modifiedFields.has('nome') && (
+                <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
+              )}
+            </label>
+            <input
+              type='text'
+              name='nome'
+              value={formData.nome}
+              onChange={handleInputChange}
+              className={`w-full border rounded px-3 py-2 text-sm sm:text-base focus:outline-none focus:border-blue-500 ${
+                modifiedFields.has('nome')
+                  ? 'border-yellow-400 bg-yellow-50'
+                  : 'border-gray-300'
+              }`}
+              required
+            />
+          </div>
         </div>
 
         {/* Descrição */}
         <div>
-          <label className='block text-gray-700 font-medium mb-2'>
+          <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
             Descrição *
             {editingProduct && modifiedFields.has('descricao') && (
               <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
@@ -391,30 +410,62 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             name='descricao'
             value={formData.descricao}
             onChange={handleInputChange}
-            className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
-              modifiedFields.has('descricao') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+            className={`w-full border rounded px-3 py-2 text-sm sm:text-base focus:outline-none focus:border-blue-500 ${
+              modifiedFields.has('descricao')
+                ? 'border-yellow-400 bg-yellow-50'
+                : 'border-gray-300'
             }`}
             required
           />
         </div>
 
-        {/* 🆕 SEÇÃO DE PREÇOS */}
-        <div className='bg-blue-50 border border-blue-200 rounded-lg p-4'>
-          <h3 className='text-lg font-semibold text-blue-800 mb-3 flex items-center gap-2'>
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* SEÇÃO DE PREÇOS - ATUALIZADA */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <div className='bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg p-4'>
+          <h3 className='text-base sm:text-lg font-semibold text-blue-800 mb-2 flex items-center gap-2'>
             <span>💰</span>
             Definição de Preços
           </h3>
-          <p className='text-sm text-blue-700 mb-4'>
-            Configure os dois preços para este produto. O preço sem NF deve ser
-            sempre menor que o preço com NF.
+          <p className='text-xs sm:text-sm text-blue-700 mb-4'>
+            Configure o preço base e os valores adicionais de etiqueta e embalagem.
           </p>
 
-          <div className='grid md:grid-cols-2 gap-4'>
-            {/* Preço com NF */}
+          {/* Preço Base */}
+          <div className='mb-4'>
+            <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
+              💵 Preço Base (R$) *
+              {editingProduct && modifiedFields.has('preco') && (
+                <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
+              )}
+            </label>
+            <input
+              type='number'
+              step='0.01'
+              min='0.01'
+              name='preco'
+              value={formData.preco}
+              onChange={handleInputChange}
+              className={`w-full border rounded px-3 py-2 text-sm sm:text-base focus:outline-none focus:border-blue-500 ${
+                modifiedFields.has('preco')
+                  ? 'border-yellow-400 bg-yellow-50'
+                  : 'border-gray-300'
+              }`}
+              placeholder='Ex: 89.90'
+              required
+            />
+            <p className='text-xs text-gray-500 mt-1'>
+              Valor que vai para o fornecedor (base para royalties 5%)
+            </p>
+          </div>
+
+          {/* Grid: Etiqueta e Embalagem */}
+          <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+            {/* Preço Etiqueta */}
             <div>
-              <label className='block text-gray-700 font-medium mb-2'>
-                💳 Preço COM Nota Fiscal (R$) *
-                {editingProduct && modifiedFields.has('preco') && (
+              <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
+                🏷️ Valor Etiqueta (R$)
+                {editingProduct && modifiedFields.has('precoEtiqueta') && (
                   <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
                 )}
               </label>
@@ -422,25 +473,24 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
                 type='number'
                 step='0.01'
                 min='0'
-                name='preco'
-                value={formData.preco}
+                name='precoEtiqueta'
+                value={formData.precoEtiqueta}
                 onChange={handleInputChange}
-                className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
-                  modifiedFields.has('preco') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+                className={`w-full border rounded px-3 py-2 text-sm sm:text-base focus:outline-none focus:border-blue-500 ${
+                  modifiedFields.has('precoEtiqueta')
+                    ? 'border-yellow-400 bg-yellow-50'
+                    : 'border-gray-300'
                 }`}
-                placeholder='Ex: 89.90'
-                required
+                placeholder='0.00'
               />
-              <p className='text-xs text-gray-500 mt-1'>
-                Preço normal com nota fiscal
-              </p>
+              <p className='text-xs text-gray-500 mt-1'>Valor cobrado pela etiqueta</p>
             </div>
 
-            {/* Preço sem NF */}
+            {/* Preço Embalagem */}
             <div>
-              <label className='block text-gray-700 font-medium mb-2'>
-                🏷️ Preço SEM Nota Fiscal (R$) *
-                {editingProduct && modifiedFields.has('precoSemNF') && (
+              <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
+                📦 Valor Embalagem (R$)
+                {editingProduct && modifiedFields.has('precoEmbalagem') && (
                   <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
                 )}
               </label>
@@ -448,60 +498,58 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
                 type='number'
                 step='0.01'
                 min='0'
-                name='precoSemNF'
-                value={formData.precoSemNF}
+                name='precoEmbalagem'
+                value={formData.precoEmbalagem}
                 onChange={handleInputChange}
-                className={`w-full border rounded px-3 py-2 focus:outline-none focus:border-blue-500 ${
-                  modifiedFields.has('precoSemNF') ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+                className={`w-full border rounded px-3 py-2 text-sm sm:text-base focus:outline-none focus:border-blue-500 ${
+                  modifiedFields.has('precoEmbalagem')
+                    ? 'border-yellow-400 bg-yellow-50'
+                    : 'border-gray-300'
                 }`}
-                placeholder='Ex: 79.90'
-                required
+                placeholder='0.00'
               />
-              <p className='text-xs text-gray-500 mt-1'>
-                Preço reduzido sem nota fiscal
-              </p>
+              <p className='text-xs text-gray-500 mt-1'>Valor cobrado pela embalagem</p>
             </div>
           </div>
 
-          {/* Preview da diferença */}
-          {formData.preco && formData.precoSemNF && (
+          {/* Preview do Preço */}
+          {precoBase > 0 && (
             <div className='mt-4 p-3 bg-white rounded border'>
               <h4 className='text-sm font-medium text-gray-800 mb-2'>
-                📊 Diferença de Preços:
+                📊 Composição do Preço:
               </h4>
-              <div className='grid grid-cols-2 gap-4 text-sm'>
-                <div className='text-center'>
-                  <p className='text-blue-600 font-medium'>Com NF</p>
-                  <p className='text-xl font-bold text-blue-600'>
-                    R$ {parseFloat(formData.preco || 0).toFixed(2)}
-                  </p>
+              <div className='space-y-1 text-sm'>
+                <div className='flex justify-between'>
+                  <span className='text-gray-600'>Preço Base:</span>
+                  <span className='font-medium'>R$ {precoBase.toFixed(2)}</span>
                 </div>
-                <div className='text-center'>
-                  <p className='text-green-600 font-medium'>Sem NF</p>
-                  <p className='text-xl font-bold text-green-600'>
-                    R$ {parseFloat(formData.precoSemNF || 0).toFixed(2)}
-                  </p>
+                {precoEtiqueta > 0 && (
+                  <div className='flex justify-between'>
+                    <span className='text-gray-600'>+ Etiqueta:</span>
+                    <span className='font-medium text-blue-600'>
+                      R$ {precoEtiqueta.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {precoEmbalagem > 0 && (
+                  <div className='flex justify-between'>
+                    <span className='text-gray-600'>+ Embalagem:</span>
+                    <span className='font-medium text-purple-600'>
+                      R$ {precoEmbalagem.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                <div className='border-t pt-2 mt-2'>
+                  <div className='flex justify-between font-bold'>
+                    <span>Preço Final:</span>
+                    <span className='text-green-600'>R$ {precoTotal.toFixed(2)}</span>
+                  </div>
+                </div>
+                <div className='text-xs text-gray-500 mt-2 p-2 bg-yellow-50 rounded'>
+                  💡 <strong>Royalties (5%):</strong> R$ {(precoBase * 0.05).toFixed(2)}{' '}
+                  (calculado apenas sobre o preço base)
                 </div>
               </div>
-              {formData.preco && formData.precoSemNF && (
-                <div className='mt-2 text-center'>
-                  <p className='text-xs text-gray-600'>
-                    Economia: R${' '}
-                    {(
-                      parseFloat(formData.preco || 0) -
-                      parseFloat(formData.precoSemNF || 0)
-                    ).toFixed(2)}
-                    {' ('}
-                    {(
-                      ((parseFloat(formData.preco || 0) -
-                        parseFloat(formData.precoSemNF || 0)) /
-                        parseFloat(formData.preco || 0)) *
-                      100
-                    ).toFixed(1)}
-                    %)
-                  </p>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -509,20 +557,20 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         {/* Imagem atual */}
         {currentImage && (
           <div>
-            <label className='block text-gray-700 font-medium mb-2'>
+            <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
               Imagem Atual
             </label>
             <img
               src={currentImage}
               alt='Produto'
-              className='w-24 h-24 object-cover rounded border'
+              className='w-20 h-20 sm:w-24 sm:h-24 object-cover rounded border'
             />
           </div>
         )}
 
         {/* Upload de Imagem */}
         <div>
-          <label className='block text-gray-700 font-medium mb-2'>
+          <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
             {currentImage ? 'Alterar Imagem' : 'Imagem do Produto'}
             {editingProduct && selectedFile && (
               <span className='ml-2 text-xs text-yellow-600'>● Será atualizada</span>
@@ -533,7 +581,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             id='imageFile'
             accept='image/*'
             onChange={handleFileSelect}
-            className='w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500'
+            className='w-full border border-gray-300 rounded px-3 py-2 text-sm sm:text-base focus:outline-none focus:border-blue-500'
           />
           <p className='text-xs text-gray-500 mt-1'>
             Máximo 5MB. Formatos: JPG, PNG, WEBP
@@ -544,13 +592,13 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         {/* Preview da nova imagem */}
         {selectedFile && (
           <div>
-            <label className='block text-gray-700 font-medium mb-2'>
+            <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
               Preview da Nova Imagem
             </label>
             <img
               src={URL.createObjectURL(selectedFile)}
               alt='Preview'
-              className='w-24 h-24 object-cover rounded border'
+              className='w-20 h-20 sm:w-24 sm:h-24 object-cover rounded border'
             />
           </div>
         )}
@@ -559,7 +607,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         <button
           type='submit'
           disabled={loading || uploadingImage}
-          className='w-full bg-blue-500 text-white py-3 rounded font-medium hover:bg-blue-600 transition disabled:opacity-50'
+          className='w-full bg-blue-500 text-white py-3 rounded font-medium hover:bg-blue-600 transition disabled:opacity-50 text-sm sm:text-base'
         >
           {loading || uploadingImage
             ? uploadingImage
@@ -567,7 +615,9 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
               : '⏳ Salvando...'
             : editingProduct
             ? modifiedFields.size > 0
-              ? `💾 Atualizar ${modifiedFields.size} Campo${modifiedFields.size > 1 ? 's' : ''}`
+              ? `💾 Atualizar ${modifiedFields.size} Campo${
+                  modifiedFields.size > 1 ? 's' : ''
+                }`
               : '💾 Atualizar Produto'
             : '✅ Salvar Produto'}
         </button>

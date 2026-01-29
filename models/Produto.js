@@ -1,5 +1,7 @@
-// MODELS/PRODUTO.JS - ATUALIZADO COM PREÇO SEM NF
+// MODELS/PRODUTO.JS - ATUALIZADO COM ETIQUETA E EMBALAGEM
 // ===================================
+// Removido: precoSemNF
+// Adicionado: precoEtiqueta, precoEmbalagem
 
 import mongoose from 'mongoose';
 
@@ -30,15 +32,24 @@ const ProdutoSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    // Preço base do produto (vai para o fornecedor)
     preco: {
       type: Number,
       required: true,
       min: 0,
     },
-    // 🆕 NOVO CAMPO: Preço sem nota fiscal
-    precoSemNF: {
+    // 🆕 Valor da etiqueta (vai para o admin)
+    precoEtiqueta: {
       type: Number,
       required: true,
+      default: 0,
+      min: 0,
+    },
+    // 🆕 Valor da embalagem (vai para o admin)
+    precoEmbalagem: {
+      type: Number,
+      required: true,
+      default: 0,
       min: 0,
     },
     imagem: String, // URL do Cloudinary
@@ -51,6 +62,15 @@ const ProdutoSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Virtual para preço total (base + etiqueta + embalagem)
+ProdutoSchema.virtual('precoTotal').get(function () {
+  return this.preco + (this.precoEtiqueta || 0) + (this.precoEmbalagem || 0);
+});
+
+// Garantir que virtuals apareçam no JSON
+ProdutoSchema.set('toJSON', { virtuals: true });
+ProdutoSchema.set('toObject', { virtuals: true });
 
 // Índice composto para busca
 ProdutoSchema.index({ fornecedorId: 1, categoria: 1 });

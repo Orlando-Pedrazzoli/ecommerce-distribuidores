@@ -1,36 +1,29 @@
-// pages/api/pedidos/criar.js - CORRIGIDO PARA PEGAR TELEFONE DO .ENV
+// PAGES/API/PEDIDOS/CRIAR.JS - ATUALIZADO COM ETIQUETAS E EMBALAGENS
 // ===================================
+// Inclui: totalEtiquetas, totalEmbalagens, controle financeiro
 
 import dbConnect from '../../../lib/mongodb';
 import Pedido from '../../../models/Pedido';
 import Fornecedor from '../../../models/Fornecedor';
-import { enviarEmailPedido } from '../../../lib/email';
+import { enviarEmailsPedido } from '../../../lib/email';
 import jwt from 'jsonwebtoken';
 
-// 🔥 FUNÇÃO CORRIGIDA: Agora pega TODOS os campos do .env incluindo telefone
+// Função para buscar dados do distribuidor do .env
 const getDistribuidor = usuario => {
   for (let i = 1; i <= 20; i++) {
     const distribuidorEnv = process.env[`DISTRIBUIDOR_${i}`];
     if (distribuidorEnv) {
       const parts = distribuidorEnv.split(':');
 
-      // Verificar se tem todos os campos necessários
       if (parts.length >= 5) {
-        const [
-          user,
-          password,
-          nomeCompleto,
-          email,
-          telefone,
-          // Os outros campos existem mas não precisamos aqui
-        ] = parts;
+        const [user, password, nomeCompleto, email, telefone] = parts;
 
         if (user && user.trim() === usuario) {
           return {
             usuario: user.trim(),
             nome: nomeCompleto ? nomeCompleto.trim() : user.trim(),
             email: email ? email.trim() : `${user.trim()}@distribuidora.com`,
-            telefone: telefone ? telefone.trim() : '(11) 99999-9999', // 🔥 Agora pega o telefone correto!
+            telefone: telefone ? telefone.trim() : '(11) 99999-9999',
           };
         }
       }
@@ -68,9 +61,7 @@ export default async function handler(req, res) {
     });
 
     if (!itens || !fornecedorId || !formaPagamento || !endereco) {
-      return res
-        .status(400)
-        .json({ message: 'Dados obrigatórios não fornecidos' });
+      return res.status(400).json({ message: 'Dados obrigatórios não fornecidos' });
     }
 
     // Buscar dados do distribuidor do .env
@@ -82,27 +73,71 @@ export default async function handler(req, res) {
     console.log('👤 Distribuidor encontrado:', {
       nome: distribuidor.nome,
       email: distribuidor.email,
-      telefone: distribuidor.telefone, // 🔥 Agora vai mostrar o telefone correto
+      telefone: distribuidor.telefone,
     });
 
-    // Calcular totais
+    // ══════════════════════════════════════════════════════════════
+    // CALCULAR TOTAIS
+    // ══════════════════════════════════════════════════════════════
+
+    // Subtotal BASE (preços base dos produtos)
     const subtotal = itens.reduce(
       (acc, item) => acc + item.quantidade * item.precoUnitario,
       0
     );
-    const royalties = subtotal * 0.05; // 5%
-    const total = subtotal + royalties;
 
-    // Criar pedido - SEM USAR MONGOOSE USER MODEL
+    // Total de etiquetas
+    const totalEtiquetas = itens.reduce(
+      (acc, item) => acc + item.quantidade * (item.precoEtiqueta || 0),
+      0
+    );
+
+    // Total de embalagens
+    const totalEmbalagens = itens.reduce(
+      (acc, item) => acc + item.quantidade * (item.precoEmbalagem || 0),
+      0
+    );
+
+    // Royalties = 5% APENAS do subtotal base
+    const royalties = subtotal * 0.05;
+
+    // Total que o fornecedor recebe (apenas subtotal base)
+    const totalFornecedor = subtotal;
+
+    // Total que o distribuidor paga
+    const total = subtotal + totalEtiquetas + totalEmbalagens + royalties;
+
+    console.log('💰 Valores calculados:', {
+      subtotal,
+      totalEtiquetas,
+      totalEmbalagens,
+      royalties,
+      totalFornecedor,
+      total,
+    });
+
+    // ══════════════════════════════════════════════════════════════
+    // CRIAR PEDIDO
+    // ══════════════════════════════════════════════════════════════
+
     const pedidoData = {
-      userId: distribuidor.usuario, // String simples, não ObjectId
+      userId: distribuidor.usuario,
       fornecedorId,
       itens,
       subtotal,
+      totalEtiquetas,
+      totalEmbalagens,
       royalties,
+      totalFornecedor,
       total,
       formaPagamento,
       endereco,
+      // Controle financeiro iniciado como pendente
+      controleFinanceiro: {
+        royalties: { status: 'pendente' },
+        etiquetas: { status: 'pendente' },
+        embalagens: { status: 'pendente' },
+      },
     };
 
     console.log('💾 Criando pedido...');
@@ -111,18 +146,17 @@ export default async function handler(req, res) {
 
     console.log('✅ Pedido salvo:', pedido._id);
 
-    // Buscar dados do fornecedor para email
-    const fornecedor = await Fornecedor.findById(fornecedorId);
-    if (!fornecedor) {
-      console.log('⚠️ Fornecedor não encontrado');
-    }
+    // ══════════════════════════════════════════════════════════════
+    // ENVIAR EMAILS
+    // ══════════════════════════════════════════════════════════════
 
-    // 🚀 ENVIAR EMAILS AUTOMATICAMENTE
+    const fornecedor = await Fornecedor.findById(fornecedorId);
+
     if (fornecedor) {
       console.log('📧 Iniciando envio de emails...');
 
       try {
-        const resultadoEmail = await enviarEmailPedido(
+        const resultadoEmail = await enviarEmailsPedido(
           pedido,
           fornecedor,
           distribuidor
@@ -130,10 +164,6 @@ export default async function handler(req, res) {
 
         if (resultadoEmail.sucesso) {
           console.log(`✅ Emails enviados: ${resultadoEmail.totalEnviados}`);
-          console.log(
-            '📧 Email enviado para distribuidor com telefone:',
-            distribuidor.telefone
-          );
         } else {
           console.error('❌ Erro no envio de emails:', resultadoEmail.erro);
         }
@@ -148,6 +178,13 @@ export default async function handler(req, res) {
       message: 'Pedido criado com sucesso! Emails enviados automaticamente.',
       pedidoId: pedido._id,
       numeroPedido: pedido._id.toString().slice(-8).toUpperCase(),
+      resumo: {
+        subtotal,
+        totalEtiquetas,
+        totalEmbalagens,
+        royalties,
+        total,
+      },
     });
   } catch (error) {
     console.error('💥 Erro ao criar pedido:', error);

@@ -1,5 +1,8 @@
-// COMPONENTS/CART.JS - ATUALIZADO COM CÁLCULO DUPLO DE PREÇOS
+// COMPONENTS/CART.JS - SIMPLIFICADO (SEM OPÇÃO COM/SEM NF)
 // ===================================
+// Removido: lógica COM/SEM NF
+// Preço único: base + etiqueta + embalagem
+// Royalties: 5% apenas sobre preço BASE
 
 import { useCart } from '../pages/_app';
 import { useToastContext } from '../pages/_app';
@@ -36,7 +39,6 @@ export default function Cart({ isOpen, onClose }) {
     } else {
       document.body.style.overflow = 'unset';
     }
-
     return () => {
       document.body.style.overflow = 'unset';
     };
@@ -62,9 +64,7 @@ export default function Cart({ isOpen, onClose }) {
           `Clique novamente no "-" para remover ${item?.nome}`,
           3000
         );
-        setTimeout(() => {
-          setPendingRemoval(null);
-        }, 3000);
+        setTimeout(() => setPendingRemoval(null), 3000);
       }
       return;
     }
@@ -82,9 +82,7 @@ export default function Cart({ isOpen, onClose }) {
         'Clique novamente em "Limpar carrinho" para confirmar',
         4000
       );
-      setTimeout(() => {
-        setPendingClearCart(false);
-      }, 4000);
+      setTimeout(() => setPendingClearCart(false), 4000);
     }
   };
 
@@ -97,30 +95,40 @@ export default function Cart({ isOpen, onClose }) {
     } else {
       setPendingRemoval(itemId);
       toast.warning(`Clique novamente no 🗑️ para remover ${item?.nome}`, 3000);
-      setTimeout(() => {
-        setPendingRemoval(null);
-      }, 3000);
+      setTimeout(() => setPendingRemoval(null), 3000);
     }
   };
 
-  // 🆕 CÁLCULOS DUPLOS
-  const subtotalComNF = cart.reduce(
+  // ══════════════════════════════════════════════════════════════
+  // CÁLCULOS SIMPLIFICADOS
+  // ══════════════════════════════════════════════════════════════
+
+  // Subtotal BASE (para cálculo de royalties)
+  const subtotalBase = cart.reduce(
     (total, item) => total + (item.preco || 0) * item.quantidade,
     0
   );
 
-  const subtotalSemNF = cart.reduce(
-    (total, item) => total + (item.precoSemNF || 0) * item.quantidade,
+  // Total de etiquetas
+  const totalEtiquetas = cart.reduce(
+    (total, item) => total + (item.precoEtiqueta || 0) * item.quantidade,
     0
   );
 
-  const royaltiesComNF = subtotalComNF * 0.05;
-  const royaltiesSemNF = subtotalSemNF * 0.05;
+  // Total de embalagens
+  const totalEmbalagens = cart.reduce(
+    (total, item) => total + (item.precoEmbalagem || 0) * item.quantidade,
+    0
+  );
 
-  const totalComNF = subtotalComNF + royaltiesComNF;
-  const totalSemNF = subtotalSemNF + royaltiesSemNF;
+  // Subtotal dos produtos (base + etiqueta + embalagem)
+  const subtotalProdutos = subtotalBase + totalEtiquetas + totalEmbalagens;
 
-  const economiaTotal = totalComNF - totalSemNF;
+  // Royalties = 5% APENAS do subtotal BASE
+  const royalties = subtotalBase * 0.05;
+
+  // Total final
+  const total = subtotalProdutos + royalties;
 
   // Agrupar itens por fornecedor
   const itemsPorFornecedor = cart.reduce((acc, item) => {
@@ -132,6 +140,11 @@ export default function Cart({ isOpen, onClose }) {
     acc[fornecedorNome].push(item);
     return acc;
   }, {});
+
+  // Função para calcular preço total unitário do item
+  const getPrecoTotalItem = item => {
+    return (item.preco || 0) + (item.precoEtiqueta || 0) + (item.precoEmbalagem || 0);
+  };
 
   if (!isOpen) return null;
 
@@ -158,6 +171,7 @@ export default function Cart({ isOpen, onClose }) {
           <button
             onClick={handleClose}
             className='text-gray-500 hover:text-gray-700 text-2xl p-1 hover:bg-gray-100 rounded-full transition'
+            aria-label='Fechar carrinho'
           >
             ✕
           </button>
@@ -204,7 +218,7 @@ export default function Cart({ isOpen, onClose }) {
               )}
 
               {/* Items agrupados por fornecedor */}
-              <div className='space-y-6 mb-6'>
+              <div className='space-y-4 mb-6'>
                 {Object.entries(itemsPorFornecedor).map(
                   ([fornecedor, items]) => (
                     <div
@@ -216,186 +230,151 @@ export default function Cart({ isOpen, onClose }) {
                       </h3>
 
                       <div className='space-y-3'>
-                        {items.map(item => (
-                          <div
-                            key={item._id}
-                            className={`flex gap-3 p-2 rounded transition ${
-                              pendingRemoval === item._id
-                                ? 'bg-red-50 border border-red-200'
-                                : 'hover:bg-gray-50'
-                            }`}
-                          >
-                            {/* Image */}
-                            <div className='w-16 h-16 bg-gray-200 rounded flex-shrink-0 overflow-hidden'>
-                              {item.imagem ? (
-                                <Image
-                                  src={item.imagem}
-                                  alt={item.nome}
-                                  width={64}
-                                  height={64}
-                                  className='w-full h-full object-cover'
-                                  onError={e => {
-                                    e.target.style.display = 'none';
-                                    e.target.nextSibling.style.display = 'flex';
-                                  }}
-                                />
-                              ) : null}
-                              <div
-                                className='w-full h-full flex items-center justify-center text-gray-400 text-xs'
-                                style={{
-                                  display: item.imagem ? 'none' : 'flex',
-                                }}
-                              >
-                                📦
-                              </div>
-                            </div>
+                        {items.map(item => {
+                          const precoTotal = getPrecoTotalItem(item);
+                          const subtotalItem = precoTotal * item.quantidade;
 
-                            {/* Details */}
-                            <div className='flex-1 min-w-0'>
-                              <h4
-                                className='font-medium text-sm mb-1 truncate'
-                                title={item.nome}
-                              >
-                                {item.nome}
-                              </h4>
-
-                              {/* Quantity Controls */}
-                              <div className='flex items-center gap-2'>
-                                <button
-                                  onClick={() =>
-                                    handleQuantityChange(
-                                      item._id,
-                                      item.quantidade - 1
-                                    )
-                                  }
-                                  className={`w-7 h-7 rounded-full text-sm transition flex items-center justify-center ${
-                                    pendingRemoval === item._id
-                                      ? 'bg-red-200 text-red-700 animate-pulse'
-                                      : item.quantidade <= 1
-                                      ? 'bg-red-200 text-red-700 hover:bg-red-300'
-                                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                  }`}
-                                >
-                                  -
-                                </button>
-                                <span className='text-sm min-w-[25px] text-center font-medium'>
-                                  {item.quantidade}
-                                </span>
-                                <button
-                                  onClick={() =>
-                                    handleQuantityChange(
-                                      item._id,
-                                      item.quantidade + 1
-                                    )
-                                  }
-                                  className='w-7 h-7 bg-gray-200 text-gray-700 rounded-full text-sm hover:bg-gray-300 transition flex items-center justify-center'
-                                >
-                                  +
-                                </button>
-                              </div>
-
-                              {/* 🆕 SUBTOTAIS DUPLOS */}
-                              <div className='text-xs text-gray-600 mt-2 space-y-1'>
-                                <div className='flex justify-between'>
-                                  <span>Subtotal COM NF:</span>
-                                  <span className='font-medium text-blue-600'>
-                                    R${' '}
-                                    {(
-                                      (item.preco || 0) * item.quantidade
-                                    ).toFixed(2)}
-                                  </span>
-                                </div>
-                                <div className='flex justify-between'>
-                                  <span>Subtotal SEM NF:</span>
-                                  <span className='font-medium text-green-600'>
-                                    R${' '}
-                                    {(
-                                      (item.precoSemNF || 0) * item.quantidade
-                                    ).toFixed(2)}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Remove Button */}
-                            <button
-                              onClick={() => handleRemoveItem(item._id)}
-                              className={`text-sm p-1 rounded transition self-start ${
+                          return (
+                            <div
+                              key={item._id}
+                              className={`flex gap-3 p-2 rounded transition ${
                                 pendingRemoval === item._id
-                                  ? 'text-red-700 bg-red-100 animate-pulse'
-                                  : 'text-red-500 hover:text-red-700 hover:bg-red-50'
+                                  ? 'bg-red-50 border border-red-200'
+                                  : 'hover:bg-gray-50'
                               }`}
-                              title={
-                                pendingRemoval === item._id
-                                  ? 'Clique novamente para confirmar'
-                                  : 'Remover item'
-                              }
                             >
-                              {pendingRemoval === item._id ? '⚠️' : '🗑️'}
-                            </button>
-                          </div>
-                        ))}
+                              {/* Image */}
+                              <div className='w-14 h-14 sm:w-16 sm:h-16 bg-gray-200 rounded flex-shrink-0 overflow-hidden'>
+                                {item.imagem ? (
+                                  <Image
+                                    src={item.imagem}
+                                    alt={item.nome}
+                                    width={64}
+                                    height={64}
+                                    className='w-full h-full object-cover'
+                                    onError={e => {
+                                      e.target.style.display = 'none';
+                                      e.target.nextSibling.style.display = 'flex';
+                                    }}
+                                  />
+                                ) : null}
+                                <div
+                                  className='w-full h-full flex items-center justify-center text-gray-400 text-xs'
+                                  style={{ display: item.imagem ? 'none' : 'flex' }}
+                                >
+                                  📦
+                                </div>
+                              </div>
+
+                              {/* Details */}
+                              <div className='flex-1 min-w-0'>
+                                <h4
+                                  className='font-medium text-sm mb-1 truncate'
+                                  title={item.nome}
+                                >
+                                  {item.nome}
+                                </h4>
+
+                                {/* Preço unitário */}
+                                <p className='text-xs text-gray-500 mb-1'>
+                                  R$ {precoTotal.toFixed(2)} /un
+                                </p>
+
+                                {/* Quantity Controls */}
+                                <div className='flex items-center gap-2'>
+                                  <button
+                                    onClick={() =>
+                                      handleQuantityChange(
+                                        item._id,
+                                        item.quantidade - 1
+                                      )
+                                    }
+                                    className={`w-7 h-7 rounded-full text-sm transition flex items-center justify-center ${
+                                      pendingRemoval === item._id
+                                        ? 'bg-red-200 text-red-700 animate-pulse'
+                                        : item.quantidade <= 1
+                                        ? 'bg-red-200 text-red-700 hover:bg-red-300'
+                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    }`}
+                                  >
+                                    -
+                                  </button>
+                                  <span className='text-sm min-w-[25px] text-center font-medium'>
+                                    {item.quantidade}
+                                  </span>
+                                  <button
+                                    onClick={() =>
+                                      handleQuantityChange(
+                                        item._id,
+                                        item.quantidade + 1
+                                      )
+                                    }
+                                    className='w-7 h-7 bg-gray-200 text-gray-700 rounded-full text-sm hover:bg-gray-300 transition flex items-center justify-center'
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Subtotal e Remove */}
+                              <div className='flex flex-col items-end justify-between'>
+                                <button
+                                  onClick={() => handleRemoveItem(item._id)}
+                                  className={`text-sm p-1 rounded transition ${
+                                    pendingRemoval === item._id
+                                      ? 'text-red-700 bg-red-100 animate-pulse'
+                                      : 'text-red-500 hover:text-red-700 hover:bg-red-50'
+                                  }`}
+                                  title={
+                                    pendingRemoval === item._id
+                                      ? 'Clique novamente para confirmar'
+                                      : 'Remover item'
+                                  }
+                                >
+                                  {pendingRemoval === item._id ? '⚠️' : '🗑️'}
+                                </button>
+
+                                <p className='font-bold text-green-600 text-sm'>
+                                  R$ {subtotalItem.toFixed(2)}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )
                 )}
               </div>
 
-              {/* 🆕 TOTAIS DUPLOS - DESIGN MELHORADO */}
+              {/* ══════════════════════════════════════════════════════════════ */}
+              {/* RESUMO FINANCEIRO SIMPLIFICADO */}
+              {/* ══════════════════════════════════════════════════════════════ */}
               <div className='border-t border-gray-200 pt-4 mb-6'>
                 <div className='bg-gradient-to-r from-blue-50 to-green-50 rounded-lg p-4 border'>
-                  <h3 className='text-lg font-bold text-gray-800 mb-3 text-center'>
-                    📊 Resumo de Preços
+                  <h3 className='text-base font-bold text-gray-800 mb-3'>
+                    📊 Resumo
                   </h3>
 
-                  <div className='grid grid-cols-2 gap-4 mb-4'>
-                    {/* Coluna COM NF */}
-                    <div className='text-center bg-blue-100 rounded-lg p-3'>
-                      <h4 className='text-sm font-bold text-blue-800 mb-2'>
-                        💳 COM NF
-                      </h4>
-                      <div className='space-y-1 text-sm'>
-                        <div className='flex justify-between'>
-                          <span>Subtotal:</span>
-                          <span className='font-medium'>
-                            R$ {subtotalComNF.toFixed(2)}
-                          </span>
-                        </div>
-                        <div className='flex justify-between'>
-                          <span>Royalties (5%):</span>
-                          <span>R$ {royaltiesComNF.toFixed(2)}</span>
-                        </div>
-                        <div className='border-t pt-1'>
-                          <div className='flex justify-between font-bold text-blue-600'>
-                            <span>Total:</span>
-                            <span>R$ {totalComNF.toFixed(2)}</span>
-                          </div>
-                        </div>
-                      </div>
+                  <div className='space-y-2 text-sm'>
+                    <div className='flex justify-between'>
+                      <span className='text-gray-600'>Subtotal Produtos:</span>
+                      <span className='font-medium'>
+                        R$ {subtotalProdutos.toFixed(2)}
+                      </span>
                     </div>
 
-                    {/* Coluna SEM NF */}
-                    <div className='text-center bg-green-100 rounded-lg p-3'>
-                      <h4 className='text-sm font-bold text-green-800 mb-2'>
-                        🏷️ SEM NF
-                      </h4>
-                      <div className='space-y-1 text-sm'>
-                        <div className='flex justify-between'>
-                          <span>Subtotal:</span>
-                          <span className='font-medium'>
-                            R$ {subtotalSemNF.toFixed(2)}
-                          </span>
-                        </div>
-                        <div className='flex justify-between'>
-                          <span>Royalties (5%):</span>
-                          <span>R$ {royaltiesSemNF.toFixed(2)}</span>
-                        </div>
-                        <div className='border-t pt-1'>
-                          <div className='flex justify-between font-bold text-green-600'>
-                            <span>Total:</span>
-                            <span>R$ {totalSemNF.toFixed(2)}</span>
-                          </div>
-                        </div>
+                    <div className='flex justify-between text-gray-500'>
+                      <span>Taxa de serviço (5%):</span>
+                      <span>R$ {royalties.toFixed(2)}</span>
+                    </div>
+
+                    <div className='border-t pt-2 mt-2'>
+                      <div className='flex justify-between font-bold text-lg'>
+                        <span>Total:</span>
+                        <span className='text-green-600'>
+                          R$ {total.toFixed(2)}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -403,7 +382,7 @@ export default function Cart({ isOpen, onClose }) {
               </div>
 
               {/* Actions */}
-              <div className='space-y-3 sticky bottom-0 bg-white pt-4'>
+              <div className='space-y-3 sticky bottom-0 bg-white pt-4 pb-2'>
                 <button
                   onClick={() => {
                     handleClose();
@@ -414,23 +393,16 @@ export default function Cart({ isOpen, onClose }) {
                 >
                   <span>🛒</span>
                   {currentUser
-                    ? 'Finalizar Pedido'
+                    ? `Finalizar Pedido - R$ ${total.toFixed(2)}`
                     : 'Faça Login para Continuar'}
                 </button>
+
                 <button
                   onClick={handleClose}
                   className='w-full bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition'
                 >
                   Continuar Comprando
                 </button>
-
-                {/* Nota importante sobre escolha de preço */}
-                <div className='bg-yellow-50 border border-yellow-200 rounded-lg p-3'>
-                  <p className='text-xs text-yellow-800 text-center'>
-                    💡 <strong>Importante:</strong> Você escolherá entre preço
-                    COM ou SEM NF durante o checkout.
-                  </p>
-                </div>
               </div>
             </>
           )}
