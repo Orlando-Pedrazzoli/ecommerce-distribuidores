@@ -1,3 +1,6 @@
+// PAGES/DASHBOARD.JS - ATUALIZADO COM RESUMO FINANCEIRO
+// =====================================================
+
 import Layout from '../components/Layout';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -7,6 +10,8 @@ import { useState, useEffect } from 'react';
 export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
+  const [resumo, setResumo] = useState(null);
+  const [loadingResumo, setLoadingResumo] = useState(true);
 
   useEffect(() => {
     buscarDadosUsuario();
@@ -19,6 +24,8 @@ export default function Dashboard() {
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
+        // Após buscar usuário, buscar resumo financeiro
+        buscarResumoFinanceiro();
       } else {
         setUser(null);
       }
@@ -30,13 +37,28 @@ export default function Dashboard() {
     }
   };
 
+  const buscarResumoFinanceiro = async () => {
+    try {
+      setLoadingResumo(true);
+      const response = await fetch('/api/user/pagamentos');
+      if (response.ok) {
+        const data = await response.json();
+        setResumo(data.resumo);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar resumo:', error);
+    } finally {
+      setLoadingResumo(false);
+    }
+  };
+
   const fornecedores = [
     {
       codigo: 'A',
       nome: 'Vitor - Pandawa',
       especialidade: 'Especialista em Decks',
       descricao: 'Decks premium para todas as condições de surf',
-      cor: 'bg-gradient-to-r from-[#ff7e5f] to-[#feb47b]',
+      cor: 'from-[#ff7e5f] to-[#feb47b]',
       icone: '🏄‍♂️',
     },
     {
@@ -44,7 +66,7 @@ export default function Dashboard() {
       nome: 'Mauricio - Maos Acessórios',
       especialidade: 'Especialista em Capas e Acessórios',
       descricao: 'Capas e acessórios para proteção e transporte',
-      cor: 'bg-gradient-to-r from-[#43cea2] to-[#185a9d]',
+      cor: 'from-[#43cea2] to-[#185a9d]',
       icone: '🛡️',
     },
     {
@@ -52,10 +74,17 @@ export default function Dashboard() {
       nome: 'Rodrigo - Godas',
       especialidade: 'Especialista em Leashes',
       descricao: 'Leashes superiores para máxima segurança',
-      cor: 'bg-gradient-to-r from-[#6a11cb] to-[#2575fc]',
+      cor: 'from-[#6a11cb] to-[#2575fc]',
       icone: '🔗',
     },
   ];
+
+  // Calcular total pendente
+  const totalPendente = resumo
+    ? (resumo.royaltiesPendentes || 0) +
+      (resumo.etiquetasPendentes || 0) +
+      (resumo.embalagensPendentes || 0)
+    : 0;
 
   // Se ainda está carregando, mostra loading
   if (loadingUser) {
@@ -97,7 +126,7 @@ export default function Dashboard() {
       <Layout>
         <div className='max-w-6xl mx-auto px-4 py-8'>
           {/* Hero Section */}
-          <div className='text-center mb-12'>
+          <div className='text-center mb-8'>
             <h1 className='text-4xl font-bold text-gray-800 mb-4'>
               Bem-vindo, {user?.nome || 'Usuário'}!
             </h1>
@@ -109,7 +138,158 @@ export default function Dashboard() {
             </p>
           </div>
 
-          {/* Cards dos Fornecedores */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* ALERTA DE PAGAMENTOS PENDENTES */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {!loadingResumo && totalPendente > 0 && (
+            <div className='mb-8 bg-gradient-to-r from-red-500 to-orange-500 rounded-xl p-4 shadow-lg'>
+              <div className='flex flex-col sm:flex-row items-center justify-between gap-4'>
+                <div className='flex items-center gap-4'>
+                  <div className='w-14 h-14 bg-white bg-opacity-20 rounded-full flex items-center justify-center'>
+                    <span className='text-3xl'>💰</span>
+                  </div>
+                  <div className='text-white text-center sm:text-left'>
+                    <p className='font-bold text-lg'>Pagamentos Pendentes</p>
+                    <p className='text-red-100 text-sm'>
+                      Você tem valores a pagar referentes aos seus pedidos
+                    </p>
+                  </div>
+                </div>
+                <div className='flex items-center gap-4'>
+                  <div className='text-white text-center sm:text-right'>
+                    <p className='text-3xl font-bold'>
+                      R$ {totalPendente.toFixed(2)}
+                    </p>
+                  </div>
+                  <Link
+                    href='/pagamentos'
+                    className='bg-white text-red-600 px-5 py-2 rounded-lg font-medium hover:bg-red-50 transition shadow-md'
+                  >
+                    Ver Detalhes →
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* CARDS DE ACESSO RÁPIDO */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          <div className='grid grid-cols-2 md:grid-cols-4 gap-4 mb-8'>
+            {/* Meus Pedidos */}
+            <Link
+              href='/meus-pedidos'
+              className='bg-white rounded-xl shadow-md p-4 hover:shadow-lg transition group'
+            >
+              <div className='flex items-center gap-3'>
+                <div className='w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center group-hover:bg-blue-200 transition'>
+                  <span className='text-2xl'>📋</span>
+                </div>
+                <div>
+                  <p className='font-medium text-gray-800'>Meus Pedidos</p>
+                  <p className='text-xs text-gray-500'>Ver histórico</p>
+                </div>
+              </div>
+            </Link>
+
+            {/* Pagamentos */}
+            <Link
+              href='/pagamentos'
+              className='bg-white rounded-xl shadow-md p-4 hover:shadow-lg transition group relative'
+            >
+              <div className='flex items-center gap-3'>
+                <div className='w-12 h-12 bg-green-100 rounded-full flex items-center justify-center group-hover:bg-green-200 transition'>
+                  <span className='text-2xl'>💳</span>
+                </div>
+                <div>
+                  <p className='font-medium text-gray-800'>Pagamentos</p>
+                  <p className='text-xs text-gray-500'>Ver status</p>
+                </div>
+              </div>
+              {/* Badge de pendente */}
+              {!loadingResumo && totalPendente > 0 && (
+                <div className='absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold animate-pulse'>
+                  !
+                </div>
+              )}
+            </Link>
+
+            {/* Checkout */}
+            <Link
+              href='/checkout'
+              className='bg-white rounded-xl shadow-md p-4 hover:shadow-lg transition group'
+            >
+              <div className='flex items-center gap-3'>
+                <div className='w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center group-hover:bg-orange-200 transition'>
+                  <span className='text-2xl'>🛒</span>
+                </div>
+                <div>
+                  <p className='font-medium text-gray-800'>Carrinho</p>
+                  <p className='text-xs text-gray-500'>Finalizar pedido</p>
+                </div>
+              </div>
+            </Link>
+
+            {/* Meu Perfil / Endereço */}
+            <Link
+              href='/meus-pedidos'
+              className='bg-white rounded-xl shadow-md p-4 hover:shadow-lg transition group'
+            >
+              <div className='flex items-center gap-3'>
+                <div className='w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center group-hover:bg-purple-200 transition'>
+                  <span className='text-2xl'>👤</span>
+                </div>
+                <div>
+                  <p className='font-medium text-gray-800'>Meu Perfil</p>
+                  <p className='text-xs text-gray-500'>Dados e endereço</p>
+                </div>
+              </div>
+            </Link>
+          </div>
+
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* RESUMO FINANCEIRO RÁPIDO */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {!loadingResumo && resumo && (
+            <div className='bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 mb-8 border border-blue-100'>
+              <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+                <div className='text-center'>
+                  <p className='text-xs text-gray-500 mb-1'>Total em Pedidos</p>
+                  <p className='text-lg font-bold text-gray-800'>
+                    R$ {(resumo.totalPedidos || 0).toFixed(2)}
+                  </p>
+                </div>
+                <div className='text-center'>
+                  <p className='text-xs text-gray-500 mb-1'>Royalties Pend.</p>
+                  <p className='text-lg font-bold text-yellow-600'>
+                    R$ {(resumo.royaltiesPendentes || 0).toFixed(2)}
+                  </p>
+                </div>
+                <div className='text-center'>
+                  <p className='text-xs text-gray-500 mb-1'>Etiquetas Pend.</p>
+                  <p className='text-lg font-bold text-orange-600'>
+                    R$ {(resumo.etiquetasPendentes || 0).toFixed(2)}
+                  </p>
+                </div>
+                <div className='text-center'>
+                  <p className='text-xs text-gray-500 mb-1'>Embalagens Pend.</p>
+                  <p className='text-lg font-bold text-purple-600'>
+                    R$ {(resumo.embalagensPendentes || 0).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* CARDS DOS FORNECEDORES */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          <div className='mb-6'>
+            <h2 className='text-xl font-bold text-gray-800 mb-4'>
+              🏭 Fornecedores Disponíveis
+            </h2>
+          </div>
+
           <div className='grid md:grid-cols-3 gap-8'>
             {fornecedores.map(fornecedor => (
               <Link
@@ -216,6 +396,9 @@ export default function Dashboard() {
 
           {/* Instruções de uso */}
           <div className='mt-12 bg-gray-50 rounded-xl p-8'>
+            <h3 className='text-lg font-bold text-gray-800 mb-6 text-center'>
+              📖 Como Funciona
+            </h3>
             <div className='grid md:grid-cols-3 gap-6 text-center'>
               <div>
                 <div className='flex items-center justify-center w-12 h-12 bg-gradient-to-r from-gray-500 to-gray-600 rounded-full mb-3 mx-auto text-white font-bold text-lg shadow-lg'>

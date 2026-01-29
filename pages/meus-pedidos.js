@@ -1,14 +1,17 @@
-// PAGES/MEUS-PEDIDOS.JS - ORGANIZADO POR CATEGORIA
-// ================================================
+// PAGES/MEUS-PEDIDOS.JS - ATUALIZADO COM STATUS DE PAGAMENTOS
+// ============================================================
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import Head from 'next/head';
 
 export default function MeusPedidos() {
+  const router = useRouter();
   const [pedidos, setPedidos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState('todos');
+  const [resumoFinanceiro, setResumoFinanceiro] = useState(null);
 
   useEffect(() => {
     buscarPedidos();
@@ -27,6 +30,9 @@ export default function MeusPedidos() {
 
       if (response.ok) {
         setPedidos(data.pedidos || []);
+        
+        // Calcular resumo financeiro
+        calcularResumoFinanceiro(data.pedidos || []);
       } else {
         console.error('Erro ao buscar pedidos:', data.message);
       }
@@ -35,6 +41,37 @@ export default function MeusPedidos() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Calcular resumo dos pagamentos pendentes
+  const calcularResumoFinanceiro = (pedidosList) => {
+    let totalPendente = 0;
+    let pedidosComPendencia = 0;
+
+    pedidosList.forEach(pedido => {
+      const cf = pedido.controleFinanceiro || {};
+      let pendentePedido = 0;
+
+      if (cf.royalties?.status !== 'pago') {
+        pendentePedido += pedido.royalties || 0;
+      }
+      if (cf.etiquetas?.status !== 'pago') {
+        pendentePedido += pedido.totalEtiquetas || 0;
+      }
+      if (cf.embalagens?.status !== 'pago') {
+        pendentePedido += pedido.totalEmbalagens || 0;
+      }
+
+      if (pendentePedido > 0) {
+        totalPendente += pendentePedido;
+        pedidosComPendencia++;
+      }
+    });
+
+    setResumoFinanceiro({
+      totalPendente,
+      pedidosComPendencia,
+    });
   };
 
   const getStatusColor = status => {
@@ -57,7 +94,27 @@ export default function MeusPedidos() {
     return icons[status] || '📋';
   };
 
-  // 🆕 FUNÇÃO PARA ORGANIZAR ITENS POR CATEGORIA
+  // Verificar status geral de pagamento do pedido
+  const getStatusPagamento = (pedido) => {
+    const cf = pedido.controleFinanceiro || {};
+    
+    const royaltiesPago = cf.royalties?.status === 'pago';
+    const etiquetasPago = cf.etiquetas?.status === 'pago' || (pedido.totalEtiquetas || 0) === 0;
+    const embalagensPago = cf.embalagens?.status === 'pago' || (pedido.totalEmbalagens || 0) === 0;
+
+    if (royaltiesPago && etiquetasPago && embalagensPago) {
+      return { status: 'pago', label: 'Pago', color: 'bg-green-100 text-green-800', icon: '✓' };
+    }
+    
+    const algumPago = royaltiesPago || etiquetasPago || embalagensPago;
+    if (algumPago) {
+      return { status: 'parcial', label: 'Parcial', color: 'bg-blue-100 text-blue-800', icon: '◐' };
+    }
+    
+    return { status: 'pendente', label: 'Pendente', color: 'bg-yellow-100 text-yellow-800', icon: '⏳' };
+  };
+
+  // Organizar itens por categoria
   const organizarItensPorCategoria = itens => {
     const itensPorCategoria = {};
 
@@ -85,14 +142,57 @@ export default function MeusPedidos() {
       <Layout>
         <div className='max-w-6xl mx-auto px-4 py-8'>
           {/* Header */}
-          <div className='mb-8'>
-            <h1 className='text-3xl font-bold text-gray-800 mb-2'>
-              📋 Meus Pedidos
-            </h1>
-            <p className='text-gray-600'>
-              Acompanhe o histórico e status dos seus pedidos
-            </p>
+          <div className='mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4'>
+            <div>
+              <h1 className='text-3xl font-bold text-gray-800 mb-2'>
+                📋 Meus Pedidos
+              </h1>
+              <p className='text-gray-600'>
+                Acompanhe o histórico e status dos seus pedidos
+              </p>
+            </div>
+            
+            {/* Botão Pagamentos */}
+            <button
+              onClick={() => router.push('/pagamentos')}
+              className='inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-blue-600 hover:to-blue-700 transition shadow-md'
+            >
+              <span>💳</span>
+              <span>Ver Pagamentos</span>
+            </button>
           </div>
+
+          {/* Alerta de Pagamentos Pendentes */}
+          {resumoFinanceiro && resumoFinanceiro.totalPendente > 0 && (
+            <div className='bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-xl p-4 mb-6'>
+              <div className='flex items-center justify-between'>
+                <div className='flex items-center gap-3'>
+                  <div className='w-12 h-12 bg-red-100 rounded-full flex items-center justify-center'>
+                    <span className='text-2xl'>💰</span>
+                  </div>
+                  <div>
+                    <p className='font-medium text-red-800'>
+                      Você tem pagamentos pendentes
+                    </p>
+                    <p className='text-sm text-red-600'>
+                      {resumoFinanceiro.pedidosComPendencia} pedido(s) com valores a pagar
+                    </p>
+                  </div>
+                </div>
+                <div className='text-right'>
+                  <p className='text-2xl font-bold text-red-600'>
+                    R$ {resumoFinanceiro.totalPendente.toFixed(2)}
+                  </p>
+                  <button
+                    onClick={() => router.push('/pagamentos')}
+                    className='text-sm text-red-700 underline hover:text-red-900'
+                  >
+                    Ver detalhes →
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Filtros */}
           <div className='bg-white rounded-lg shadow-md p-6 mb-6'>
@@ -150,10 +250,8 @@ export default function MeusPedidos() {
           ) : (
             <div className='space-y-4'>
               {pedidos.map(pedido => {
-                // 🆕 Organizar itens por categoria
-                const itensPorCategoria = organizarItensPorCategoria(
-                  pedido.itens || []
-                );
+                const itensPorCategoria = organizarItensPorCategoria(pedido.itens || []);
+                const statusPagamento = getStatusPagamento(pedido);
 
                 return (
                   <div
@@ -183,6 +281,7 @@ export default function MeusPedidos() {
                         </p>
                       </div>
                       <div className='text-right'>
+                        {/* Status do Pedido */}
                         <span
                           className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
                             pedido.status
@@ -192,13 +291,24 @@ export default function MeusPedidos() {
                           {pedido.status.charAt(0).toUpperCase() +
                             pedido.status.slice(1)}
                         </span>
+                        
+                        {/* Status de Pagamento */}
+                        <div className='mt-2'>
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${statusPagamento.color}`}
+                          >
+                            <span>{statusPagamento.icon}</span>
+                            Pgto: {statusPagamento.label}
+                          </span>
+                        </div>
+                        
                         <p className='text-lg font-bold text-green-600 mt-2'>
                           R$ {pedido.total?.toFixed(2)}
                         </p>
                       </div>
                     </div>
 
-                    {/* 🆕 ITENS ORGANIZADOS POR CATEGORIA */}
+                    {/* Itens organizados por categoria */}
                     <div className='border-t pt-4'>
                       <h4 className='font-medium text-gray-800 mb-3'>
                         Itens ({pedido.itens?.length || 0}) - Organizados por
@@ -265,7 +375,6 @@ export default function MeusPedidos() {
                                       </p>
                                     </div>
                                   </div>
-                                  {/* Linha separadora entre itens da mesma categoria */}
                                   {index < catData.itens.length - 1 && (
                                     <hr className='mx-2 border-gray-100' />
                                   )}
@@ -289,25 +398,87 @@ export default function MeusPedidos() {
                       )}
                     </div>
 
-                    {/* Resumo do Pedido */}
+                    {/* Resumo Financeiro do Pedido */}
                     <div className='border-t pt-4 mt-4'>
-                      <div className='flex justify-between items-center text-sm'>
-                        <span>Subtotal Geral:</span>
-                        <span>R$ {pedido.subtotal?.toFixed(2)}</span>
+                      <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                        {/* Coluna Esquerda - Valores */}
+                        <div className='space-y-2'>
+                          <div className='flex justify-between items-center text-sm'>
+                            <span className='text-gray-600'>Subtotal Produtos:</span>
+                            <span>R$ {pedido.subtotal?.toFixed(2)}</span>
+                          </div>
+                          {(pedido.totalEtiquetas || 0) > 0 && (
+                            <div className='flex justify-between items-center text-sm'>
+                              <span className='text-gray-600'>Etiquetas:</span>
+                              <span>R$ {pedido.totalEtiquetas?.toFixed(2)}</span>
+                            </div>
+                          )}
+                          {(pedido.totalEmbalagens || 0) > 0 && (
+                            <div className='flex justify-between items-center text-sm'>
+                              <span className='text-gray-600'>Embalagens:</span>
+                              <span>R$ {pedido.totalEmbalagens?.toFixed(2)}</span>
+                            </div>
+                          )}
+                          <div className='flex justify-between items-center text-sm'>
+                            <span className='text-gray-600'>Taxa de serviço (5%):</span>
+                            <span>R$ {pedido.royalties?.toFixed(2)}</span>
+                          </div>
+                          <div className='flex justify-between items-center font-bold text-lg border-t pt-2 mt-2'>
+                            <span>Total:</span>
+                            <span className='text-green-600'>
+                              R$ {pedido.total?.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Coluna Direita - Status de Pagamentos */}
+                        <div className='bg-gray-50 rounded-lg p-3'>
+                          <h5 className='font-medium text-gray-700 mb-2 text-sm'>
+                            💳 Status dos Pagamentos
+                          </h5>
+                          <div className='space-y-1 text-xs'>
+                            <div className='flex justify-between items-center'>
+                              <span>Taxa de serviço:</span>
+                              {pedido.controleFinanceiro?.royalties?.status === 'pago' ? (
+                                <span className='text-green-600 font-medium'>✓ Pago</span>
+                              ) : (
+                                <span className='text-yellow-600 font-medium'>⏳ Pendente</span>
+                              )}
+                            </div>
+                            {(pedido.totalEtiquetas || 0) > 0 && (
+                              <div className='flex justify-between items-center'>
+                                <span>Etiquetas:</span>
+                                {pedido.controleFinanceiro?.etiquetas?.status === 'pago' ? (
+                                  <span className='text-green-600 font-medium'>✓ Pago</span>
+                                ) : (
+                                  <span className='text-yellow-600 font-medium'>⏳ Pendente</span>
+                                )}
+                              </div>
+                            )}
+                            {(pedido.totalEmbalagens || 0) > 0 && (
+                              <div className='flex justify-between items-center'>
+                                <span>Embalagens:</span>
+                                {pedido.controleFinanceiro?.embalagens?.status === 'pago' ? (
+                                  <span className='text-green-600 font-medium'>✓ Pago</span>
+                                ) : (
+                                  <span className='text-yellow-600 font-medium'>⏳ Pendente</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => router.push('/pagamentos')}
+                            className='mt-2 text-xs text-blue-600 hover:text-blue-800 underline'
+                          >
+                            Ver detalhes →
+                          </button>
+                        </div>
                       </div>
-                      <div className='flex justify-between items-center text-sm'>
-                        <span>Royalties (5%):</span>
-                        <span>R$ {pedido.royalties?.toFixed(2)}</span>
-                      </div>
-                      <div className='flex justify-between items-center font-bold text-lg border-t pt-2 mt-2'>
-                        <span>Total:</span>
-                        <span className='text-green-600'>
-                          R$ {pedido.total?.toFixed(2)}
-                        </span>
-                      </div>
-                      <div className='flex justify-between items-center text-sm mt-2'>
-                        <span>Forma de Pagamento:</span>
-                        <span className='capitalize'>
+
+                      {/* Forma de Pagamento */}
+                      <div className='flex justify-between items-center text-sm mt-4 pt-2 border-t'>
+                        <span className='text-gray-600'>Forma de Pagamento:</span>
+                        <span className='font-medium'>
                           {pedido.formaPagamento === 'boleto'
                             ? '💳 Boleto Bancário'
                             : '🏦 Transferência'}
