@@ -1,4 +1,4 @@
-// pages/_app.js - ATUALIZADO COM SUPORTE A PREÇO SEM NF
+// pages/_app.js - SIMPLIFICADO (SEM COM/SEM NF)
 // ===================================
 
 import '../styles/globals.css';
@@ -118,16 +118,19 @@ export default function App({ Component, pageProps }) {
     return () => clearInterval(interval);
   }, [isClient, currentUser]);
 
+  // ══════════════════════════════════════════════════════════════
+  // ADICIONAR AO CARRINHO - SIMPLIFICADO
+  // ══════════════════════════════════════════════════════════════
   const addToCart = (produto, quantidade) => {
     if (!currentUser) {
       toast.warning('Você precisa estar logado para adicionar ao carrinho');
       return;
     }
 
-    // 🆕 VALIDAÇÃO: Verificar se produto tem precoSemNF
-    if (!produto.precoSemNF && produto.precoSemNF !== 0) {
-      console.warn('⚠️ Produto sem precoSemNF:', produto.nome);
-      toast.warning('Este produto não possui preço sem NF definido');
+    // Validação básica de preço
+    if (!produto.preco && produto.preco !== 0) {
+      console.warn('⚠️ Produto sem preço:', produto.nome);
+      toast.warning('Este produto não possui preço definido');
       return;
     }
 
@@ -143,15 +146,15 @@ export default function App({ Component, pageProps }) {
         );
       } else {
         toast.success(`${produto.nome} adicionado ao carrinho!`);
-        // 🆕 GARANTIR QUE precoSemNF SEJA INCLUÍDO NO CARRINHO
         return [
           ...prevCart,
           {
             ...produto,
             quantidade,
-            // Garantir que ambos os preços existam
+            // Garantir que os preços existam
             preco: produto.preco || 0,
-            precoSemNF: produto.precoSemNF || 0,
+            precoEtiqueta: produto.precoEtiqueta || 0,
+            precoEmbalagem: produto.precoEmbalagem || 0,
           },
         ];
       }
@@ -186,16 +189,39 @@ export default function App({ Component, pageProps }) {
     toast.info('Carrinho limpo com sucesso');
   };
 
-  // 🆕 CÁLCULOS ATUALIZADOS COM AMBOS OS PREÇOS
-  const cartTotalComNF = cart.reduce(
+  // ══════════════════════════════════════════════════════════════
+  // CÁLCULOS SIMPLIFICADOS
+  // ══════════════════════════════════════════════════════════════
+
+  // Subtotal BASE (para cálculo de royalties)
+  const cartSubtotalBase = cart.reduce(
     (total, item) => total + (item.preco || 0) * item.quantidade,
     0
   );
 
-  const cartTotalSemNF = cart.reduce(
-    (total, item) => total + (item.precoSemNF || 0) * item.quantidade,
+  // Total etiquetas
+  const cartTotalEtiquetas = cart.reduce(
+    (total, item) => total + (item.precoEtiqueta || 0) * item.quantidade,
     0
   );
+
+  // Total embalagens
+  const cartTotalEmbalagens = cart.reduce(
+    (total, item) => total + (item.precoEmbalagem || 0) * item.quantidade,
+    0
+  );
+
+  // Subtotal produtos (base + etiqueta + embalagem)
+  const cartSubtotalProdutos = cartSubtotalBase + cartTotalEtiquetas + cartTotalEmbalagens;
+
+  // Royalties = 5% apenas do subtotal BASE
+  const cartRoyalties = cartSubtotalBase * 0.05;
+
+  // Total final
+  const cartTotal = cartSubtotalProdutos + cartRoyalties;
+
+  // Contagem de itens
+  const cartCount = cart.reduce((count, item) => count + item.quantidade, 0);
 
   const cartValue = {
     cart,
@@ -204,12 +230,14 @@ export default function App({ Component, pageProps }) {
     updateQuantity,
     clearCart,
     currentUser,
-    // Manter compatibilidade com código existente (usa preço com NF como padrão)
-    cartTotal: cartTotalComNF,
-    // 🆕 NOVOS VALORES PARA AMBOS OS PREÇOS
-    cartTotalComNF,
-    cartTotalSemNF,
-    cartCount: cart.reduce((count, item) => count + item.quantidade, 0),
+    // Totais
+    cartTotal,
+    cartSubtotalBase,
+    cartSubtotalProdutos,
+    cartTotalEtiquetas,
+    cartTotalEmbalagens,
+    cartRoyalties,
+    cartCount,
     isClient,
   };
 
