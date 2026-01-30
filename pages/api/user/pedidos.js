@@ -4,6 +4,8 @@
 
 import jwt from 'jsonwebtoken';
 import Pedido from '../../../models/Pedido';
+import Fornecedor from '../../../models/Fornecedor'; // ← NECESSÁRIO para populate
+import Produto from '../../../models/Produto'; // ← NECESSÁRIO para populate
 import dbConnect from '../../../lib/mongodb';
 
 export default async function handler(req, res) {
