@@ -1,4 +1,4 @@
-// PAGES/ADMIN-PEDIDOS.JS - ATUALIZADO COM CONTROLE DE PAGAMENTOS
+// PAGES/ADMIN-PEDIDOS.JS - COM FILTRO POR DISTRIBUIDOR
 // ===================================
 
 import { useState, useEffect } from 'react';
@@ -8,11 +8,14 @@ import { useRouter } from 'next/router';
 
 export default function AdminPedidos() {
   const [pedidos, setPedidos] = useState([]);
+  const [todosPedidos, setTodosPedidos] = useState([]); // Guardar todos para extrair distribuidores
   const [loading, setLoading] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState('todos');
   const [filtroFornecedor, setFiltroFornecedor] = useState('todos');
+  const [filtroDistribuidor, setFiltroDistribuidor] = useState('todos'); // ← NOVO
   const [filtroPagamento, setFiltroPagamento] = useState('todos');
   const [fornecedores, setFornecedores] = useState([]);
+  const [distribuidores, setDistribuidores] = useState([]); // ← NOVO
   const [user, setUser] = useState(null);
   const [atualizandoStatus, setAtualizandoStatus] = useState({});
   const [atualizandoPagamento, setAtualizandoPagamento] = useState({});
@@ -27,7 +30,12 @@ export default function AdminPedidos() {
       buscarPedidos();
       buscarFornecedores();
     }
-  }, [filtroStatus, filtroFornecedor, filtroPagamento, user]);
+  }, [user]);
+
+  // Aplicar filtros quando mudam
+  useEffect(() => {
+    aplicarFiltros();
+  }, [filtroStatus, filtroFornecedor, filtroDistribuidor, filtroPagamento, todosPedidos]);
 
   const verificarAdmin = async () => {
     try {
@@ -55,44 +63,62 @@ export default function AdminPedidos() {
       const data = await response.json();
 
       if (response.ok) {
-        let pedidosFiltrados = data.pedidos || [];
-
-        // Filtro por status do pedido
-        if (filtroStatus !== 'todos') {
-          pedidosFiltrados = pedidosFiltrados.filter(
-            p => p.status === filtroStatus
-          );
-        }
-
-        // Filtro por fornecedor
-        if (filtroFornecedor !== 'todos') {
-          pedidosFiltrados = pedidosFiltrados.filter(
-            p => p.fornecedorId?._id === filtroFornecedor
-          );
-        }
-
-        // Filtro por status de pagamento
-        if (filtroPagamento !== 'todos') {
-          pedidosFiltrados = pedidosFiltrados.filter(p => {
-            const cf = p.controleFinanceiro || {};
-            const temPendente =
-              cf.royalties?.status === 'pendente' ||
-              cf.etiquetas?.status === 'pendente' ||
-              cf.embalagens?.status === 'pendente';
-
-            if (filtroPagamento === 'pendente') return temPendente;
-            if (filtroPagamento === 'pago') return !temPendente;
-            return true;
-          });
-        }
-
-        setPedidos(pedidosFiltrados);
+        const pedidosData = data.pedidos || [];
+        setTodosPedidos(pedidosData);
+        
+        // ══════════════════════════════════════════════════════════════
+        // EXTRAIR LISTA ÚNICA DE DISTRIBUIDORES DOS PEDIDOS
+        // ══════════════════════════════════════════════════════════════
+        const distribuidoresUnicos = [...new Set(pedidosData.map(p => p.userId))].filter(Boolean);
+        setDistribuidores(distribuidoresUnicos.sort());
       }
     } catch (error) {
       console.error('Erro ao buscar pedidos:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const aplicarFiltros = () => {
+    let pedidosFiltrados = [...todosPedidos];
+
+    // Filtro por status do pedido
+    if (filtroStatus !== 'todos') {
+      pedidosFiltrados = pedidosFiltrados.filter(p => p.status === filtroStatus);
+    }
+
+    // Filtro por fornecedor
+    if (filtroFornecedor !== 'todos') {
+      pedidosFiltrados = pedidosFiltrados.filter(
+        p => p.fornecedorId?._id === filtroFornecedor
+      );
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // NOVO: Filtro por distribuidor
+    // ══════════════════════════════════════════════════════════════
+    if (filtroDistribuidor !== 'todos') {
+      pedidosFiltrados = pedidosFiltrados.filter(
+        p => p.userId === filtroDistribuidor
+      );
+    }
+
+    // Filtro por status de pagamento
+    if (filtroPagamento !== 'todos') {
+      pedidosFiltrados = pedidosFiltrados.filter(p => {
+        const cf = p.controleFinanceiro || {};
+        const temPendente =
+          cf.royalties?.status === 'pendente' ||
+          cf.etiquetas?.status === 'pendente' ||
+          cf.embalagens?.status === 'pendente';
+
+        if (filtroPagamento === 'pendente') return temPendente;
+        if (filtroPagamento === 'pago') return !temPendente;
+        return true;
+      });
+    }
+
+    setPedidos(pedidosFiltrados);
   };
 
   const buscarFornecedores = async () => {
@@ -125,9 +151,10 @@ export default function AdminPedidos() {
       });
 
       if (response.ok) {
-        setPedidos(prev =>
-          prev.map(p => (p._id === pedidoId ? { ...p, status: novoStatus } : p))
-        );
+        // Atualizar em ambos os estados
+        const atualizarPedido = p => p._id === pedidoId ? { ...p, status: novoStatus } : p;
+        setTodosPedidos(prev => prev.map(atualizarPedido));
+        setPedidos(prev => prev.map(atualizarPedido));
         alert('✅ Status atualizado com sucesso!');
       } else {
         alert('❌ Erro ao atualizar status');
@@ -140,9 +167,6 @@ export default function AdminPedidos() {
     }
   };
 
-  // ══════════════════════════════════════════════════════════════
-  // NOVA FUNÇÃO: Atualizar status de pagamento
-  // ══════════════════════════════════════════════════════════════
   const atualizarPagamento = async (pedidoId, tipo, novoStatus) => {
     const tipoLabel = tipo === 'todos' ? 'todos os pagamentos' : tipo;
     if (!confirm(`Confirma marcar ${tipoLabel} como "${novoStatus}"?`)) {
@@ -234,7 +258,7 @@ export default function AdminPedidos() {
     return itensPorCategoria;
   };
 
-  // Calcular totais de pagamentos
+  // Calcular totais de pagamentos (baseado nos pedidos filtrados)
   const calcularTotaisPagamentos = () => {
     let royaltiesPendentes = 0;
     let etiquetasPendentes = 0;
@@ -257,6 +281,14 @@ export default function AdminPedidos() {
   };
 
   const totaisPagamentos = calcularTotaisPagamentos();
+
+  // Limpar todos os filtros
+  const limparFiltros = () => {
+    setFiltroStatus('todos');
+    setFiltroFornecedor('todos');
+    setFiltroDistribuidor('todos');
+    setFiltroPagamento('todos');
+  };
 
   if (!user || user.tipo !== 'admin') {
     return null;
@@ -354,9 +386,19 @@ export default function AdminPedidos() {
 
           {/* Filtros */}
           <div className='bg-white rounded-lg shadow-md p-6 mb-6'>
-            <h3 className='text-lg font-semibold text-gray-800 mb-4'>Filtros</h3>
+            <div className='flex items-center justify-between mb-4'>
+              <h3 className='text-lg font-semibold text-gray-800'>Filtros</h3>
+              {(filtroStatus !== 'todos' || filtroFornecedor !== 'todos' || filtroDistribuidor !== 'todos' || filtroPagamento !== 'todos') && (
+                <button
+                  onClick={limparFiltros}
+                  className='text-sm text-blue-600 hover:text-blue-800 underline'
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
 
-            <div className='grid md:grid-cols-3 gap-4'>
+            <div className='grid md:grid-cols-4 gap-4'>
               {/* Filtro por Status */}
               <div>
                 <label className='block text-sm font-medium text-gray-700 mb-2'>
@@ -394,6 +436,27 @@ export default function AdminPedidos() {
                 </select>
               </div>
 
+              {/* ══════════════════════════════════════════════════════════════ */}
+              {/* NOVO: Filtro por Distribuidor */}
+              {/* ══════════════════════════════════════════════════════════════ */}
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                  Distribuidor
+                </label>
+                <select
+                  value={filtroDistribuidor}
+                  onChange={e => setFiltroDistribuidor(e.target.value)}
+                  className='w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500'
+                >
+                  <option value='todos'>Todos os Distribuidores</option>
+                  {distribuidores.map(d => (
+                    <option key={d} value={d}>
+                      👤 {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Filtro por Pagamento */}
               <div>
                 <label className='block text-sm font-medium text-gray-700 mb-2'>
@@ -410,6 +473,16 @@ export default function AdminPedidos() {
                 </select>
               </div>
             </div>
+
+            {/* Indicador de filtros ativos */}
+            {(filtroStatus !== 'todos' || filtroFornecedor !== 'todos' || filtroDistribuidor !== 'todos' || filtroPagamento !== 'todos') && (
+              <div className='mt-4 pt-4 border-t'>
+                <p className='text-sm text-gray-600'>
+                  Exibindo <span className='font-bold text-blue-600'>{pedidos.length}</span> de{' '}
+                  <span className='font-bold'>{todosPedidos.length}</span> pedidos
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Lista de Pedidos */}
@@ -425,7 +498,7 @@ export default function AdminPedidos() {
                 Nenhum pedido encontrado
               </h3>
               <p className='text-gray-600'>
-                {filtroStatus !== 'todos' || filtroFornecedor !== 'todos' || filtroPagamento !== 'todos'
+                {filtroStatus !== 'todos' || filtroFornecedor !== 'todos' || filtroDistribuidor !== 'todos' || filtroPagamento !== 'todos'
                   ? 'Tente ajustar os filtros'
                   : 'Ainda não há pedidos no sistema'}
               </p>
@@ -455,7 +528,10 @@ export default function AdminPedidos() {
                           })}
                         </p>
                         <p className='text-sm text-gray-600'>
-                          <strong>Cliente:</strong> {pedido.userId}
+                          <strong>Cliente:</strong>{' '}
+                          <span className='bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs font-medium'>
+                            {pedido.userId}
+                          </span>
                         </p>
                         <p className='text-sm text-gray-600'>
                           <strong>Fornecedor:</strong> {pedido.fornecedorId?.nome}

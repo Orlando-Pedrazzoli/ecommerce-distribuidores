@@ -1,3 +1,6 @@
+// PAGES/INDEX.JS - LOGIN COM REDIRECIONAMENTO CORRETO
+// ===================================
+
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
@@ -28,7 +31,14 @@ export default function Login() {
       const data = await response.json();
 
       if (data.success) {
-        router.push('/dashboard');
+        // ══════════════════════════════════════════════════════════════
+        // CORREÇÃO: Redirecionar baseado no tipo de usuário
+        // ══════════════════════════════════════════════════════════════
+        if (data.user?.tipo === 'admin') {
+          router.push('/admin');  // Admin vai para painel administrativo
+        } else {
+          router.push('/dashboard');  // Distribuidor vai para dashboard
+        }
       } else {
         setError(data.message || 'Erro ao fazer login');
       }
