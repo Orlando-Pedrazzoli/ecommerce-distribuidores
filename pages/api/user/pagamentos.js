@@ -1,9 +1,9 @@
 // PAGES/API/USER/PAGAMENTOS.JS - API DE PAGAMENTOS DO DISTRIBUIDOR
 // ===================================
+// CORRIGIDO: Consistência com api/user/pedidos.js
 
 import dbConnect from '../../../lib/mongodb';
 import Pedido from '../../../models/Pedido';
-import Fornecedor from '../../../models/Fornecedor';
 import jwt from 'jsonwebtoken';
 
 export default async function handler(req, res) {
@@ -12,23 +12,30 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Verificar autenticação
-    const token = req.cookies.token;
+    // ══════════════════════════════════════════════════════════════
+    // CORREÇÃO: Usar 'auth-token' igual ao pedidos.js
+    // ══════════════════════════════════════════════════════════════
+    const token = req.cookies['auth-token'];
+    
     if (!token) {
-      return res.status(401).json({ message: 'Não autorizado' });
+      return res.status(401).json({ message: 'Token não fornecido' });
     }
 
     const decoded = jwt.verify(token, process.env.NEXTAUTH_SECRET);
-    
-    // Admin deve usar /api/admin/financeiro
-    if (decoded.role === 'admin') {
+
+    // ══════════════════════════════════════════════════════════════
+    // CORREÇÃO: Usar 'tipo' igual ao pedidos.js (não 'role')
+    // ══════════════════════════════════════════════════════════════
+    if (decoded.tipo === 'admin') {
       return res.status(403).json({ message: 'Use /api/admin/financeiro para administradores' });
     }
 
     await dbConnect();
 
-    // Buscar pedidos do usuário
-    const pedidos = await Pedido.find({ userId: decoded.id })
+    // ══════════════════════════════════════════════════════════════
+    // CORREÇÃO: Usar 'decoded.usuario' igual ao pedidos.js (não 'decoded.id')
+    // ══════════════════════════════════════════════════════════════
+    const pedidos = await Pedido.find({ userId: decoded.usuario })
       .populate('fornecedorId', 'nome codigo')
       .sort({ createdAt: -1 });
 
@@ -43,7 +50,6 @@ export default async function handler(req, res) {
 
     pedidos.forEach(pedido => {
       totalPedidos += pedido.total || 0;
-
       const cf = pedido.controleFinanceiro || {};
 
       // Royalties
@@ -89,6 +95,12 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Erro ao buscar pagamentos:', error);
+    
+    // Verificar se é erro de token inválido
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: 'Token inválido ou expirado' });
+    }
+    
     return res.status(500).json({ message: 'Erro ao buscar pagamentos' });
   }
 }

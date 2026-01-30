@@ -1,4 +1,7 @@
 // components/Navbar.js
+// ===================================
+// ATUALIZADO: Adicionado link de Pagamentos para distribuidores
+
 import Link from 'next/link';
 import Image from 'next/image';
 import { useCart } from '../pages/_app';
@@ -13,6 +16,7 @@ export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [user, setUser] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
+  const [pendencias, setPendencias] = useState(0);
 
   useEffect(() => {
     buscarDadosUsuario();
@@ -25,6 +29,11 @@ export default function Navbar() {
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
+        
+        // Se for distribuidor, buscar pendências
+        if (data.user?.tipo === 'distribuidor') {
+          buscarPendencias();
+        }
       } else {
         setUser(null);
       }
@@ -33,6 +42,20 @@ export default function Navbar() {
       setUser(null);
     } finally {
       setLoadingUser(false);
+    }
+  };
+
+  // Buscar total de pendências para mostrar badge
+  const buscarPendencias = async () => {
+    try {
+      const response = await fetch('/api/user/pagamentos');
+      if (response.ok) {
+        const data = await response.json();
+        const total = data.resumo?.totalPendente || 0;
+        setPendencias(total);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar pendências:', error);
     }
   };
 
@@ -103,22 +126,55 @@ export default function Navbar() {
             </Link>
 
             {/* Desktop Menu */}
-            <div className='hidden md:flex items-center space-x-6'>
-              {/* Navigation Links */}
-
+            <div className='hidden md:flex items-center space-x-4'>
+              {/* Navigation Links para Distribuidores */}
               {user?.tipo === 'distribuidor' && (
-                <Link
-                  href='/meus-pedidos'
-                  className={`px-3 py-2 rounded transition ${
-                    isActive('/meus-pedidos')
-                      ? 'bg-green-600 text-white'
-                      : 'hover:bg-gray-700'
-                  }`}
-                >
-                  📋 Meus Pedidos
-                </Link>
+                <>
+                  {/* Dashboard */}
+                  <Link
+                    href='/dashboard'
+                    className={`px-3 py-2 rounded transition flex items-center gap-1 ${
+                      isActive('/dashboard')
+                        ? 'bg-blue-600 text-white'
+                        : 'hover:bg-gray-700'
+                    }`}
+                  >
+                    🏠 Início
+                  </Link>
+
+                  {/* Meus Pedidos */}
+                  <Link
+                    href='/meus-pedidos'
+                    className={`px-3 py-2 rounded transition flex items-center gap-1 ${
+                      isActive('/meus-pedidos')
+                        ? 'bg-green-600 text-white'
+                        : 'hover:bg-gray-700'
+                    }`}
+                  >
+                    📋 Pedidos
+                  </Link>
+
+                  {/* Pagamentos - COM BADGE DE PENDÊNCIA */}
+                  <Link
+                    href='/pagamentos'
+                    className={`relative px-3 py-2 rounded transition flex items-center gap-1 ${
+                      isActive('/pagamentos')
+                        ? 'bg-yellow-600 text-white'
+                        : 'hover:bg-gray-700'
+                    }`}
+                  >
+                    💳 Pagamentos
+                    {/* Badge de pendência */}
+                    {pendencias > 0 && (
+                      <span className='absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold animate-pulse'>
+                        !
+                      </span>
+                    )}
+                  </Link>
+                </>
               )}
 
+              {/* Link Admin */}
               {user?.tipo === 'admin' && (
                 <Link
                   href='/admin'
@@ -149,7 +205,7 @@ export default function Navbar() {
               )}
 
               {/* User Info */}
-              <div className='text-sm'>
+              <div className='text-sm border-l border-gray-600 pl-4 ml-2'>
                 <span className='text-gray-300'>Olá, </span>
                 <span className='font-medium'>{user.nome}</span>
                 <div className='text-xs text-gray-400 capitalize'>
@@ -213,10 +269,11 @@ export default function Navbar() {
           {/* Mobile Menu */}
           <div
             className={`md:hidden transition-all duration-200 ${
-              isMobileMenuOpen ? 'max-h-64 pb-4' : 'max-h-0 overflow-hidden'
+              isMobileMenuOpen ? 'max-h-96 pb-4' : 'max-h-0 overflow-hidden'
             }`}
           >
             <div className='space-y-2 border-t border-gray-700 pt-4'>
+              {/* User Info Mobile */}
               <div className='px-3 py-2 text-sm text-gray-300 border-b border-gray-700 pb-2 mb-2'>
                 Olá, <span className='font-medium text-white'>{user.nome}</span>
                 <div className='text-xs text-gray-400 capitalize'>
@@ -224,32 +281,67 @@ export default function Navbar() {
                 </div>
               </div>
 
-              <Link
-                href='/dashboard'
-                className={`block px-3 py-2 rounded transition ${
-                  isActive('/dashboard')
-                    ? 'bg-blue-600 text-white'
-                    : 'hover:bg-gray-700'
-                }`}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                🏠 Dashboard
-              </Link>
-
+              {/* Links para Distribuidores */}
               {user?.tipo === 'distribuidor' && (
-                <Link
-                  href='/meus-pedidos'
-                  className={`block px-3 py-2 rounded transition ${
-                    isActive('/meus-pedidos')
-                      ? 'bg-green-600 text-white'
-                      : 'hover:bg-gray-700'
-                  }`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  📋 Meus Pedidos
-                </Link>
+                <>
+                  <Link
+                    href='/dashboard'
+                    className={`block px-3 py-2 rounded transition ${
+                      isActive('/dashboard')
+                        ? 'bg-blue-600 text-white'
+                        : 'hover:bg-gray-700'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    🏠 Dashboard
+                  </Link>
+
+                  <Link
+                    href='/meus-pedidos'
+                    className={`block px-3 py-2 rounded transition ${
+                      isActive('/meus-pedidos')
+                        ? 'bg-green-600 text-white'
+                        : 'hover:bg-gray-700'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    📋 Meus Pedidos
+                  </Link>
+
+                  <Link
+                    href='/pagamentos'
+                    className={`block px-3 py-2 rounded transition relative ${
+                      isActive('/pagamentos')
+                        ? 'bg-yellow-600 text-white'
+                        : 'hover:bg-gray-700'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <span className='flex items-center justify-between'>
+                      <span>💳 Pagamentos</span>
+                      {pendencias > 0 && (
+                        <span className='bg-red-500 text-white rounded-full px-2 py-0.5 text-xs font-bold'>
+                          Pendente
+                        </span>
+                      )}
+                    </span>
+                  </Link>
+
+                  <Link
+                    href='/checkout'
+                    className={`block px-3 py-2 rounded transition ${
+                      isActive('/checkout')
+                        ? 'bg-orange-600 text-white'
+                        : 'hover:bg-gray-700'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    🛒 Carrinho {cartCount > 0 && `(${cartCount})`}
+                  </Link>
+                </>
               )}
 
+              {/* Link Admin */}
               {user?.tipo === 'admin' && (
                 <Link
                   href='/admin'
@@ -264,6 +356,7 @@ export default function Navbar() {
                 </Link>
               )}
 
+              {/* Logout */}
               <button
                 onClick={() => {
                   handleLogout();

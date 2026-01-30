@@ -1,5 +1,6 @@
-// PAGES/MEUS-PEDIDOS.JS - ATUALIZADO COM STATUS DE PAGAMENTOS
+// PAGES/MEUS-PEDIDOS.JS - HISTÓRICO DE PEDIDOS DO DISTRIBUIDOR
 // ============================================================
+// Exibe todos os pedidos de TODOS os fornecedores
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
@@ -12,6 +13,7 @@ export default function MeusPedidos() {
   const [loading, setLoading] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState('todos');
   const [resumoFinanceiro, setResumoFinanceiro] = useState(null);
+  const [erro, setErro] = useState(null);
 
   useEffect(() => {
     buscarPedidos();
@@ -20,24 +22,36 @@ export default function MeusPedidos() {
   const buscarPedidos = async () => {
     try {
       setLoading(true);
+      setErro(null);
+      
       const params = new URLSearchParams();
       if (filtroStatus !== 'todos') {
         params.append('status', filtroStatus);
       }
+      params.append('limit', '50'); // Buscar mais pedidos
 
       const response = await fetch(`/api/user/pedidos?${params}`);
-      const data = await response.json();
-
+      
       if (response.ok) {
+        const data = await response.json();
         setPedidos(data.pedidos || []);
         
-        // Calcular resumo financeiro
-        calcularResumoFinanceiro(data.pedidos || []);
+        // Usar resumo financeiro da API se disponível
+        if (data.resumoFinanceiro) {
+          setResumoFinanceiro(data.resumoFinanceiro);
+        } else {
+          // Calcular localmente se necessário
+          calcularResumoFinanceiro(data.pedidos || []);
+        }
+      } else if (response.status === 401) {
+        router.push('/');
       } else {
-        console.error('Erro ao buscar pedidos:', data.message);
+        const errorData = await response.json();
+        setErro(errorData.message || 'Erro ao buscar pedidos');
       }
     } catch (error) {
       console.error('Erro ao buscar pedidos:', error);
+      setErro('Erro de conexão. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -152,20 +166,41 @@ export default function MeusPedidos() {
               </p>
             </div>
             
-            {/* Botão Pagamentos */}
-            <button
-              onClick={() => router.push('/pagamentos')}
-              className='inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-blue-600 hover:to-blue-700 transition shadow-md'
-            >
-              <span>💳</span>
-              <span>Ver Pagamentos</span>
-            </button>
+            {/* Botões de Ação */}
+            <div className='flex gap-2'>
+              <button
+                onClick={() => router.push('/dashboard')}
+                className='inline-flex items-center gap-2 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition'
+              >
+                ← Voltar
+              </button>
+              <button
+                onClick={() => router.push('/pagamentos')}
+                className='inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-2 rounded-lg hover:from-blue-600 hover:to-blue-700 transition shadow-md'
+              >
+                <span>💳</span>
+                <span>Ver Pagamentos</span>
+              </button>
+            </div>
           </div>
+
+          {/* Erro */}
+          {erro && (
+            <div className='bg-red-50 border border-red-200 rounded-xl p-4 mb-6'>
+              <p className='text-red-600'>{erro}</p>
+              <button
+                onClick={buscarPedidos}
+                className='mt-2 text-red-700 underline'
+              >
+                Tentar novamente
+              </button>
+            </div>
+          )}
 
           {/* Alerta de Pagamentos Pendentes */}
           {resumoFinanceiro && resumoFinanceiro.totalPendente > 0 && (
             <div className='bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-xl p-4 mb-6'>
-              <div className='flex items-center justify-between'>
+              <div className='flex flex-col sm:flex-row items-center justify-between gap-4'>
                 <div className='flex items-center gap-3'>
                   <div className='w-12 h-12 bg-red-100 rounded-full flex items-center justify-center'>
                     <span className='text-2xl'>💰</span>
@@ -262,7 +297,7 @@ export default function MeusPedidos() {
                     <div className='flex justify-between items-start mb-4'>
                       <div>
                         <h3 className='text-lg font-semibold text-gray-900'>
-                          Pedido #{pedido._id.slice(-8).toUpperCase()}
+                          Pedido #{pedido._id?.slice(-8).toUpperCase()}
                         </h3>
                         <p className='text-sm text-gray-600'>
                           {new Date(pedido.createdAt).toLocaleDateString(
@@ -277,7 +312,7 @@ export default function MeusPedidos() {
                           )}
                         </p>
                         <p className='text-sm text-gray-600'>
-                          Fornecedor: {pedido.fornecedorId?.nome}
+                          Fornecedor: <span className='font-medium'>{pedido.fornecedorId?.nome || 'N/A'}</span>
                         </p>
                       </div>
                       <div className='text-right'>
@@ -288,8 +323,8 @@ export default function MeusPedidos() {
                           )}`}
                         >
                           <span>{getStatusIcon(pedido.status)}</span>
-                          {pedido.status.charAt(0).toUpperCase() +
-                            pedido.status.slice(1)}
+                          {pedido.status?.charAt(0).toUpperCase() +
+                            pedido.status?.slice(1)}
                         </span>
                         
                         {/* Status de Pagamento */}

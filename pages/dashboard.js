@@ -1,17 +1,22 @@
-// PAGES/DASHBOARD.JS - ATUALIZADO COM RESUMO FINANCEIRO
+// PAGES/DASHBOARD.JS - PAINEL PRINCIPAL DO DISTRIBUIDOR
 // =====================================================
+// Visão geral: fornecedores, pedidos, pagamentos pendentes
 
 import Layout from '../components/Layout';
 import Link from 'next/link';
 import Image from 'next/image';
 import Head from 'next/head';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 
 export default function Dashboard() {
+  const router = useRouter();
   const [user, setUser] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [resumo, setResumo] = useState(null);
   const [loadingResumo, setLoadingResumo] = useState(true);
+  const [pedidosRecentes, setPedidosRecentes] = useState([]);
+  const [erro, setErro] = useState(null);
 
   useEffect(() => {
     buscarDadosUsuario();
@@ -20,18 +25,28 @@ export default function Dashboard() {
   const buscarDadosUsuario = async () => {
     try {
       setLoadingUser(true);
+      setErro(null);
+      
       const response = await fetch('/api/auth/me');
+      
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
-        // Após buscar usuário, buscar resumo financeiro
-        buscarResumoFinanceiro();
+        
+        // Após buscar usuário, buscar dados financeiros
+        if (data.user?.tipo === 'distribuidor') {
+          await Promise.all([
+            buscarResumoFinanceiro(),
+            buscarPedidosRecentes()
+          ]);
+        }
       } else {
-        setUser(null);
+        // Se não autorizado, redirecionar para login
+        router.push('/');
       }
     } catch (error) {
       console.error('Erro ao buscar dados do usuário:', error);
-      setUser(null);
+      setErro('Erro ao carregar dados. Tente novamente.');
     } finally {
       setLoadingUser(false);
     }
@@ -41,14 +56,30 @@ export default function Dashboard() {
     try {
       setLoadingResumo(true);
       const response = await fetch('/api/user/pagamentos');
+      
       if (response.ok) {
         const data = await response.json();
         setResumo(data.resumo);
+      } else {
+        console.error('Erro ao buscar resumo:', response.status);
       }
     } catch (error) {
       console.error('Erro ao buscar resumo:', error);
     } finally {
       setLoadingResumo(false);
+    }
+  };
+
+  const buscarPedidosRecentes = async () => {
+    try {
+      const response = await fetch('/api/user/pedidos?limit=5');
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPedidosRecentes(data.pedidos || []);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar pedidos recentes:', error);
     }
   };
 
@@ -86,6 +117,17 @@ export default function Dashboard() {
       (resumo.embalagensPendentes || 0)
     : 0;
 
+  // Status do pedido formatado
+  const getStatusColor = status => {
+    const colors = {
+      pendente: 'bg-yellow-100 text-yellow-800',
+      confirmado: 'bg-blue-100 text-blue-800',
+      enviado: 'bg-orange-100 text-orange-800',
+      entregue: 'bg-green-100 text-green-800',
+    };
+    return colors[status] || 'bg-gray-100 text-gray-800';
+  };
+
   // Se ainda está carregando, mostra loading
   if (loadingUser) {
     return (
@@ -106,6 +148,30 @@ export default function Dashboard() {
                 <div className='h-6 bg-gray-200 rounded w-96 mx-auto mb-2'></div>
                 <div className='h-4 bg-gray-200 rounded w-80 mx-auto'></div>
               </div>
+            </div>
+          </div>
+        </Layout>
+      </>
+    );
+  }
+
+  // Se houve erro
+  if (erro) {
+    return (
+      <>
+        <Head>
+          <title>Dashboard - Elite Surfing</title>
+        </Head>
+        <Layout>
+          <div className='max-w-6xl mx-auto px-4 py-8'>
+            <div className='bg-red-50 border border-red-200 rounded-xl p-6 text-center'>
+              <p className='text-red-600 mb-4'>{erro}</p>
+              <button
+                onClick={buscarDadosUsuario}
+                className='bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600'
+              >
+                Tentar Novamente
+              </button>
             </div>
           </div>
         </Layout>
@@ -248,35 +314,113 @@ export default function Dashboard() {
           </div>
 
           {/* ══════════════════════════════════════════════════════════════ */}
-          {/* RESUMO FINANCEIRO RÁPIDO */}
+          {/* RESUMO FINANCEIRO COMPLETO */}
           {/* ══════════════════════════════════════════════════════════════ */}
           {!loadingResumo && resumo && (
-            <div className='bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 mb-8 border border-blue-100'>
-              <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
-                <div className='text-center'>
+            <div className='bg-white rounded-xl shadow-md p-6 mb-8'>
+              <h2 className='text-lg font-bold text-gray-800 mb-4 flex items-center gap-2'>
+                📊 Resumo Financeiro
+              </h2>
+              
+              <div className='grid grid-cols-2 md:grid-cols-5 gap-4'>
+                {/* Total em Pedidos */}
+                <div className='bg-blue-50 rounded-lg p-4 text-center'>
                   <p className='text-xs text-gray-500 mb-1'>Total em Pedidos</p>
-                  <p className='text-lg font-bold text-gray-800'>
+                  <p className='text-xl font-bold text-blue-600'>
                     R$ {(resumo.totalPedidos || 0).toFixed(2)}
                   </p>
                 </div>
-                <div className='text-center'>
-                  <p className='text-xs text-gray-500 mb-1'>Royalties Pend.</p>
-                  <p className='text-lg font-bold text-yellow-600'>
+                
+                {/* Royalties Pendentes */}
+                <div className='bg-yellow-50 rounded-lg p-4 text-center'>
+                  <p className='text-xs text-gray-500 mb-1'>Taxa Serviço Pend.</p>
+                  <p className='text-xl font-bold text-yellow-600'>
                     R$ {(resumo.royaltiesPendentes || 0).toFixed(2)}
                   </p>
                 </div>
-                <div className='text-center'>
+                
+                {/* Etiquetas Pendentes */}
+                <div className='bg-orange-50 rounded-lg p-4 text-center'>
                   <p className='text-xs text-gray-500 mb-1'>Etiquetas Pend.</p>
-                  <p className='text-lg font-bold text-orange-600'>
+                  <p className='text-xl font-bold text-orange-600'>
                     R$ {(resumo.etiquetasPendentes || 0).toFixed(2)}
                   </p>
                 </div>
-                <div className='text-center'>
+                
+                {/* Embalagens Pendentes */}
+                <div className='bg-purple-50 rounded-lg p-4 text-center'>
                   <p className='text-xs text-gray-500 mb-1'>Embalagens Pend.</p>
-                  <p className='text-lg font-bold text-purple-600'>
+                  <p className='text-xl font-bold text-purple-600'>
                     R$ {(resumo.embalagensPendentes || 0).toFixed(2)}
                   </p>
                 </div>
+                
+                {/* Total Pendente */}
+                <div className='bg-red-50 rounded-lg p-4 text-center border-2 border-red-200'>
+                  <p className='text-xs text-gray-500 mb-1'>TOTAL PENDENTE</p>
+                  <p className='text-xl font-bold text-red-600'>
+                    R$ {totalPendente.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+
+              <div className='mt-4 pt-4 border-t flex justify-end'>
+                <Link
+                  href='/pagamentos'
+                  className='text-blue-600 hover:text-blue-800 text-sm font-medium'
+                >
+                  Ver detalhes completos →
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* PEDIDOS RECENTES */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {pedidosRecentes.length > 0 && (
+            <div className='bg-white rounded-xl shadow-md p-6 mb-8'>
+              <div className='flex items-center justify-between mb-4'>
+                <h2 className='text-lg font-bold text-gray-800 flex items-center gap-2'>
+                  📦 Pedidos Recentes
+                </h2>
+                <Link
+                  href='/meus-pedidos'
+                  className='text-blue-600 hover:text-blue-800 text-sm font-medium'
+                >
+                  Ver todos →
+                </Link>
+              </div>
+              
+              <div className='space-y-3'>
+                {pedidosRecentes.slice(0, 3).map(pedido => (
+                  <div
+                    key={pedido._id}
+                    className='flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition'
+                  >
+                    <div className='flex items-center gap-3'>
+                      <div className='w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center'>
+                        <span className='text-lg'>📦</span>
+                      </div>
+                      <div>
+                        <p className='font-medium text-gray-800'>
+                          Pedido #{pedido._id?.slice(-8).toUpperCase()}
+                        </p>
+                        <p className='text-xs text-gray-500'>
+                          {new Date(pedido.createdAt).toLocaleDateString('pt-BR')} • {pedido.fornecedorId?.nome || 'Fornecedor'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className='text-right'>
+                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pedido.status)}`}>
+                        {pedido.status?.charAt(0).toUpperCase() + pedido.status?.slice(1)}
+                      </span>
+                      <p className='text-sm font-bold text-green-600 mt-1'>
+                        R$ {pedido.total?.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
