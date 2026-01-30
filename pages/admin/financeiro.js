@@ -1,4 +1,4 @@
-// PAGES/ADMIN/FINANCEIRO.JS - COM FILTRO POR DISTRIBUIDOR
+// PAGES/ADMIN/FINANCEIRO.JS - DASHBOARD DE CONTROLE FINANCEIRO
 // ===================================
 // Interface para o admin gerenciar pagamentos de royalties, etiquetas e embalagens
 
@@ -13,8 +13,6 @@ export default function FinanceiroAdmin() {
   const [dados, setDados] = useState(null);
   const [filtro, setFiltro] = useState('pendente');
   const [tipoFiltro, setTipoFiltro] = useState('todos');
-  const [filtroDistribuidor, setFiltroDistribuidor] = useState('todos'); // ← NOVO
-  const [distribuidores, setDistribuidores] = useState([]); // ← NOVO
   const [periodo, setPeriodo] = useState('30dias');
   const [updating, setUpdating] = useState(null);
   const [selectedPedidos, setSelectedPedidos] = useState([]);
@@ -30,14 +28,6 @@ export default function FinanceiroAdmin() {
       if (response.ok) {
         const data = await response.json();
         setDados(data);
-        
-        // ══════════════════════════════════════════════════════════════
-        // EXTRAIR LISTA ÚNICA DE DISTRIBUIDORES DOS PEDIDOS
-        // ══════════════════════════════════════════════════════════════
-        if (data.pedidos) {
-          const distribuidoresUnicos = [...new Set(data.pedidos.map(p => p.userId))].filter(Boolean);
-          setDistribuidores(distribuidoresUnicos.sort());
-        }
       } else if (response.status === 403) {
         router.push('/');
       }
@@ -113,25 +103,11 @@ export default function FinanceiroAdmin() {
     }
   };
 
-  // Limpar filtros
-  const limparFiltros = () => {
-    setFiltro('pendente');
-    setTipoFiltro('todos');
-    setFiltroDistribuidor('todos');
-  };
-
   // Filtrar pedidos
   const getPedidosFiltrados = () => {
     if (!dados?.pedidos) return [];
 
     return dados.pedidos.filter(pedido => {
-      // ══════════════════════════════════════════════════════════════
-      // NOVO: Filtro por Distribuidor
-      // ══════════════════════════════════════════════════════════════
-      if (filtroDistribuidor !== 'todos' && pedido.userId !== filtroDistribuidor) {
-        return false;
-      }
-
       // Verificar status
       let passaFiltroStatus = true;
 
@@ -162,36 +138,6 @@ export default function FinanceiroAdmin() {
   };
 
   const pedidosFiltrados = getPedidosFiltrados();
-
-  // Calcular totais baseado nos pedidos filtrados (para mostrar valores por distribuidor)
-  const calcularTotaisFiltrados = () => {
-    let royaltiesPendentes = 0;
-    let etiquetasPendentes = 0;
-    let embalagensPendentes = 0;
-
-    pedidosFiltrados.forEach(pedido => {
-      const cf = pedido.controleFinanceiro || {};
-      if (cf.royalties?.status !== 'pago') {
-        royaltiesPendentes += pedido.royalties || 0;
-      }
-      if (cf.etiquetas?.status !== 'pago') {
-        etiquetasPendentes += pedido.totalEtiquetas || 0;
-      }
-      if (cf.embalagens?.status !== 'pago') {
-        embalagensPendentes += pedido.totalEmbalagens || 0;
-      }
-    });
-
-    return {
-      royaltiesPendentes,
-      etiquetasPendentes,
-      embalagensPendentes,
-      totalPendente: royaltiesPendentes + etiquetasPendentes + embalagensPendentes,
-    };
-  };
-
-  const totaisFiltrados = calcularTotaisFiltrados();
-  const temFiltroAtivo = filtro !== 'pendente' || tipoFiltro !== 'todos' || filtroDistribuidor !== 'todos';
 
   if (loading) {
     return (
@@ -294,21 +240,9 @@ export default function FinanceiroAdmin() {
 
           {/* Filtros */}
           <div className='bg-white rounded-lg shadow p-3 sm:p-4 mb-4 sm:mb-6'>
-            <div className='flex items-center justify-between mb-3'>
-              <span className='text-sm font-medium text-gray-700'>Filtros</span>
-              {temFiltroAtivo && (
-                <button
-                  onClick={limparFiltros}
-                  className='text-xs text-blue-600 hover:text-blue-800 underline'
-                >
-                  Limpar filtros
-                </button>
-              )}
-            </div>
-            
-            <div className='grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4'>
+            <div className='flex flex-col sm:flex-row gap-3 sm:gap-4'>
               {/* Período */}
-              <div>
+              <div className='flex-1'>
                 <label className='block text-xs font-medium text-gray-700 mb-1'>
                   Período
                 </label>
@@ -325,7 +259,7 @@ export default function FinanceiroAdmin() {
               </div>
 
               {/* Status */}
-              <div>
+              <div className='flex-1'>
                 <label className='block text-xs font-medium text-gray-700 mb-1'>
                   Status
                 </label>
@@ -341,7 +275,7 @@ export default function FinanceiroAdmin() {
               </div>
 
               {/* Tipo */}
-              <div>
+              <div className='flex-1'>
                 <label className='block text-xs font-medium text-gray-700 mb-1'>
                   Tipo
                 </label>
@@ -356,43 +290,7 @@ export default function FinanceiroAdmin() {
                   <option value='embalagens'>📦 Embalagens</option>
                 </select>
               </div>
-
-              {/* ══════════════════════════════════════════════════════════════ */}
-              {/* NOVO: Filtro por Distribuidor */}
-              {/* ══════════════════════════════════════════════════════════════ */}
-              <div>
-                <label className='block text-xs font-medium text-gray-700 mb-1'>
-                  Distribuidor
-                </label>
-                <select
-                  value={filtroDistribuidor}
-                  onChange={e => setFiltroDistribuidor(e.target.value)}
-                  className='w-full border border-gray-300 rounded px-3 py-2 text-sm'
-                >
-                  <option value='todos'>Todos os Distribuidores</option>
-                  {distribuidores.map(d => (
-                    <option key={d} value={d}>
-                      👤 {d}
-                    </option>
-                  ))}
-                </select>
-              </div>
             </div>
-
-            {/* Indicador de filtro por distribuidor ativo */}
-            {filtroDistribuidor !== 'todos' && (
-              <div className='mt-3 pt-3 border-t bg-blue-50 -mx-3 sm:-mx-4 px-3 sm:px-4 pb-3 -mb-3 sm:-mb-4 rounded-b-lg'>
-                <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'>
-                  <p className='text-sm text-blue-800'>
-                    Exibindo <span className='font-bold'>{pedidosFiltrados.length}</span> pedidos de{' '}
-                    <span className='font-bold'>{filtroDistribuidor}</span>
-                  </p>
-                  <div className='text-sm text-blue-700'>
-                    Pendente: <span className='font-bold'>R$ {totaisFiltrados.totalPendente.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Ações em Lote */}
@@ -485,9 +383,7 @@ export default function FinanceiroAdmin() {
                             </span>
                           </div>
                           <div className='text-sm text-gray-600 mt-1'>
-                            <span className='bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs font-medium'>
-                              👤 {pedido.userId}
-                            </span>
+                            👤 {pedido.userId}
                           </div>
                         </div>
                         <div className='text-right'>
