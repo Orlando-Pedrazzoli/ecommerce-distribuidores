@@ -182,7 +182,7 @@ export default function Pagamentos() {
                 </div>
                 
                 <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-yellow-500">
-                  <p className="text-sm text-gray-600 mb-1">Rpyalties Pendente</p>
+                  <p className="text-sm text-gray-600 mb-1">Royalties Pendentes</p>
                   <p className="text-2xl font-bold text-yellow-600">{formatarMoeda(resumo.royaltiesPendentes)}</p>
                 </div>
                 
@@ -198,36 +198,17 @@ export default function Pagamentos() {
               </div>
             )}
 
-            {/* Total Pendente Destacado */}
-            {resumo && (
+            {/* Royalties Pendentes Destacado - APENAS ROYALTIES */}
+            {resumo && (resumo.royaltiesPendentes || 0) > 0 && (
               <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-xl shadow-lg p-6 mb-8 text-white">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-red-100 mb-1">Total Pendente de Pagamento</p>
+                    <p className="text-red-100 mb-1">Royalties Pendentes de Pagamento</p>
                     <p className="text-4xl font-bold">
-                      {formatarMoeda(
-                        (resumo.royaltiesPendentes || 0) + 
-                        (resumo.etiquetasPendentes || 0) + 
-                        (resumo.embalagensPendentes || 0)
-                      )}
+                      {formatarMoeda(resumo.royaltiesPendentes)}
                     </p>
                   </div>
                   <div className="text-6xl opacity-50">💰</div>
-                </div>
-              </div>
-            )}
-
-            {/* Valores Pagos */}
-            {resumo && (resumo.royaltiesPagos > 0 || resumo.etiquetasPagas > 0 || resumo.embalagensPagas > 0) && (
-              <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl shadow-lg p-6 mb-8 text-white">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-green-100 mb-1">Total Já Pago</p>
-                    <p className="text-4xl font-bold">
-                      {formatarMoeda(resumo.totalPago)}
-                    </p>
-                  </div>
-                  <div className="text-6xl opacity-50">✓</div>
                 </div>
               </div>
             )}
