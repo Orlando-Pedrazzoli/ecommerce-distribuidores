@@ -1,6 +1,6 @@
 // COMPONENTS/PRODUCTCARD.JS - COM CAROUSEL E DETALHAMENTO DE PREÇOS
 // ===================================
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useCart } from '../pages/_app';
 import { useToastContext } from '../pages/_app';
 import Image from 'next/image';
@@ -14,7 +14,10 @@ export default function ProductCard({ produto }) {
 
   // 🆕 Estado do Carousel
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isHovering, setIsHovering] = useState(false);
+
+  // 🆕 Estado para touch/swipe
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchEnd, setTouchEnd] = useState(null);
 
   // 🆕 Obter array de imagens (compatível com formato antigo e novo)
   const getImages = () => {
@@ -30,16 +33,35 @@ export default function ProductCard({ produto }) {
   const images = getImages();
   const hasMultipleImages = images.length > 1;
 
-  // 🆕 Auto-play do carousel quando hover
-  useEffect(() => {
-    if (!hasMultipleImages || !isHovering) return;
+  // Mínimo de distância para considerar swipe (em pixels)
+  const minSwipeDistance = 50;
 
-    const interval = setInterval(() => {
+  // 🆕 Handlers para touch/swipe
+  const onTouchStart = (e) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+    
+    if (isLeftSwipe && hasMultipleImages) {
+      // Swipe para esquerda = próxima imagem
       setCurrentImageIndex((prev) => (prev + 1) % images.length);
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [hasMultipleImages, isHovering, images.length]);
+    }
+    if (isRightSwipe && hasMultipleImages) {
+      // Swipe para direita = imagem anterior
+      setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
+    }
+  };
 
   // 🆕 Navegação manual do carousel
   const goToImage = (index) => {
@@ -85,8 +107,9 @@ export default function ProductCard({ produto }) {
       {/* 🆕 CAROUSEL DE IMAGENS */}
       <div
         className="aspect-square bg-gray-200 relative group"
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
       >
         {images.length > 0 ? (
           <>
