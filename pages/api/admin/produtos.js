@@ -1,19 +1,32 @@
-// PAGES/API/ADMIN/PRODUTOS.JS - CORRIGIDO
+// PAGES/API/ADMIN/PRODUTOS.JS - ATUALIZADO COM MÚLTIPLAS IMAGENS
 // ===================================
-
 import dbConnect from '../../../lib/mongodb';
 import Produto from '../../../models/Produto';
-import Fornecedor from '../../../models/Fornecedor'; 
+import Fornecedor from '../../../models/Fornecedor';
 
 export default async function handler(req, res) {
   await dbConnect();
 
   if (req.method === 'POST') {
     try {
-      // Garantir que novo produto tenha ativo: true
+      // 🆕 Processar imagens (compatibilidade com formato antigo e novo)
+      let imagens = [];
+
+      // Se veio array de imagens
+      if (req.body.imagens && Array.isArray(req.body.imagens)) {
+        imagens = req.body.imagens;
+      }
+      // Se veio imagem única (retrocompatibilidade)
+      else if (req.body.imagem) {
+        imagens = [req.body.imagem];
+      }
+
       const produtoData = {
         ...req.body,
-        ativo: true, // Garantir que sempre seja true para novos produtos
+        imagens: imagens,
+        // 🔄 Manter campo antigo para retrocompatibilidade
+        imagem: imagens.length > 0 ? imagens[0] : null,
+        ativo: true,
       };
 
       const produto = new Produto(produtoData);
@@ -39,7 +52,6 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     try {
-      // 🔥 CORREÇÃO: Buscar produtos que tenham ativo: true OU que não tenham o campo ativo
       const produtos = await Produto.find({
         $or: [{ ativo: true }, { ativo: { $exists: false } }],
       })
@@ -66,11 +78,20 @@ export default async function handler(req, res) {
         return res.status(400).json({ message: 'ID do produto é obrigatório' });
       }
 
+      // 🆕 Processar imagens na atualização
+      const updateData = { ...req.body };
+
+      // Se veio array de imagens, atualizar ambos os campos
+      if (updateData.imagens && Array.isArray(updateData.imagens)) {
+        updateData.imagem = updateData.imagens.length > 0 ? updateData.imagens[0] : null;
+      }
+      // Se veio imagem única (retrocompatibilidade)
+      else if (updateData.imagem && !updateData.imagens) {
+        updateData.imagens = [updateData.imagem];
+      }
+
       // Garantir que ativo seja true ao atualizar
-      const updateData = {
-        ...req.body,
-        ativo: true,
-      };
+      updateData.ativo = true;
 
       const produto = await Produto.findByIdAndUpdate(id, updateData, {
         new: true,

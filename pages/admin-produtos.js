@@ -1,4 +1,4 @@
-// PAGES/ADMIN-PRODUTOS.JS - PÁGINA COMPLETA DE GESTÃO DE PRODUTOS
+// PAGES/ADMIN-PRODUTOS.JS - ATUALIZADO COM SUPORTE A MÚLTIPLAS IMAGENS
 // ================================================
 
 import { useState, useEffect } from 'react';
@@ -14,7 +14,7 @@ export default function AdminProdutos() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFornecedor, setSelectedFornecedor] = useState('todos');
   const [selectedCategoria, setSelectedCategoria] = useState('todas');
-  const [viewMode, setViewMode] = useState('grouped'); // 'grouped' ou 'list'
+  const [viewMode, setViewMode] = useState('grouped');
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const router = useRouter();
 
@@ -35,7 +35,6 @@ export default function AdminProdutos() {
       const data = await response.json();
       console.log('📦 Dados do usuário:', data);
       
-      // Verificar diferentes estruturas possíveis de resposta
       const isAdmin = 
         data.isAdmin === true || 
         data.user?.isAdmin === true || 
@@ -76,11 +75,27 @@ export default function AdminProdutos() {
     }
   };
 
+  // 🆕 Helper para obter imagens do produto
+  const getProductImages = (produto) => {
+    if (produto.imagens && produto.imagens.length > 0) {
+      return produto.imagens;
+    }
+    if (produto.imagem) {
+      return [produto.imagem];
+    }
+    return [];
+  };
+
+  // 🆕 Helper para obter imagem principal
+  const getMainImage = (produto) => {
+    const images = getProductImages(produto);
+    return images.length > 0 ? images[0] : null;
+  };
+
   // Agrupar produtos por fornecedor e categoria
   const produtosAgrupados = () => {
     let filteredProdutos = produtos;
 
-    // Aplicar filtros
     if (searchTerm) {
       filteredProdutos = filteredProdutos.filter(p => 
         p.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -101,7 +116,6 @@ export default function AdminProdutos() {
       );
     }
 
-    // Agrupar por fornecedor e categoria
     const grouped = {};
     
     filteredProdutos.forEach(produto => {
@@ -119,7 +133,6 @@ export default function AdminProdutos() {
       grouped[fornecedorNome][categoria].push(produto);
     });
 
-    // Ordenar produtos dentro de cada categoria
     Object.keys(grouped).forEach(fornecedor => {
       Object.keys(grouped[fornecedor]).forEach(categoria => {
         grouped[fornecedor][categoria].sort((a, b) => 
@@ -131,7 +144,6 @@ export default function AdminProdutos() {
     return grouped;
   };
 
-  // Obter todas as categorias únicas
   const todasCategorias = () => {
     const categorias = new Set();
     produtos.forEach(p => {
@@ -392,7 +404,7 @@ export default function AdminProdutos() {
                   <div className="p-4 space-y-4">
                     {Object.keys(grouped[fornecedor]).sort().map(categoria => {
                       const isExpanded = expandedCategories.has(`${fornecedor}-${categoria}`);
-                      const produtos = grouped[fornecedor][categoria];
+                      const produtosCategoria = grouped[fornecedor][categoria];
                       
                       return (
                         <div key={categoria} className="border rounded-lg overflow-hidden">
@@ -404,7 +416,7 @@ export default function AdminProdutos() {
                               <span className="text-lg">{isExpanded ? '📂' : '📁'}</span>
                               <h3 className="font-semibold text-gray-800">{categoria}</h3>
                               <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">
-                                {produtos.length} {produtos.length === 1 ? 'produto' : 'produtos'}
+                                {produtosCategoria.length} {produtosCategoria.length === 1 ? 'produto' : 'produtos'}
                               </span>
                             </div>
                             <span className="text-gray-400">
@@ -414,71 +426,103 @@ export default function AdminProdutos() {
 
                           {isExpanded && (
                             <div className="divide-y divide-gray-200">
-                              {produtos.map(produto => (
-                                <div key={produto._id} className="p-4 hover:bg-gray-50 transition">
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex gap-4 flex-1">
-                                      {/* Imagem */}
-                                      {produto.imagem && (
-                                        <img
-                                          src={produto.imagem}
-                                          alt={produto.nome}
-                                          className="w-16 h-16 object-cover rounded-lg border"
-                                        />
-                                      )}
-                                      
-                                      {/* Informações */}
-                                      <div className="flex-1">
-                                        <div className="flex items-start justify-between">
-                                          <div>
-                                            <h4 className="font-semibold text-gray-900">
-                                              {produto.nome}
-                                            </h4>
-                                            <p className="text-sm text-gray-500">
-                                              Código: {produto.codigo}
-                                            </p>
-                                            {produto.descricao && (
-                                              <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-                                                {produto.descricao}
+                              {produtosCategoria.map(produto => {
+                                const images = getProductImages(produto);
+                                const mainImage = getMainImage(produto);
+                                const precoTotal = (produto.preco || 0) + (produto.precoEtiqueta || 0) + (produto.precoEmbalagem || 0);
+                                
+                                return (
+                                  <div key={produto._id} className="p-4 hover:bg-gray-50 transition">
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex gap-4 flex-1">
+                                        {/* 🆕 Imagem com indicador de múltiplas */}
+                                        <div className="relative">
+                                          {mainImage ? (
+                                            <>
+                                              <img
+                                                src={mainImage}
+                                                alt={produto.nome}
+                                                className="w-16 h-16 object-cover rounded-lg border"
+                                              />
+                                              {/* Badge de múltiplas imagens */}
+                                              {images.length > 1 && (
+                                                <span className="absolute -top-1 -right-1 bg-purple-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                                                  {images.length}
+                                                </span>
+                                              )}
+                                            </>
+                                          ) : (
+                                            <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
+                                              <span className="text-gray-400 text-xs">Sem img</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        
+                                        {/* Informações */}
+                                        <div className="flex-1">
+                                          <div className="flex items-start justify-between">
+                                            <div>
+                                              <h4 className="font-semibold text-gray-900">
+                                                {produto.nome}
+                                              </h4>
+                                              <p className="text-sm text-gray-500">
+                                                Código: {produto.codigo}
                                               </p>
-                                            )}
-                                          </div>
-                                          
-                                          {/* Preços */}
-                                          <div className="text-right ml-4">
-                                            <p className="font-bold text-blue-600">
-                                              R$ {produto.preco?.toFixed(2)}
-                                            </p>
-                                            {produto.precoSemNF && (
-                                              <p className="text-sm text-green-600">
-                                                S/NF: R$ {produto.precoSemNF.toFixed(2)}
+                                              {produto.descricao && (
+                                                <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                                                  {produto.descricao}
+                                                </p>
+                                              )}
+                                              {/* 🆕 Info de imagens */}
+                                              {images.length > 0 && (
+                                                <p className="text-xs text-purple-600 mt-1">
+                                                  🖼️ {images.length} imagem{images.length > 1 ? 's' : ''}
+                                                </p>
+                                              )}
+                                            </div>
+                                            
+                                            {/* 🆕 Preços detalhados */}
+                                            <div className="text-right ml-4">
+                                              <p className="font-bold text-green-600">
+                                                R$ {precoTotal.toFixed(2)}
                                               </p>
-                                            )}
+                                              {(produto.precoEtiqueta > 0 || produto.precoEmbalagem > 0) && (
+                                                <div className="text-xs text-gray-500 mt-1">
+                                                  <p>Base: R$ {produto.preco?.toFixed(2)}</p>
+                                                  {produto.precoEtiqueta > 0 && (
+                                                    <p>🏷️ +R$ {produto.precoEtiqueta.toFixed(2)}</p>
+                                                  )}
+                                                  {produto.precoEmbalagem > 0 && (
+                                                    <p>📦 +R$ {produto.precoEmbalagem.toFixed(2)}</p>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
-                                    </div>
 
-                                    {/* Ações */}
-                                    <div className="flex gap-2 ml-4">
-                                      <button
-                                        onClick={() => handleEdit(produto)}
-                                        className="bg-yellow-100 text-yellow-700 p-2 rounded hover:bg-yellow-200 transition"
-                                        title="Editar"
-                                      >
-                                        ✏️
-                                      </button>
-                                      <button
-                                        onClick={() => handleDelete(produto._id)}
-                                        className="bg-red-100 text-red-700 p-2 rounded hover:bg-red-200 transition"
-                                        title="Remover"
-                                      >
-                                        🗑️
-                                      </button>
+                                      {/* Ações */}
+                                      <div className="flex gap-2 ml-4">
+                                        <button
+                                          onClick={() => handleEdit(produto)}
+                                          className="bg-yellow-100 text-yellow-700 p-2 rounded hover:bg-yellow-200 transition"
+                                          title="Editar"
+                                        >
+                                          ✏️
+                                        </button>
+                                        <button
+                                          onClick={() => handleDelete(produto._id)}
+                                          className="bg-red-100 text-red-700 p-2 rounded hover:bg-red-200 transition"
+                                          title="Remover"
+                                        >
+                                          🗑️
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -513,60 +557,78 @@ export default function AdminProdutos() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {Object.values(grouped).map(fornecedor =>
-                    Object.values(fornecedor).map(produtos =>
-                      produtos.map(produto => (
-                        <tr key={produto._id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              {produto.imagem && (
-                                <img
-                                  src={produto.imagem}
-                                  alt={produto.nome}
-                                  className="w-10 h-10 rounded-lg object-cover mr-3"
-                                />
+                    Object.values(fornecedor).map(produtosArr =>
+                      produtosArr.map(produto => {
+                        const images = getProductImages(produto);
+                        const mainImage = getMainImage(produto);
+                        const precoTotal = (produto.preco || 0) + (produto.precoEtiqueta || 0) + (produto.precoEmbalagem || 0);
+                        
+                        return (
+                          <tr key={produto._id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                {/* 🆕 Imagem com badge */}
+                                <div className="relative mr-3">
+                                  {mainImage ? (
+                                    <>
+                                      <img
+                                        src={mainImage}
+                                        alt={produto.nome}
+                                        className="w-10 h-10 rounded-lg object-cover"
+                                      />
+                                      {images.length > 1 && (
+                                        <span className="absolute -top-1 -right-1 bg-purple-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold">
+                                          {images.length}
+                                        </span>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <div className="w-10 h-10 bg-gray-200 rounded-lg" />
+                                  )}
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {produto.nome}
+                                  </div>
+                                  <div className="text-sm text-gray-500">
+                                    {produto.codigo}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {produto.fornecedorId?.nome || 'N/A'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {produto.categoria}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-semibold text-green-600">
+                                R$ {precoTotal.toFixed(2)}
+                              </div>
+                              {(produto.precoEtiqueta > 0 || produto.precoEmbalagem > 0) && (
+                                <div className="text-xs text-gray-500">
+                                  Base: R$ {produto.preco?.toFixed(2)}
+                                </div>
                               )}
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">
-                                  {produto.nome}
-                                </div>
-                                <div className="text-sm text-gray-500">
-                                  {produto.codigo}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {produto.fornecedorId?.nome || 'N/A'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {produto.categoria}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              R$ {produto.preco?.toFixed(2)}
-                            </div>
-                            {produto.precoSemNF && (
-                              <div className="text-sm text-green-600">
-                                S/NF: R$ {produto.precoSemNF.toFixed(2)}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <button
-                              onClick={() => handleEdit(produto)}
-                              className="text-yellow-600 hover:text-yellow-900 mr-3"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              onClick={() => handleDelete(produto._id)}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              Remover
-                            </button>
-                          </td>
-                        </tr>
-                      ))
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                              <button
+                                onClick={() => handleEdit(produto)}
+                                className="text-yellow-600 hover:text-yellow-900 mr-3"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                onClick={() => handleDelete(produto._id)}
+                                className="text-red-600 hover:text-red-900"
+                              >
+                                Remover
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )
                   ).flat()}
                 </tbody>

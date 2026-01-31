@@ -1,8 +1,5 @@
-// MODELS/PRODUTO.JS - ATUALIZADO COM ETIQUETA E EMBALAGEM
+// MODELS/PRODUTO.JS - ATUALIZADO COM MÚLTIPLAS IMAGENS
 // ===================================
-// Removido: precoSemNF
-// Adicionado: precoEtiqueta, precoEmbalagem
-
 import mongoose from 'mongoose';
 
 const ProdutoSchema = new mongoose.Schema(
@@ -38,21 +35,30 @@ const ProdutoSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
-    // 🆕 Valor da etiqueta (vai para o admin)
+    // Valor da etiqueta (vai para o admin)
     precoEtiqueta: {
       type: Number,
       required: true,
       default: 0,
       min: 0,
     },
-    // 🆕 Valor da embalagem (vai para o admin)
+    // Valor da embalagem (vai para o admin)
     precoEmbalagem: {
       type: Number,
       required: true,
       default: 0,
       min: 0,
     },
-    imagem: String, // URL do Cloudinary
+    // 🆕 ALTERADO: Array de imagens ao invés de única
+    imagens: {
+      type: [String], // Array de URLs do Cloudinary
+      default: [],
+    },
+    // 🔄 RETROCOMPATIBILIDADE: Manter campo antigo para migração
+    imagem: {
+      type: String,
+      default: null,
+    },
     ativo: {
       type: Boolean,
       default: true,
@@ -66,6 +72,31 @@ const ProdutoSchema = new mongoose.Schema(
 // Virtual para preço total (base + etiqueta + embalagem)
 ProdutoSchema.virtual('precoTotal').get(function () {
   return this.preco + (this.precoEtiqueta || 0) + (this.precoEmbalagem || 0);
+});
+
+// 🆕 Virtual para obter todas as imagens (compatível com formato antigo e novo)
+ProdutoSchema.virtual('todasImagens').get(function () {
+  const imgs = [];
+  
+  // Primeiro, adiciona imagens do novo array
+  if (this.imagens && this.imagens.length > 0) {
+    imgs.push(...this.imagens);
+  }
+  
+  // Se não tem imagens no array mas tem no campo antigo, usa ele
+  if (imgs.length === 0 && this.imagem) {
+    imgs.push(this.imagem);
+  }
+  
+  return imgs;
+});
+
+// 🆕 Virtual para imagem principal (primeira do array ou campo antigo)
+ProdutoSchema.virtual('imagemPrincipal').get(function () {
+  if (this.imagens && this.imagens.length > 0) {
+    return this.imagens[0];
+  }
+  return this.imagem || null;
 });
 
 // Garantir que virtuals apareçam no JSON

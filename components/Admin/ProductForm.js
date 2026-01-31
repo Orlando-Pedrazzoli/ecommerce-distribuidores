@@ -1,8 +1,5 @@
-// COMPONENTS/ADMIN/PRODUCTFORM.JS - ATUALIZADO COM ETIQUETA E EMBALAGEM
+// COMPONENTS/ADMIN/PRODUCTFORM.JS - ATUALIZADO COM MÚLTIPLAS IMAGENS
 // ===================================
-// Removido: precoSemNF
-// Adicionado: precoEtiqueta, precoEmbalagem
-
 import { useState, useEffect } from 'react';
 
 export default function ProductForm({ onSuccess, editingProduct = null }) {
@@ -20,8 +17,11 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
     precoEtiqueta: editingProduct?.precoEtiqueta || 0,
     precoEmbalagem: editingProduct?.precoEmbalagem || 0,
   });
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [currentImage, setCurrentImage] = useState(editingProduct?.imagem || '');
+
+  // 🆕 MÚLTIPLAS IMAGENS
+  const [selectedFiles, setSelectedFiles] = useState([]); // Array de novos arquivos
+  const [currentImages, setCurrentImages] = useState([]); // Array de URLs existentes
+  const [imagesToRemove, setImagesToRemove] = useState([]); // URLs marcadas para remoção
 
   // Estado para rastrear campos modificados
   const [modifiedFields, setModifiedFields] = useState(new Set());
@@ -53,9 +53,24 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         precoEtiqueta: editingProduct.precoEtiqueta || 0,
         precoEmbalagem: editingProduct.precoEmbalagem || 0,
       });
-      setCurrentImage(editingProduct.imagem || '');
-      setSelectedFile(null);
+
+      // 🆕 Carregar imagens existentes (compatível com formato antigo e novo)
+      const existingImages = [];
+      if (editingProduct.imagens && editingProduct.imagens.length > 0) {
+        existingImages.push(...editingProduct.imagens);
+      } else if (editingProduct.imagem) {
+        existingImages.push(editingProduct.imagem);
+      }
+      setCurrentImages(existingImages);
+
+      setSelectedFiles([]);
+      setImagesToRemove([]);
       setModifiedFields(new Set());
+    } else {
+      // Modo criação - limpar tudo
+      setCurrentImages([]);
+      setSelectedFiles([]);
+      setImagesToRemove([]);
     }
   }, [editingProduct]);
 
@@ -78,33 +93,86 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
       [name]: value,
     }));
 
-    // Marcar campo como modificado
     if (editingProduct) {
       setModifiedFields(prev => new Set([...prev, name]));
     }
   };
 
+  // 🆕 SELEÇÃO DE MÚLTIPLOS ARQUIVOS
   const handleFileSelect = e => {
-    const file = e.target.files[0];
-    if (file) {
+    const files = Array.from(e.target.files);
+
+    // Validar cada arquivo
+    const validFiles = files.filter(file => {
       if (file.size > 5 * 1024 * 1024) {
-        alert('Arquivo muito grande. Máximo 5MB.');
-        return;
+        alert(`Arquivo ${file.name} é muito grande. Máximo 5MB.`);
+        return false;
       }
-      setSelectedFile(file);
-      if (editingProduct) {
-        setModifiedFields(prev => new Set([...prev, 'imagem']));
-      }
+      return true;
+    });
+
+    // Limitar total de imagens (existentes + novas - removidas)
+    const totalImages = currentImages.length - imagesToRemove.length + selectedFiles.length + validFiles.length;
+    if (totalImages > 10) {
+      alert('Máximo de 10 imagens por produto.');
+      return;
+    }
+
+    setSelectedFiles(prev => [...prev, ...validFiles]);
+
+    if (editingProduct) {
+      setModifiedFields(prev => new Set([...prev, 'imagens']));
+    }
+
+    // Limpar input para permitir selecionar o mesmo arquivo novamente
+    e.target.value = '';
+  };
+
+  // 🆕 REMOVER IMAGEM EXISTENTE
+  const handleRemoveCurrentImage = (imageUrl) => {
+    setImagesToRemove(prev => [...prev, imageUrl]);
+    if (editingProduct) {
+      setModifiedFields(prev => new Set([...prev, 'imagens']));
     }
   };
 
-  const uploadImage = async () => {
-    if (!selectedFile) return currentImage;
+  // 🆕 RESTAURAR IMAGEM MARCADA PARA REMOÇÃO
+  const handleRestoreImage = (imageUrl) => {
+    setImagesToRemove(prev => prev.filter(url => url !== imageUrl));
+  };
+
+  // 🆕 REMOVER ARQUIVO SELECIONADO (ainda não enviado)
+  const handleRemoveSelectedFile = (index) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // 🆕 REORDENAR IMAGENS (arrastar)
+  const handleMoveImage = (fromIndex, direction) => {
+    const toIndex = fromIndex + direction;
+    if (toIndex < 0 || toIndex >= currentImages.length) return;
+
+    const newImages = [...currentImages];
+    [newImages[fromIndex], newImages[toIndex]] = [newImages[toIndex], newImages[fromIndex]];
+    setCurrentImages(newImages);
+
+    if (editingProduct) {
+      setModifiedFields(prev => new Set([...prev, 'imagens']));
+    }
+  };
+
+  // 🆕 UPLOAD DE MÚLTIPLAS IMAGENS
+  const uploadImages = async () => {
+    if (selectedFiles.length === 0) {
+      // Retornar apenas as imagens existentes (menos as removidas)
+      return currentImages.filter(url => !imagesToRemove.includes(url));
+    }
 
     setUploadingImage(true);
     try {
       const formDataUpload = new FormData();
-      formDataUpload.append('images', selectedFile);
+      selectedFiles.forEach(file => {
+        formDataUpload.append('images', file);
+      });
 
       const response = await fetch('/api/admin/upload', {
         method: 'POST',
@@ -112,15 +180,23 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
       });
 
       if (!response.ok) {
-        throw new Error('Erro no upload da imagem');
+        throw new Error('Erro no upload das imagens');
       }
 
       const data = await response.json();
-      return data.imageUrls[0];
+      const newImageUrls = data.imageUrls || [];
+
+      // Combinar: imagens existentes (menos removidas) + novas
+      const finalImages = [
+        ...currentImages.filter(url => !imagesToRemove.includes(url)),
+        ...newImageUrls,
+      ];
+
+      return finalImages;
     } catch (error) {
       console.error('Erro ao fazer upload:', error);
-      alert('Erro ao fazer upload da imagem');
-      return currentImage;
+      alert('Erro ao fazer upload das imagens');
+      return currentImages.filter(url => !imagesToRemove.includes(url));
     } finally {
       setUploadingImage(false);
     }
@@ -147,8 +223,8 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
     setLoading(true);
 
     try {
-      // Upload da imagem (só se houver nova imagem)
-      const imageUrl = await uploadImage();
+      // Upload das imagens
+      const imageUrls = await uploadImages();
 
       let productData;
 
@@ -182,8 +258,10 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         if (precoEmbalagem !== (editingProduct.precoEmbalagem || 0)) {
           productData.precoEmbalagem = precoEmbalagem;
         }
-        if (selectedFile) {
-          productData.imagem = imageUrl;
+
+        // 🆕 Verificar se imagens foram modificadas
+        if (modifiedFields.has('imagens')) {
+          productData.imagens = imageUrls;
         }
 
         if (Object.keys(productData).length === 0) {
@@ -198,7 +276,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
           preco: precoBase,
           precoEtiqueta: precoEtiqueta,
           precoEmbalagem: precoEmbalagem,
-          imagem: imageUrl,
+          imagens: imageUrls, // 🆕 Array de imagens
         };
       }
 
@@ -238,16 +316,18 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             precoEtiqueta: 0,
             precoEmbalagem: 0,
           });
-          setCurrentImage('');
-          setSelectedFile(null);
+          setCurrentImages([]);
+          setSelectedFiles([]);
+          setImagesToRemove([]);
           setSelectedFornecedor(null);
           setModifiedFields(new Set());
 
-          const fileInput = document.getElementById('imageFile');
+          const fileInput = document.getElementById('imageFiles');
           if (fileInput) fileInput.value = '';
         } else {
           setModifiedFields(new Set());
-          setSelectedFile(null);
+          setSelectedFiles([]);
+          setImagesToRemove([]);
         }
 
         onSuccess && onSuccess();
@@ -269,6 +349,9 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
   const precoEmbalagem = parseFloat(formData.precoEmbalagem) || 0;
   const precoTotal = precoBase + precoEtiqueta + precoEmbalagem;
 
+  // 🆕 Contagem de imagens
+  const totalImagesCount = currentImages.length - imagesToRemove.length + selectedFiles.length;
+
   return (
     <div className='bg-white rounded-lg shadow-md p-4 sm:p-6'>
       <div className='flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-6'>
@@ -286,8 +369,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
       {editingProduct && (
         <div className='mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg'>
           <p className='text-xs sm:text-sm text-blue-800'>
-            <strong>ℹ️ Modo Edição:</strong> Modifique apenas os campos que deseja
-            atualizar.
+            <strong>ℹ️ Modo Edição:</strong> Modifique apenas os campos que deseja atualizar.
           </p>
         </div>
       )}
@@ -420,7 +502,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         </div>
 
         {/* ══════════════════════════════════════════════════════════════ */}
-        {/* SEÇÃO DE PREÇOS - ATUALIZADA */}
+        {/* SEÇÃO DE PREÇOS */}
         {/* ══════════════════════════════════════════════════════════════ */}
         <div className='bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg p-4'>
           <h3 className='text-base sm:text-lg font-semibold text-blue-800 mb-2 flex items-center gap-2'>
@@ -461,7 +543,6 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
 
           {/* Grid: Etiqueta e Embalagem */}
           <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-            {/* Preço Etiqueta */}
             <div>
               <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
                 🏷️ Valor Etiqueta (R$)
@@ -486,7 +567,6 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
               <p className='text-xs text-gray-500 mt-1'>Valor cobrado pela etiqueta</p>
             </div>
 
-            {/* Preço Embalagem */}
             <div>
               <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
                 📦 Valor Embalagem (R$)
@@ -554,54 +634,195 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
           )}
         </div>
 
-        {/* Imagem atual */}
-        {currentImage && (
-          <div>
-            <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
-              Imagem Atual
-            </label>
-            <img
-              src={currentImage}
-              alt='Produto'
-              className='w-20 h-20 sm:w-24 sm:h-24 object-cover rounded border'
-            />
-          </div>
-        )}
-
-        {/* Upload de Imagem */}
-        <div>
-          <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
-            {currentImage ? 'Alterar Imagem' : 'Imagem do Produto'}
-            {editingProduct && selectedFile && (
-              <span className='ml-2 text-xs text-yellow-600'>● Será atualizada</span>
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* 🆕 SEÇÃO DE IMAGENS - MÚLTIPLAS */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <div className='bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg p-4'>
+          <h3 className='text-base sm:text-lg font-semibold text-purple-800 mb-2 flex items-center gap-2'>
+            <span>🖼️</span>
+            Imagens do Produto
+            <span className='text-xs font-normal bg-purple-200 px-2 py-1 rounded-full'>
+              {totalImagesCount}/10
+            </span>
+            {editingProduct && modifiedFields.has('imagens') && (
+              <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
             )}
-          </label>
-          <input
-            type='file'
-            id='imageFile'
-            accept='image/*'
-            onChange={handleFileSelect}
-            className='w-full border border-gray-300 rounded px-3 py-2 text-sm sm:text-base focus:outline-none focus:border-blue-500'
-          />
-          <p className='text-xs text-gray-500 mt-1'>
-            Máximo 5MB. Formatos: JPG, PNG, WEBP
-            {editingProduct && ' (deixe em branco para manter a imagem atual)'}
+          </h3>
+          <p className='text-xs sm:text-sm text-purple-700 mb-4'>
+            Adicione até 10 imagens. A primeira será a imagem principal exibida no catálogo.
           </p>
-        </div>
 
-        {/* Preview da nova imagem */}
-        {selectedFile && (
+          {/* Imagens Atuais */}
+          {currentImages.length > 0 && (
+            <div className='mb-4'>
+              <label className='block text-gray-700 font-medium mb-2 text-sm'>
+                Imagens Atuais ({currentImages.length - imagesToRemove.length})
+              </label>
+              <div className='grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3'>
+                {currentImages.map((imageUrl, index) => {
+                  const isMarkedForRemoval = imagesToRemove.includes(imageUrl);
+                  return (
+                    <div
+                      key={imageUrl}
+                      className={`relative group rounded-lg overflow-hidden border-2 ${
+                        isMarkedForRemoval
+                          ? 'border-red-400 opacity-50'
+                          : index === 0
+                          ? 'border-green-400'
+                          : 'border-gray-200'
+                      }`}
+                    >
+                      <img
+                        src={imageUrl}
+                        alt={`Imagem ${index + 1}`}
+                        className='w-full aspect-square object-cover'
+                      />
+
+                      {/* Badge de principal */}
+                      {index === 0 && !isMarkedForRemoval && (
+                        <span className='absolute top-1 left-1 bg-green-500 text-white text-xs px-2 py-0.5 rounded'>
+                          Principal
+                        </span>
+                      )}
+
+                      {/* Controles */}
+                      <div className='absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-1'>
+                        {isMarkedForRemoval ? (
+                          <button
+                            type='button'
+                            onClick={() => handleRestoreImage(imageUrl)}
+                            className='bg-green-500 text-white p-1.5 rounded-full hover:bg-green-600'
+                            title='Restaurar'
+                          >
+                            ↩️
+                          </button>
+                        ) : (
+                          <>
+                            {/* Mover para esquerda */}
+                            {index > 0 && (
+                              <button
+                                type='button'
+                                onClick={() => handleMoveImage(index, -1)}
+                                className='bg-white text-gray-800 p-1.5 rounded-full hover:bg-gray-200'
+                                title='Mover para esquerda'
+                              >
+                                ◀
+                              </button>
+                            )}
+                            {/* Mover para direita */}
+                            {index < currentImages.length - 1 && (
+                              <button
+                                type='button'
+                                onClick={() => handleMoveImage(index, 1)}
+                                className='bg-white text-gray-800 p-1.5 rounded-full hover:bg-gray-200'
+                                title='Mover para direita'
+                              >
+                                ▶
+                              </button>
+                            )}
+                            {/* Remover */}
+                            <button
+                              type='button'
+                              onClick={() => handleRemoveCurrentImage(imageUrl)}
+                              className='bg-red-500 text-white p-1.5 rounded-full hover:bg-red-600'
+                              title='Remover'
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {imagesToRemove.length > 0 && (
+                <p className='text-xs text-red-600 mt-2'>
+                  ⚠️ {imagesToRemove.length} imagem(ns) marcada(s) para remoção
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Preview de Novos Arquivos */}
+          {selectedFiles.length > 0 && (
+            <div className='mb-4'>
+              <label className='block text-gray-700 font-medium mb-2 text-sm'>
+                Novas Imagens ({selectedFiles.length})
+              </label>
+              <div className='grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3'>
+                {selectedFiles.map((file, index) => (
+                  <div
+                    key={index}
+                    className='relative group rounded-lg overflow-hidden border-2 border-blue-400'
+                  >
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt={`Nova ${index + 1}`}
+                      className='w-full aspect-square object-cover'
+                    />
+                    <span className='absolute top-1 left-1 bg-blue-500 text-white text-xs px-2 py-0.5 rounded'>
+                      Nova
+                    </span>
+                    <button
+                      type='button'
+                      onClick={() => handleRemoveSelectedFile(index)}
+                      className='absolute top-1 right-1 bg-red-500 text-white w-6 h-6 rounded-full opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-xs'
+                      title='Remover'
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Input de Upload */}
           <div>
-            <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
-              Preview da Nova Imagem
+            <label
+              htmlFor='imageFiles'
+              className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition ${
+                totalImagesCount >= 10
+                  ? 'border-gray-300 bg-gray-100 cursor-not-allowed'
+                  : 'border-purple-300 bg-purple-50 hover:bg-purple-100'
+              }`}
+            >
+              <div className='flex flex-col items-center justify-center pt-5 pb-6'>
+                <svg
+                  className='w-8 h-8 mb-2 text-purple-500'
+                  fill='none'
+                  stroke='currentColor'
+                  viewBox='0 0 24 24'
+                >
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M12 6v6m0 0v6m0-6h6m-6 0H6'
+                  />
+                </svg>
+                <p className='text-sm text-purple-600'>
+                  {totalImagesCount >= 10
+                    ? 'Limite de imagens atingido'
+                    : 'Clique para adicionar imagens'}
+                </p>
+                <p className='text-xs text-gray-500 mt-1'>
+                  PNG, JPG, WEBP até 5MB cada
+                </p>
+              </div>
+              <input
+                type='file'
+                id='imageFiles'
+                accept='image/*'
+                multiple
+                onChange={handleFileSelect}
+                disabled={totalImagesCount >= 10}
+                className='hidden'
+              />
             </label>
-            <img
-              src={URL.createObjectURL(selectedFile)}
-              alt='Preview'
-              className='w-20 h-20 sm:w-24 sm:h-24 object-cover rounded border'
-            />
           </div>
-        )}
+        </div>
 
         {/* Submit Button */}
         <button
@@ -611,7 +832,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         >
           {loading || uploadingImage
             ? uploadingImage
-              ? '⏳ Fazendo upload...'
+              ? `⏳ Fazendo upload de ${selectedFiles.length} imagem(ns)...`
               : '⏳ Salvando...'
             : editingProduct
             ? modifiedFields.size > 0
