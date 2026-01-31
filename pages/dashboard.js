@@ -197,10 +197,7 @@ export default function Dashboard() {
               Bem-vindo, {user?.nome || 'Usuário'}!
             </h1>
             <p className='text-xl text-gray-600 mb-2'>
-              Escolha o fornecedor para ver os produtos disponíveis
-            </p>
-            <p className='text-gray-500'>
-              Sistema exclusivo para distribuidores autorizados
+             Sistema exclusivo para distribuidores autorizados
             </p>
           </div>
 
@@ -296,7 +293,7 @@ export default function Dashboard() {
                 {/* Royalties Pendentes */}
                 <div className='bg-yellow-50 rounded-lg p-4 text-center'>
                   <p className='text-xs text-gray-500 mb-1'>Royalties Pend.</p>
-                  <p className='text-xl font-bold text-yellow-600'>
+                  <p className='text-l font-bold text-yellow-600'>
                     R$ {(resumo.royaltiesPendentes || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
@@ -304,7 +301,7 @@ export default function Dashboard() {
                 {/* Etiquetas Pendentes */}
                 <div className='bg-orange-50 rounded-lg p-4 text-center'>
                   <p className='text-xs text-gray-500 mb-1'>Etiquetas Pend.</p>
-                  <p className='text-xl font-bold text-orange-600'>
+                  <p className='text-l font-bold text-orange-600'>
                     R$ {(resumo.etiquetasPendentes || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
@@ -312,15 +309,15 @@ export default function Dashboard() {
                 {/* Embalagens Pendentes */}
                 <div className='bg-purple-50 rounded-lg p-4 text-center'>
                   <p className='text-xs text-gray-500 mb-1'>Embalagens Pend.</p>
-                  <p className='text-xl font-bold text-purple-600'>
+                  <p className='text-l font-bold text-purple-600'>
                     R$ {(resumo.embalagensPendentes || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
                 
                 {/* Total Pendente */}
                 <div className='bg-red-50 rounded-lg p-4 text-center border-2 border-red-200'>
-                  <p className='text-xs text-gray-500 mb-1'>TOTAL PENDENTE</p>
-                  <p className='text-xl font-bold text-red-600'>
+                  <p className='text-xs text-gray-500 mb-1'>Total Pendente</p>
+                  <p className='text-l font-bold text-red-600'>
                     R$ {totalPendente.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
@@ -392,7 +389,7 @@ export default function Dashboard() {
           {/* ══════════════════════════════════════════════════════════════ */}
           <div className='mb-6'>
             <h2 className='text-xl font-bold text-gray-800 mb-4'>
-              🏭 Fornecedores Disponíveis
+              Fornecedores Disponíveis
             </h2>
           </div>
 
