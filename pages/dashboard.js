@@ -305,7 +305,7 @@ export default function Dashboard() {
                 
                 {/* Royalties Pendentes */}
                 <div className='bg-yellow-50 rounded-lg p-4 text-center'>
-                  <p className='text-xs text-gray-500 mb-1'>Taxa Serviço Pend.</p>
+                  <p className='text-xs text-gray-500 mb-1'>Royalties Pend.</p>
                   <p className='text-xl font-bold text-yellow-600'>
                     R$ {(resumo.royaltiesPendentes || 0).toFixed(2)}
                   </p>
@@ -348,10 +348,10 @@ export default function Dashboard() {
           )}
 
           {/* ══════════════════════════════════════════════════════════════ */}
-          {/* PEDIDOS RECENTES */}
+          {/* PEDIDOS RECENTES - OCULTO NO MOBILE */}
           {/* ══════════════════════════════════════════════════════════════ */}
           {pedidosRecentes.length > 0 && (
-            <div className='bg-white rounded-xl shadow-md p-6 mb-8'>
+            <div className='hidden sm:block bg-white rounded-xl shadow-md p-6 mb-8'>
               <div className='flex items-center justify-between mb-4'>
                 <h2 className='text-lg font-bold text-gray-800 flex items-center gap-2'>
                   📦 Pedidos Recentes
