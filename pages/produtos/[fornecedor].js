@@ -301,82 +301,94 @@ export default function ProdutosFornecedor() {
             </button>
           </div>
 
-          {/* Mobile Filter Modal */}
+          {/* Mobile Filter Modal - TELA CHEIA */}
           {showMobileFilters && (
-            <div className='lg:hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end'>
-              <div className='bg-white w-full max-h-[80vh] rounded-t-xl overflow-y-auto'>
-                <div className='sticky top-0 bg-white border-b p-4 flex justify-between items-center'>
-                  <h3 className='font-bold text-gray-800 text-lg'>
-                    Filtrar por Categoria
-                  </h3>
-                  <button
-                    onClick={() => setShowMobileFilters(false)}
-                    className='text-gray-500 hover:text-gray-700'
+            <div className='lg:hidden fixed inset-0 bg-white z-50 flex flex-col'>
+              {/* Header fixo */}
+              <div className='bg-white border-b p-4 flex justify-between items-center'>
+                <h3 className='font-bold text-gray-800 text-lg'>
+                  Filtrar por Categoria
+                </h3>
+                <button
+                  onClick={() => setShowMobileFilters(false)}
+                  className='text-gray-500 hover:text-gray-700 p-2'
+                >
+                  <svg
+                    className='w-6 h-6'
+                    fill='none'
+                    stroke='currentColor'
+                    viewBox='0 0 24 24'
                   >
-                    <svg
-                      className='w-6 h-6'
-                      fill='none'
-                      stroke='currentColor'
-                      viewBox='0 0 24 24'
-                    >
-                      <path
-                        strokeLinecap='round'
-                        strokeLinejoin='round'
-                        strokeWidth={2}
-                        d='M6 18L18 6M6 6l12 12'
-                      />
-                    </svg>
-                  </button>
-                </div>
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M6 18L18 6M6 6l12 12'
+                    />
+                  </svg>
+                </button>
+              </div>
 
-                <div className='p-4 space-y-2'>
-                  {/* Todas as Categorias */}
+              {/* Conteúdo scrollável */}
+              <div className='flex-1 overflow-y-auto p-4 space-y-2'>
+                {/* Todas as Categorias */}
+                <button
+                  onClick={() => {
+                    setCategoriaFiltro('Todas');
+                    setShowMobileFilters(false);
+                  }}
+                  className={`w-full text-left px-4 py-3 rounded-lg transition ${
+                    categoriaFiltro === 'Todas'
+                      ? `bg-gradient-to-r ${obterCorFornecedor(
+                          fornecedorInfo.codigo
+                        )} text-white shadow-md`
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  Todas as Categorias
+                </button>
+
+                {/* Grupos de Categorias */}
+                {Object.entries(grupos).map(([groupName, groupCats]) => (
+                  <CategoriaGrupo
+                    key={groupName}
+                    nome={groupName}
+                    subcategorias={groupCats}
+                    isMobile={true}
+                  />
+                ))}
+
+                {/* Categorias Individuais */}
+                {individuais.map(categoria => (
                   <button
+                    key={categoria}
                     onClick={() => {
-                      setCategoriaFiltro('Todas');
+                      setCategoriaFiltro(categoria);
                       setShowMobileFilters(false);
                     }}
                     className={`w-full text-left px-4 py-3 rounded-lg transition ${
-                      categoriaFiltro === 'Todas'
+                      categoriaFiltro === categoria
                         ? `bg-gradient-to-r ${obterCorFornecedor(
                             fornecedorInfo.codigo
                           )} text-white shadow-md`
                         : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                     }`}
                   >
-                    Todas as Categorias
+                    {categoria}
                   </button>
+                ))}
+              </div>
 
-                  {/* Grupos de Categorias */}
-                  {Object.entries(grupos).map(([groupName, groupCats]) => (
-                    <CategoriaGrupo
-                      key={groupName}
-                      nome={groupName}
-                      subcategorias={groupCats}
-                      isMobile={true}
-                    />
-                  ))}
-
-                  {/* Categorias Individuais */}
-                  {individuais.map(categoria => (
-                    <button
-                      key={categoria}
-                      onClick={() => {
-                        setCategoriaFiltro(categoria);
-                        setShowMobileFilters(false);
-                      }}
-                      className={`w-full text-left px-4 py-3 rounded-lg transition ${
-                        categoriaFiltro === categoria
-                          ? `bg-gradient-to-r ${obterCorFornecedor(
-                              fornecedorInfo.codigo
-                            )} text-white shadow-md`
-                          : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                      }`}
-                    >
-                      {categoria}
-                    </button>
-                  ))}
-                </div>
+              {/* Footer fixo com botão fechar */}
+              <div className='border-t p-4 bg-white'>
+                <button
+                  onClick={() => setShowMobileFilters(false)}
+                  className={`w-full bg-gradient-to-r ${obterCorFornecedor(
+                    fornecedorInfo.codigo
+                  )} text-white py-3 rounded-lg font-medium`}
+                >
+                  Aplicar Filtro
+                </button>
               </div>
             </div>
           )}
