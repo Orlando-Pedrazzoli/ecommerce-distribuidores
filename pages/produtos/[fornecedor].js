@@ -1,4 +1,4 @@
-// PAGES/PRODUTOS/[FORNECEDOR].JS - COM GRADIENTES PERSONALIZADOS
+// PAGES/PRODUTOS/[FORNECEDOR].JS - COM CATEGORIAS AGRUPADAS
 // ===================================
 
 import { useState, useEffect } from 'react';
@@ -16,6 +16,9 @@ export default function ProdutosFornecedor() {
   const [fornecedorInfo, setFornecedorInfo] = useState(null);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
+  // Estado para controlar accordion de grupos expandidos
+  const [expandedGroups, setExpandedGroups] = useState({});
+
   // Mapeamento das cores dos fornecedores - igual ao dashboard
   const fornecedorCores = {
     A: 'from-[#ff7e5f] to-[#feb47b]', // Vitor - Pandawa
@@ -28,11 +31,70 @@ export default function ProdutosFornecedor() {
     return fornecedorCores[codigo] || 'from-gray-500 to-gray-600';
   };
 
+  // Função para agrupar categorias
+  const agruparCategorias = (cats) => {
+    const grupos = {};
+    const individuais = [];
+
+    cats.forEach(cat => {
+      // Agrupar categorias que começam com "Leash"
+      if (cat.toLowerCase().startsWith('leash')) {
+        if (!grupos['Leashes']) {
+          grupos['Leashes'] = [];
+        }
+        grupos['Leashes'].push(cat);
+      }
+      // Agrupar categorias que começam com "Deck"
+      else if (cat.toLowerCase().startsWith('deck')) {
+        if (!grupos['Decks']) {
+          grupos['Decks'] = [];
+        }
+        grupos['Decks'].push(cat);
+      }
+      // Agrupar categorias que começam com "Capa"
+      else if (cat.toLowerCase().startsWith('capa')) {
+        if (!grupos['Capas']) {
+          grupos['Capas'] = [];
+        }
+        grupos['Capas'].push(cat);
+      }
+      // Outras categorias ficam individuais
+      else {
+        individuais.push(cat);
+      }
+    });
+
+    return { grupos, individuais };
+  };
+
+  // Toggle para expandir/colapsar grupo
+  const toggleGroup = (groupName) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupName]: !prev[groupName]
+    }));
+  };
+
+  // Verificar se uma categoria do grupo está selecionada
+  const isGroupActive = (groupCats) => {
+    return groupCats.some(cat => cat === categoriaFiltro);
+  };
+
   useEffect(() => {
     if (fornecedor) {
       buscarProdutos();
     }
   }, [fornecedor, categoriaFiltro]);
+
+  // Expandir grupo automaticamente se categoria selecionada está nele
+  useEffect(() => {
+    const { grupos } = agruparCategorias(categorias);
+    Object.entries(grupos).forEach(([groupName, groupCats]) => {
+      if (groupCats.includes(categoriaFiltro)) {
+        setExpandedGroups(prev => ({ ...prev, [groupName]: true }));
+      }
+    });
+  }, [categoriaFiltro, categorias]);
 
   const buscarProdutos = async () => {
     try {
@@ -97,6 +159,94 @@ export default function ProdutosFornecedor() {
     );
   }
 
+  // Organizar categorias
+  const { grupos, individuais } = agruparCategorias(categorias);
+
+  // Componente de Categoria Individual
+  const CategoriaButton = ({ categoria, onClick, isSelected, className = '' }) => (
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-3 py-2 rounded transition ${
+        isSelected
+          ? `bg-gradient-to-r ${obterCorFornecedor(fornecedorInfo.codigo)} text-white shadow-md`
+          : 'hover:bg-gray-100 text-gray-700'
+      } ${className}`}
+    >
+      {categoria}
+    </button>
+  );
+
+  // Componente de Grupo de Categorias (Accordion)
+  const CategoriaGrupo = ({ nome, subcategorias, isMobile = false }) => {
+    const isExpanded = expandedGroups[nome];
+    const hasActiveChild = isGroupActive(subcategorias);
+
+    // Se só tem 1 item no grupo, mostrar direto sem accordion
+    if (subcategorias.length === 1) {
+      return (
+        <CategoriaButton
+          categoria={subcategorias[0]}
+          onClick={() => {
+            setCategoriaFiltro(subcategorias[0]);
+            if (isMobile) setShowMobileFilters(false);
+          }}
+          isSelected={categoriaFiltro === subcategorias[0]}
+        />
+      );
+    }
+
+    return (
+      <div className='space-y-1'>
+        {/* Header do Grupo */}
+        <button
+          onClick={() => toggleGroup(nome)}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded transition ${
+            hasActiveChild
+              ? 'bg-gray-200 text-gray-900 font-medium'
+              : 'hover:bg-gray-100 text-gray-700'
+          }`}
+        >
+          <span className='flex items-center gap-2'>
+            {nome}
+            <span className='text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full'>
+              {subcategorias.length}
+            </span>
+          </span>
+          <svg
+            className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+            fill='none'
+            stroke='currentColor'
+            viewBox='0 0 24 24'
+          >
+            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 9l-7 7-7-7' />
+          </svg>
+        </button>
+
+        {/* Subcategorias */}
+        {isExpanded && (
+          <div className='pl-4 space-y-1 border-l-2 border-gray-200 ml-2'>
+            {subcategorias.map(cat => (
+              <button
+                key={cat}
+                onClick={() => {
+                  setCategoriaFiltro(cat);
+                  if (isMobile) setShowMobileFilters(false);
+                }}
+                className={`w-full text-left px-3 py-2 rounded text-sm transition ${
+                  categoriaFiltro === cat
+                    ? `bg-gradient-to-r ${obterCorFornecedor(fornecedorInfo.codigo)} text-white shadow-md`
+                    : 'hover:bg-gray-100 text-gray-600'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Layout>
       <div className='max-w-7xl mx-auto px-4 py-8'>
@@ -147,8 +297,7 @@ export default function ProdutosFornecedor() {
                   d='M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.707A1 1 0 013 7V4z'
                 />
               </svg>
-              Filtros ({categoriaFiltro === 'Todas' ? 'Todos' : categoriaFiltro}
-              )
+              Filtros ({categoriaFiltro === 'Todas' ? 'Todos' : categoriaFiltro})
             </button>
           </div>
 
@@ -181,6 +330,7 @@ export default function ProdutosFornecedor() {
                 </div>
 
                 <div className='p-4 space-y-2'>
+                  {/* Todas as Categorias */}
                   <button
                     onClick={() => {
                       setCategoriaFiltro('Todas');
@@ -197,7 +347,18 @@ export default function ProdutosFornecedor() {
                     Todas as Categorias
                   </button>
 
-                  {categorias.map(categoria => (
+                  {/* Grupos de Categorias */}
+                  {Object.entries(grupos).map(([groupName, groupCats]) => (
+                    <CategoriaGrupo
+                      key={groupName}
+                      nome={groupName}
+                      subcategorias={groupCats}
+                      isMobile={true}
+                    />
+                  ))}
+
+                  {/* Categorias Individuais */}
+                  {individuais.map(categoria => (
                     <button
                       key={categoria}
                       onClick={() => {
@@ -225,6 +386,7 @@ export default function ProdutosFornecedor() {
             <h3 className='font-bold text-gray-800 text-lg mb-4'>Categorias</h3>
 
             <div className='space-y-2'>
+              {/* Todas as Categorias */}
               <button
                 onClick={() => setCategoriaFiltro('Todas')}
                 className={`w-full text-left px-3 py-2 rounded transition ${
@@ -238,7 +400,18 @@ export default function ProdutosFornecedor() {
                 Todas as Categorias
               </button>
 
-              {categorias.map(categoria => (
+              {/* Grupos de Categorias (Accordion) */}
+              {Object.entries(grupos).map(([groupName, groupCats]) => (
+                <CategoriaGrupo
+                  key={groupName}
+                  nome={groupName}
+                  subcategorias={groupCats}
+                  isMobile={false}
+                />
+              ))}
+
+              {/* Categorias Individuais */}
+              {individuais.map(categoria => (
                 <button
                   key={categoria}
                   onClick={() => setCategoriaFiltro(categoria)}

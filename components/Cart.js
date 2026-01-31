@@ -1,6 +1,5 @@
-// COMPONENTS/CART.JS - SIMPLIFICADO (SEM OPÇÃO COM/SEM NF)
+// COMPONENTS/CART.JS - COM FORMATO BRASILEIRO E DETALHAMENTO COMPLETO
 // ===================================
-// Removido: lógica COM/SEM NF
 // Preço único: base + etiqueta + embalagem
 // Royalties: 5% apenas sobre preço BASE
 
@@ -24,6 +23,11 @@ export default function Cart({ isOpen, onClose }) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [pendingRemoval, setPendingRemoval] = useState(null);
   const [pendingClearCart, setPendingClearCart] = useState(false);
+
+  // Formato brasileiro de moeda
+  const formatarMoeda = (valor) => {
+    return `R$ ${(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
 
   // Animação de entrada
   useEffect(() => {
@@ -94,16 +98,16 @@ export default function Cart({ isOpen, onClose }) {
       toast.info(`${item?.nome} removido do carrinho`);
     } else {
       setPendingRemoval(itemId);
-      toast.warning(`Clique novamente no 🗑️ para remover ${item?.nome}`, 3000);
+      toast.warning(`Clique novamente no lixo para remover ${item?.nome}`, 3000);
       setTimeout(() => setPendingRemoval(null), 3000);
     }
   };
 
   // ══════════════════════════════════════════════════════════════
-  // CÁLCULOS SIMPLIFICADOS
+  // CÁLCULOS
   // ══════════════════════════════════════════════════════════════
 
-  // Subtotal BASE (para cálculo de royalties)
+  // Subtotal BASE (preço dos produtos)
   const subtotalBase = cart.reduce(
     (total, item) => total + (item.preco || 0) * item.quantidade,
     0
@@ -164,7 +168,7 @@ export default function Cart({ isOpen, onClose }) {
             </p>
             {currentUser && (
               <p className='text-xs text-blue-600 font-medium'>
-                👤 {currentUser.nome}
+                {currentUser.nome}
               </p>
             )}
           </div>
@@ -211,7 +215,7 @@ export default function Cart({ isOpen, onClose }) {
                     }`}
                   >
                     {pendingClearCart
-                      ? '⚠️ Clique novamente para confirmar'
+                      ? 'Clique novamente para confirmar'
                       : 'Limpar carrinho'}
                   </button>
                 </div>
@@ -262,7 +266,7 @@ export default function Cart({ isOpen, onClose }) {
                                   className='w-full h-full flex items-center justify-center text-gray-400 text-xs'
                                   style={{ display: item.imagem ? 'none' : 'flex' }}
                                 >
-                                  📦
+                                  Sem img
                                 </div>
                               </div>
 
@@ -277,7 +281,7 @@ export default function Cart({ isOpen, onClose }) {
 
                                 {/* Preço unitário */}
                                 <p className='text-xs text-gray-500 mb-1'>
-                                  R$ {precoTotal.toFixed(2)} /un
+                                  {formatarMoeda(precoTotal)} /un
                                 </p>
 
                                 {/* Quantity Controls */}
@@ -323,7 +327,7 @@ export default function Cart({ isOpen, onClose }) {
                                   className={`text-sm p-1 rounded transition ${
                                     pendingRemoval === item._id
                                       ? 'text-red-700 bg-red-100 animate-pulse'
-                                      : 'text-red-500 hover:text-red-700 hover:bg-red-50'
+                                      : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
                                   }`}
                                   title={
                                     pendingRemoval === item._id
@@ -331,11 +335,13 @@ export default function Cart({ isOpen, onClose }) {
                                       : 'Remover item'
                                   }
                                 >
-                                  {pendingRemoval === item._id ? '⚠️' : '🗑️'}
+                                  <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16' />
+                                  </svg>
                                 </button>
 
                                 <p className='font-bold text-green-600 text-sm'>
-                                  R$ {subtotalItem.toFixed(2)}
+                                  {formatarMoeda(subtotalItem)}
                                 </p>
                               </div>
                             </div>
@@ -348,37 +354,64 @@ export default function Cart({ isOpen, onClose }) {
               </div>
 
               {/* ══════════════════════════════════════════════════════════════ */}
-              {/* RESUMO FINANCEIRO SIMPLIFICADO */}
+              {/* RESUMO FINANCEIRO DETALHADO */}
               {/* ══════════════════════════════════════════════════════════════ */}
               <div className='border-t border-gray-200 pt-4 mb-6'>
-                <div className='bg-gradient-to-r from-blue-50 to-green-50 rounded-lg p-4 border'>
+                <div className='bg-gray-50 rounded-lg p-4 border'>
                   <h3 className='text-base font-bold text-gray-800 mb-3'>
-                    📊 Resumo
+                    Resumo
                   </h3>
 
                   <div className='space-y-2 text-sm'>
+                    {/* Subtotal Produtos (base) */}
                     <div className='flex justify-between'>
                       <span className='text-gray-600'>Subtotal Produtos:</span>
                       <span className='font-medium'>
-                        R$ {subtotalProdutos.toFixed(2)}
+                        {formatarMoeda(subtotalBase)}
                       </span>
                     </div>
 
+                    {/* Etiquetas (se houver) */}
+                    {totalEtiquetas > 0 && (
+                      <div className='flex justify-between text-gray-500'>
+                        <span>Etiquetas:</span>
+                        <span>+ {formatarMoeda(totalEtiquetas)}</span>
+                      </div>
+                    )}
+
+                    {/* Embalagens (se houver) */}
+                    {totalEmbalagens > 0 && (
+                      <div className='flex justify-between text-gray-500'>
+                        <span>Embalagens:</span>
+                        <span>+ {formatarMoeda(totalEmbalagens)}</span>
+                      </div>
+                    )}
+
+                    {/* Royalties */}
                     <div className='flex justify-between text-gray-500'>
-                      <span>Taxa de serviço (5%):</span>
-                      <span>R$ {royalties.toFixed(2)}</span>
+                      <span>Royalties (5%):</span>
+                      <span>+ {formatarMoeda(royalties)}</span>
                     </div>
 
+                    {/* Linha divisória */}
                     <div className='border-t pt-2 mt-2'>
                       <div className='flex justify-between font-bold text-lg'>
                         <span>Total:</span>
                         <span className='text-green-600'>
-                          R$ {total.toFixed(2)}
+                          {formatarMoeda(total)}
                         </span>
                       </div>
                     </div>
                   </div>
                 </div>
+
+                {/* Info sobre royalties */}
+                <p className='text-xs text-gray-400 mt-2 text-center'>
+                  Royalties calculados sobre o preço base pago ao fornecedor.
+                </p>
+                <p className='text-xs text-gray-400 mt-2 text-center'>
+                  Etiquetas e embalagens são isentas de Royalties.
+                </p>
               </div>
 
               {/* Actions */}
@@ -391,9 +424,8 @@ export default function Cart({ isOpen, onClose }) {
                   disabled={!currentUser}
                   className='w-full bg-green-500 text-white py-3 rounded-lg font-medium hover:bg-green-600 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed'
                 >
-                  <span>🛒</span>
                   {currentUser
-                    ? `Finalizar Pedido - R$ ${total.toFixed(2)}`
+                    ? `Finalizar Pedido - ${formatarMoeda(total)}`
                     : 'Faça Login para Continuar'}
                 </button>
 

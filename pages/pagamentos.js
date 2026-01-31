@@ -89,8 +89,9 @@ export default function Pagamentos() {
     return new Date(data).toLocaleDateString('pt-BR');
   };
 
+  // Formato brasileiro: R$ 1.346,38
   const formatarMoeda = (valor) => {
-    return `R$ ${(valor || 0).toFixed(2)}`;
+    return `R$ ${(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const getStatusBadge = (status) => {
@@ -208,7 +209,7 @@ export default function Pagamentos() {
                       {formatarMoeda(resumo.royaltiesPendentes)}
                     </p>
                   </div>
-                  <div className="text-6xl opacity-50">💰</div>
+                 
                 </div>
               </div>
             )}
