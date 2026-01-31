@@ -210,32 +210,30 @@ export default function Dashboard() {
           {!loadingResumo && totalPendente > 0 && (
             <div className='mb-8 bg-gradient-to-r from-red-500 to-orange-500 rounded-xl p-3 sm:p-4 shadow-lg'>
               <div className='flex items-center justify-between gap-3 sm:gap-4'>
-                {/* Ícone e texto - compacto no mobile */}
-                <div className='flex items-center gap-2 sm:gap-4'>
-                  <div className='w-10 h-10 sm:w-14 sm:h-14 bg-white bg-opacity-20 rounded-full flex items-center justify-center flex-shrink-0'>
-                    <span className='text-xl sm:text-3xl'>💰</span>
-                  </div>
-                  <div className='text-white'>
-                    <p className='font-bold text-sm sm:text-lg'>Pagamentos Pendentes</p>
-                    <p className='text-red-100 text-xs sm:text-sm hidden sm:block'>
-                      Você tem valores a pagar referentes aos Royalties
-                    </p>
-                  </div>
+                {/* Texto */}
+                <div className='text-white'>
+                  <p className='font-bold text-sm sm:text-lg'>Pagamentos Pendentes</p>
+                  <p className='text-red-100 text-xs sm:text-sm hidden sm:block'>
+                    Você tem valores a pagar referentes aos Royalties
+                  </p>
                 </div>
 
                 {/* Valor e botão */}
-                <div className='flex items-center gap-2 sm:gap-4'>
+                <div className='flex items-center gap-2 sm:gap-3'>
                   <div className='text-white text-right'>
                     <p className='text-xs text-red-100 sm:hidden'>Royalties</p>
-                    <p className='text-lg sm:text-3xl font-bold'>
-                      R$ {totalPendente.toFixed(2)}
+                    <p className='text-lg sm:text-2xl font-bold whitespace-nowrap'>
+                      R$ {totalPendente.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                   </div>
                   <Link
                     href='/pagamentos'
-                    className='bg-white text-red-600 px-3 sm:px-5 py-2 rounded-lg font-medium hover:bg-red-50 transition shadow-md text-sm sm:text-base whitespace-nowrap'
+                    className='bg-white text-red-600 p-2 sm:px-4 sm:py-2 rounded-lg font-medium hover:bg-red-50 transition shadow-md text-sm flex items-center gap-1'
                   >
-                    <span className='hidden sm:inline'>Ver Detalhes</span> →
+                    <span className='hidden sm:inline'>Ver Detalhes</span>
+                    <svg className='w-4 h-4 sm:w-5 sm:h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 5l7 7-7 7' />
+                    </svg>
                   </Link>
                 </div>
               </div>
@@ -294,20 +292,12 @@ export default function Dashboard() {
                 📊 Resumo Financeiro
               </h2>
               
-              <div className='grid grid-cols-2 md:grid-cols-5 gap-4'>
-                {/* Total em Pedidos */}
-                <div className='bg-blue-50 rounded-lg p-4 text-center'>
-                  <p className='text-xs text-gray-500 mb-1'>Total em Pedidos</p>
-                  <p className='text-xl font-bold text-blue-600'>
-                    R$ {(resumo.totalPedidos || 0).toFixed(2)}
-                  </p>
-                </div>
-                
+              <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
                 {/* Royalties Pendentes */}
                 <div className='bg-yellow-50 rounded-lg p-4 text-center'>
                   <p className='text-xs text-gray-500 mb-1'>Royalties Pend.</p>
                   <p className='text-xl font-bold text-yellow-600'>
-                    R$ {(resumo.royaltiesPendentes || 0).toFixed(2)}
+                    R$ {(resumo.royaltiesPendentes || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
                 
@@ -315,7 +305,7 @@ export default function Dashboard() {
                 <div className='bg-orange-50 rounded-lg p-4 text-center'>
                   <p className='text-xs text-gray-500 mb-1'>Etiquetas Pend.</p>
                   <p className='text-xl font-bold text-orange-600'>
-                    R$ {(resumo.etiquetasPendentes || 0).toFixed(2)}
+                    R$ {(resumo.etiquetasPendentes || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
                 
@@ -323,7 +313,7 @@ export default function Dashboard() {
                 <div className='bg-purple-50 rounded-lg p-4 text-center'>
                   <p className='text-xs text-gray-500 mb-1'>Embalagens Pend.</p>
                   <p className='text-xl font-bold text-purple-600'>
-                    R$ {(resumo.embalagensPendentes || 0).toFixed(2)}
+                    R$ {(resumo.embalagensPendentes || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
                 
@@ -331,7 +321,7 @@ export default function Dashboard() {
                 <div className='bg-red-50 rounded-lg p-4 text-center border-2 border-red-200'>
                   <p className='text-xs text-gray-500 mb-1'>TOTAL PENDENTE</p>
                   <p className='text-xl font-bold text-red-600'>
-                    R$ {totalPendente.toFixed(2)}
+                    R$ {totalPendente.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
               </div>
@@ -388,7 +378,7 @@ export default function Dashboard() {
                         {pedido.status?.charAt(0).toUpperCase() + pedido.status?.slice(1)}
                       </span>
                       <p className='text-sm font-bold text-green-600 mt-1'>
-                        R$ {pedido.total?.toFixed(2)}
+                        R$ {pedido.total?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     </div>
                   </div>
