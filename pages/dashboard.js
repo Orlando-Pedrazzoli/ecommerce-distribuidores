@@ -205,33 +205,37 @@ export default function Dashboard() {
           </div>
 
           {/* ══════════════════════════════════════════════════════════════ */}
-          {/* ALERTA DE PAGAMENTOS PENDENTES */}
+          {/* ALERTA DE PAGAMENTOS PENDENTES - COMPACTO NO MOBILE */}
           {/* ══════════════════════════════════════════════════════════════ */}
           {!loadingResumo && totalPendente > 0 && (
-            <div className='mb-8 bg-gradient-to-r from-red-500 to-orange-500 rounded-xl p-4 shadow-lg'>
-              <div className='flex flex-col sm:flex-row items-center justify-between gap-4'>
-                <div className='flex items-center gap-4'>
-                  <div className='w-14 h-14 bg-white bg-opacity-20 rounded-full flex items-center justify-center'>
-                    <span className='text-3xl'>💰</span>
+            <div className='mb-8 bg-gradient-to-r from-red-500 to-orange-500 rounded-xl p-3 sm:p-4 shadow-lg'>
+              <div className='flex items-center justify-between gap-3 sm:gap-4'>
+                {/* Ícone e texto - compacto no mobile */}
+                <div className='flex items-center gap-2 sm:gap-4'>
+                  <div className='w-10 h-10 sm:w-14 sm:h-14 bg-white bg-opacity-20 rounded-full flex items-center justify-center flex-shrink-0'>
+                    <span className='text-xl sm:text-3xl'>💰</span>
                   </div>
-                  <div className='text-white text-center sm:text-left'>
-                    <p className='font-bold text-lg'>Pagamentos Pendentes</p>
-                    <p className='text-red-100 text-sm'>
-                      Você tem valores a pagar referentes aos seus pedidos
+                  <div className='text-white'>
+                    <p className='font-bold text-sm sm:text-lg'>Pagamentos Pendentes</p>
+                    <p className='text-red-100 text-xs sm:text-sm hidden sm:block'>
+                      Você tem valores a pagar referentes aos Royalties
                     </p>
                   </div>
                 </div>
-                <div className='flex items-center gap-4'>
-                  <div className='text-white text-center sm:text-right'>
-                    <p className='text-3xl font-bold'>
+
+                {/* Valor e botão */}
+                <div className='flex items-center gap-2 sm:gap-4'>
+                  <div className='text-white text-right'>
+                    <p className='text-xs text-red-100 sm:hidden'>Royalties</p>
+                    <p className='text-lg sm:text-3xl font-bold'>
                       R$ {totalPendente.toFixed(2)}
                     </p>
                   </div>
                   <Link
                     href='/pagamentos'
-                    className='bg-white text-red-600 px-5 py-2 rounded-lg font-medium hover:bg-red-50 transition shadow-md'
+                    className='bg-white text-red-600 px-3 sm:px-5 py-2 rounded-lg font-medium hover:bg-red-50 transition shadow-md text-sm sm:text-base whitespace-nowrap'
                   >
-                    Ver Detalhes →
+                    <span className='hidden sm:inline'>Ver Detalhes</span> →
                   </Link>
                 </div>
               </div>
@@ -239,9 +243,9 @@ export default function Dashboard() {
           )}
 
           {/* ══════════════════════════════════════════════════════════════ */}
-          {/* CARDS DE ACESSO RÁPIDO */}
+          {/* CARDS DE ACESSO RÁPIDO - APENAS PEDIDOS E PAGAMENTOS */}
           {/* ══════════════════════════════════════════════════════════════ */}
-          <div className='grid grid-cols-2 md:grid-cols-4 gap-4 mb-8'>
+          <div className='grid grid-cols-2 gap-4 mb-8 max-w-md mx-auto sm:max-w-lg'>
             {/* Meus Pedidos */}
             <Link
               href='/meus-pedidos'
@@ -278,38 +282,6 @@ export default function Dashboard() {
                   !
                 </div>
               )}
-            </Link>
-
-            {/* Checkout */}
-            <Link
-              href='/checkout'
-              className='bg-white rounded-xl shadow-md p-4 hover:shadow-lg transition group'
-            >
-              <div className='flex items-center gap-3'>
-                <div className='w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center group-hover:bg-orange-200 transition'>
-                  <span className='text-2xl'>🛒</span>
-                </div>
-                <div>
-                  <p className='font-medium text-gray-800'>Carrinho</p>
-                  <p className='text-xs text-gray-500'>Finalizar pedido</p>
-                </div>
-              </div>
-            </Link>
-
-            {/* Meu Perfil / Endereço */}
-            <Link
-              href='/meus-pedidos'
-              className='bg-white rounded-xl shadow-md p-4 hover:shadow-lg transition group'
-            >
-              <div className='flex items-center gap-3'>
-                <div className='w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center group-hover:bg-purple-200 transition'>
-                  <span className='text-2xl'>👤</span>
-                </div>
-                <div>
-                  <p className='font-medium text-gray-800'>Meu Perfil</p>
-                  <p className='text-xs text-gray-500'>Dados e endereço</p>
-                </div>
-              </div>
             </Link>
           </div>
 
