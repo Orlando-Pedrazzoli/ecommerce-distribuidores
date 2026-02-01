@@ -83,6 +83,9 @@ export default function Dashboard() {
     }
   };
 
+  // ══════════════════════════════════════════════════════════════
+  // 🎯 FORNECEDORES - ADICIONE NOVOS AQUI
+  // ══════════════════════════════════════════════════════════════
   const fornecedores = [
     {
       codigo: 'A',
@@ -90,7 +93,7 @@ export default function Dashboard() {
       especialidade: 'Especialista em Decks',
       descricao: 'Decks premium para todas as condições de surf',
       cor: 'from-[#ff7e5f] to-[#feb47b]',
-      icone: '🏄‍♂️',
+      logo: '/vitor-logo.jpg',
     },
     {
       codigo: 'B',
@@ -98,7 +101,7 @@ export default function Dashboard() {
       especialidade: 'Especialista em Capas e Acessórios',
       descricao: 'Capas e acessórios para proteção e transporte',
       cor: 'from-[#43cea2] to-[#185a9d]',
-      icone: '🛡️',
+      logo: '/maos-logo.jpg',
     },
     {
       codigo: 'C',
@@ -106,7 +109,15 @@ export default function Dashboard() {
       especialidade: 'Especialista em Leashes',
       descricao: 'Leashes superiores para máxima segurança',
       cor: 'from-[#6a11cb] to-[#2575fc]',
-      icone: '🔗',
+      logo: '/godas-logo.jpg',
+    },
+    {
+      codigo: 'D',
+      nome: 'Wakum - WKM',
+      especialidade: 'Especialista em Capas, Leashes e Decks',
+      descricao: 'Qualidade e preço',
+      cor: 'from-[#ef4444] to-[#dc2626]', // Vermelho
+      logo: '/wakum-logo.jpg',
     },
   ];
 
@@ -393,7 +404,7 @@ export default function Dashboard() {
             </h2>
           </div>
 
-          <div className='grid md:grid-cols-3 gap-8'>
+          <div className='grid md:grid-cols-2 lg:grid-cols-4 gap-6'>
             {fornecedores.map(fornecedor => (
               <Link
                 key={fornecedor.codigo}
@@ -405,46 +416,22 @@ export default function Dashboard() {
                   <div
                     className={`bg-gradient-to-r ${fornecedor.cor} p-6 text-white text-center relative`}
                   >
-                    {/* Ícone ou Logo */}
+                    {/* Logo */}
                     <div className='flex justify-center mb-3'>
-                      {fornecedor.codigo === 'A' ? (
-                        <div className='w-16 h-16 rounded-full overflow-hidden bg-white p-1 shadow-lg'>
-                          <Image
-                            src='/vitor-logo.jpg'
-                            alt='Vitor Pandawa Logo'
-                            width={64}
-                            height={64}
-                            className='w-full h-full object-cover rounded-full'
-                          />
-                        </div>
-                      ) : fornecedor.codigo === 'B' ? (
-                        <div className='w-16 h-16 rounded-full overflow-hidden bg-white p-1 shadow-lg'>
-                          <Image
-                            src='/maos-logo.jpg'
-                            alt='Maos Acessórios Logo'
-                            width={64}
-                            height={64}
-                            className='w-full h-full object-cover rounded-full'
-                          />
-                        </div>
-                      ) : fornecedor.codigo === 'C' ? (
-                        <div className='w-16 h-16 rounded-full overflow-hidden bg-white p-1 shadow-lg'>
-                          <Image
-                            src='/godas-logo.jpg'
-                            alt='Godas Logo'
-                            width={64}
-                            height={64}
-                            className='w-full h-full object-cover rounded-full'
-                          />
-                        </div>
-                      ) : (
-                        <div className='text-4xl'>{fornecedor.icone}</div>
-                      )}
+                      <div className='w-16 h-16 rounded-full overflow-hidden bg-white p-1 shadow-lg'>
+                        <Image
+                          src={fornecedor.logo}
+                          alt={`${fornecedor.nome} Logo`}
+                          width={64}
+                          height={64}
+                          className='w-full h-full object-cover rounded-full'
+                        />
+                      </div>
                     </div>
-                    <h2 className='text-xl font-bold mb-2'>
+                    <h2 className='text-lg font-bold mb-1'>
                       {fornecedor.nome}
                     </h2>
-                    <p className='text-sm opacity-90 font-medium'>
+                    <p className='text-xs opacity-90 font-medium'>
                       {fornecedor.especialidade}
                     </p>
 
@@ -457,10 +444,10 @@ export default function Dashboard() {
                   </div>
 
                   {/* Body */}
-                  <div className='p-6 text-center'>
-                    <p className='text-gray-600 mb-4'>{fornecedor.descricao}</p>
+                  <div className='p-4 text-center'>
+                    <p className='text-gray-600 text-sm mb-4'>{fornecedor.descricao}</p>
 
-                    <div className='bg-gray-100 text-gray-700 py-3 px-6 rounded-lg group-hover:bg-gray-200 transition-all duration-300 border border-gray-200 group-hover:border-gray-300 group-hover:shadow-md'>
+                    <div className='bg-gray-100 text-gray-700 py-2 px-4 rounded-lg group-hover:bg-gray-200 transition-all duration-300 border border-gray-200 group-hover:border-gray-300 group-hover:shadow-md'>
                       <div className='flex items-center justify-center gap-2'>
                         <svg
                           className='w-4 h-4'
@@ -475,7 +462,7 @@ export default function Dashboard() {
                             d='M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'
                           />
                         </svg>
-                        <span className='font-semibold'>Ver Produtos</span>
+                        <span className='font-semibold text-sm'>Ver Produtos</span>
                         <svg
                           className='w-4 h-4 group-hover:translate-x-1 transition-transform duration-300'
                           fill='none'
