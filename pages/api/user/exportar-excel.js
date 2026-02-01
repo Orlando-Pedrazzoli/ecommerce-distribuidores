@@ -27,11 +27,16 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: 'Token inválido' });
   }
 
-  const userId = decoded.id || decoded.userId;
+  const usuarioId = decoded.id || decoded.userId || decoded.usuario;
 
   try {
-    // Buscar usuário
-    const user = await User.findById(userId).select('tabelaPrecos nome');
+    // Buscar usuário - tenta por _id primeiro, depois por usuario
+    let user;
+    if (usuarioId && usuarioId.match(/^[0-9a-fA-F]{24}$/)) {
+      user = await User.findById(usuarioId).select('tabelaPrecos nome');
+    } else {
+      user = await User.findOne({ usuario: usuarioId }).select('tabelaPrecos nome');
+    }
     
     if (!user) {
       return res.status(404).json({ message: 'Usuário não encontrado' });
