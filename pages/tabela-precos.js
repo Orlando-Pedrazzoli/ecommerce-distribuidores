@@ -421,7 +421,7 @@ export default function TabelaPrecos() {
         await navigator.share({
           files: [file],
           title: 'Tabela de Preços - Elite Surfing',
-          text: 'Confira minha tabela de preços!'
+          text: 'Tabela de preços Elite Surfing 2026!'
         });
         toast.success('Compartilhado!');
       } else {
@@ -457,7 +457,7 @@ export default function TabelaPrecos() {
         await navigator.share({
           files: [file],
           title: 'Tabela de Preços - Elite Surfing',
-          text: 'Confira minha tabela de preços!'
+          text: 'Tabela de preços Elite Surfing 2026!'
         });
         toast.success('Compartilhado!');
       } else {
