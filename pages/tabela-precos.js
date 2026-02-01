@@ -2,10 +2,12 @@
 // ===================================
 // Página de Tabela de Preços do Distribuidor
 // 3 abas: Editar Preços | Compartilhar | Minhas Margens
+// Com geração de PDF real e compartilhamento
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Script from 'next/script';
 import Layout from '../components/Layout';
 import { useToastContext } from '../pages/_app';
 
@@ -32,6 +34,7 @@ export default function TabelaPrecos() {
   const [categoriasExpandidas, setCategoriasExpandidas] = useState({});
   const [margemRapida, setMargemRapida] = useState('30');
   const [exportando, setExportando] = useState(false);
+  const [jsPdfLoaded, setJsPdfLoaded] = useState(false);
 
   // Formatar moeda
   const formatarMoeda = (valor) => {
@@ -174,7 +177,9 @@ export default function TabelaPrecos() {
     }
   };
 
-  // Exportar Excel
+  // ══════════════════════════════════════════════════════════════
+  // EXPORTAR EXCEL
+  // ══════════════════════════════════════════════════════════════
   const exportarExcel = async () => {
     try {
       setExportando(true);
@@ -189,13 +194,13 @@ export default function TabelaPrecos() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Tabela_Precos_${new Date().toISOString().split('T')[0]}.xlsx`;
+      a.download = `Tabela_Precos_${user?.nome?.replace(/\s+/g, '_') || 'Elite'}_${new Date().toISOString().split('T')[0]}.xlsx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
       
-      toast.success('Excel exportado com sucesso!');
+      toast.success('Excel baixado com sucesso!');
     } catch (error) {
       console.error('Erro ao exportar Excel:', error);
       toast.error(error.message || 'Erro ao exportar Excel');
@@ -204,27 +209,267 @@ export default function TabelaPrecos() {
     }
   };
 
-  // Exportar PDF (HTML para imprimir)
-  const exportarPdf = async () => {
-    try {
-      setExportando(true);
-      const response = await fetch('/api/user/exportar-pdf');
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message);
+  // ══════════════════════════════════════════════════════════════
+  // GERAR PDF REAL (usando jsPDF)
+  // ══════════════════════════════════════════════════════════════
+  const gerarPDF = async () => {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      toast.error('Carregando biblioteca PDF, aguarde...');
+      return null;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    const dataFormatada = new Date().toLocaleDateString('pt-BR');
+    const nomeDistribuidor = user?.nome || 'Distribuidor';
+    
+    let yPos = 15;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    const contentWidth = pageWidth - (margin * 2);
+
+    // Header
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(26, 54, 93); // Azul escuro
+    doc.text('ELITE SURFING', pageWidth / 2, yPos, { align: 'center' });
+    
+    yPos += 7;
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100);
+    doc.text('Tabela de Preços', pageWidth / 2, yPos, { align: 'center' });
+    
+    yPos += 6;
+    doc.setFontSize(10);
+    doc.text(`Distribuidor: ${nomeDistribuidor}`, pageWidth / 2, yPos, { align: 'center' });
+    
+    yPos += 5;
+    doc.setFontSize(9);
+    doc.text(`Atualizada em: ${dataFormatada}`, pageWidth / 2, yPos, { align: 'center' });
+    
+    yPos += 8;
+    doc.setDrawColor(26, 54, 93);
+    doc.setLineWidth(0.5);
+    doc.line(margin, yPos, pageWidth - margin, yPos);
+    yPos += 8;
+
+    // Iterar por categorias
+    Object.entries(porCategoria).forEach(([categoria, produtosCategoria]) => {
+      const produtosComPreco = produtosCategoria.filter(p => precos[p._id]);
+      if (produtosComPreco.length === 0) return;
+
+      // Verificar se precisa de nova página
+      if (yPos > 270) {
+        doc.addPage();
+        yPos = 15;
       }
 
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      // Título da categoria
+      doc.setFillColor(26, 54, 93);
+      doc.rect(margin, yPos - 4, contentWidth, 7, 'F');
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255);
+      doc.text(categoria.toUpperCase(), margin + 3, yPos);
+      yPos += 6;
+
+      // Header da tabela
+      doc.setFillColor(240, 240, 240);
+      doc.rect(margin, yPos - 3, contentWidth, 5, 'F');
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(100);
+      doc.text('Código', margin + 2, yPos);
+      doc.text('Produto', margin + 25, yPos);
+      doc.text('Preço', pageWidth - margin - 2, yPos, { align: 'right' });
+      yPos += 4;
+
+      // Produtos
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(50);
       
-      // Abrir em nova aba para o usuário imprimir/salvar como PDF
-      window.open(url, '_blank');
-      
-      toast.success('Tabela aberta! Use Ctrl+P para salvar como PDF');
+      produtosComPreco.forEach((produto, index) => {
+        // Verificar se precisa de nova página
+        if (yPos > 280) {
+          doc.addPage();
+          yPos = 15;
+          
+          // Repetir header da categoria na nova página
+          doc.setFillColor(26, 54, 93);
+          doc.rect(margin, yPos - 4, contentWidth, 7, 'F');
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(255);
+          doc.text(`${categoria.toUpperCase()} (cont.)`, margin + 3, yPos);
+          yPos += 6;
+          
+          // Header
+          doc.setFillColor(240, 240, 240);
+          doc.rect(margin, yPos - 3, contentWidth, 5, 'F');
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(100);
+          doc.text('Código', margin + 2, yPos);
+          doc.text('Produto', margin + 25, yPos);
+          doc.text('Preço', pageWidth - margin - 2, yPos, { align: 'right' });
+          yPos += 4;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(50);
+        }
+
+        // Linha zebrada
+        if (index % 2 === 0) {
+          doc.setFillColor(250, 250, 250);
+          doc.rect(margin, yPos - 3, contentWidth, 5, 'F');
+        }
+
+        doc.setFontSize(8);
+        doc.setTextColor(100);
+        doc.text(produto.codigo || '', margin + 2, yPos);
+        
+        doc.setTextColor(50);
+        // Truncar nome se muito longo
+        let nomeProduto = produto.nome || '';
+        if (nomeProduto.length > 55) {
+          nomeProduto = nomeProduto.substring(0, 52) + '...';
+        }
+        doc.text(nomeProduto, margin + 25, yPos);
+        
+        // Preço em verde
+        doc.setTextColor(22, 163, 74);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`R$ ${formatarMoeda(precos[produto._id])}`, pageWidth - margin - 2, yPos, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
+        
+        yPos += 5;
+      });
+
+      yPos += 4; // Espaço entre categorias
+    });
+
+    // Footer
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text(
+        `Elite Surfing - Produtos de Qualidade | Página ${i} de ${totalPages}`,
+        pageWidth / 2,
+        doc.internal.pageSize.getHeight() - 10,
+        { align: 'center' }
+      );
+    }
+
+    return doc;
+  };
+
+  // Baixar PDF
+  const baixarPDF = async () => {
+    try {
+      setExportando(true);
+      const doc = await gerarPDF();
+      if (doc) {
+        const nomeArquivo = `Tabela_Precos_${user?.nome?.replace(/\s+/g, '_') || 'Elite'}_${new Date().toISOString().split('T')[0]}.pdf`;
+        doc.save(nomeArquivo);
+        toast.success('PDF baixado com sucesso!');
+      }
     } catch (error) {
-      console.error('Erro ao exportar:', error);
-      toast.error(error.message || 'Erro ao exportar');
+      console.error('Erro ao gerar PDF:', error);
+      toast.error('Erro ao gerar PDF');
+    } finally {
+      setExportando(false);
+    }
+  };
+
+  // Abrir PDF para visualização
+  const visualizarPDF = async () => {
+    try {
+      setExportando(true);
+      const doc = await gerarPDF();
+      if (doc) {
+        const pdfBlob = doc.output('blob');
+        const url = URL.createObjectURL(pdfBlob);
+        window.open(url, '_blank');
+        toast.success('PDF aberto! Use Ctrl+P para imprimir');
+      }
+    } catch (error) {
+      console.error('Erro ao visualizar PDF:', error);
+      toast.error('Erro ao visualizar PDF');
+    } finally {
+      setExportando(false);
+    }
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // COMPARTILHAMENTO
+  // ══════════════════════════════════════════════════════════════
+  const compartilharExcel = async () => {
+    try {
+      setExportando(true);
+      const response = await fetch('/api/user/exportar-excel');
+      if (!response.ok) throw new Error('Erro ao gerar Excel');
+      
+      const blob = await response.blob();
+      const nomeArquivo = `Tabela_Precos_${user?.nome?.replace(/\s+/g, '_') || 'Elite'}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const file = new File([blob], nomeArquivo, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+      if (navigator.share && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Tabela de Preços - Elite Surfing',
+          text: 'Confira minha tabela de preços!'
+        });
+        toast.success('Compartilhado!');
+      } else {
+        // Fallback: baixar o arquivo
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nomeArquivo;
+        a.click();
+        toast.info('Arquivo baixado. Compartilhe manualmente via WhatsApp ou Email.');
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        console.error('Erro ao compartilhar:', error);
+        toast.error('Erro ao compartilhar');
+      }
+    } finally {
+      setExportando(false);
+    }
+  };
+
+  const compartilharPDF = async () => {
+    try {
+      setExportando(true);
+      const doc = await gerarPDF();
+      if (!doc) return;
+
+      const pdfBlob = doc.output('blob');
+      const nomeArquivo = `Tabela_Precos_${user?.nome?.replace(/\s+/g, '_') || 'Elite'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const file = new File([pdfBlob], nomeArquivo, { type: 'application/pdf' });
+
+      if (navigator.share && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Tabela de Preços - Elite Surfing',
+          text: 'Confira minha tabela de preços!'
+        });
+        toast.success('Compartilhado!');
+      } else {
+        // Fallback: baixar o arquivo
+        doc.save(nomeArquivo);
+        toast.info('PDF baixado. Compartilhe manualmente via WhatsApp ou Email.');
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        console.error('Erro ao compartilhar:', error);
+        toast.error('Erro ao compartilhar');
+      }
     } finally {
       setExportando(false);
     }
@@ -285,6 +530,25 @@ export default function TabelaPrecos() {
     }));
   };
 
+  // Ícones SVG
+  const IconDownload = () => (
+    <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4' />
+    </svg>
+  );
+
+  const IconShare = () => (
+    <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z' />
+    </svg>
+  );
+
+  const IconPrint = () => (
+    <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z' />
+    </svg>
+  );
+
   if (loading) {
     return (
       <Layout>
@@ -303,6 +567,13 @@ export default function TabelaPrecos() {
       <Head>
         <title>Tabela de Preços - Elite Surfing</title>
       </Head>
+      
+      {/* Carregar jsPDF via CDN */}
+      <Script 
+        src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+        onLoad={() => setJsPdfLoaded(true)}
+      />
+
       <Layout>
         <div className='max-w-7xl mx-auto px-4 py-4 lg:py-6'>
           {/* Header */}
@@ -549,7 +820,7 @@ export default function TabelaPrecos() {
           {/* ══════════════════════════════════════════════════════════════ */}
           {abaAtiva === 'compartilhar' && (
             <div className='bg-white rounded-lg shadow-md p-6'>
-              <h2 className='text-lg font-bold text-gray-800 mb-4'>
+              <h2 className='text-lg font-bold text-gray-800 mb-2'>
                 Compartilhar Tabela de Preços
               </h2>
 
@@ -569,70 +840,108 @@ export default function TabelaPrecos() {
               ) : (
                 <>
                   <p className='text-gray-600 mb-6'>
-                    Exporte sua tabela de preços para compartilhar com seus clientes.
-                    <br />
-                    <span className='text-sm text-gray-500'>
-                      {stats?.comPreco} produtos com preço definido
+                    Exporte sua tabela para compartilhar com seus clientes.
+                    <span className='text-sm text-gray-500 ml-2'>
+                      ({stats?.comPreco} produtos com preço)
                     </span>
                   </p>
 
                   <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
                     {/* Excel */}
-                    <div className='border rounded-lg p-6 text-center hover:border-green-500 hover:bg-green-50 transition'>
-                      <div className='text-5xl mb-4'>📥</div>
-                      <h3 className='font-bold text-lg mb-2'>Excel (.xlsx)</h3>
-                      <p className='text-sm text-gray-600 mb-4'>
-                        Arquivo leve para envio.<br />
-                        Ideal para WhatsApp/Email.
-                      </p>
-                      <button
-                        onClick={exportarExcel}
-                        disabled={exportando}
-                        className='bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600 transition disabled:opacity-50 flex items-center justify-center gap-2 mx-auto'
-                      >
-                        {exportando ? (
-                          <>
-                            <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin'></div>
-                            Gerando...
-                          </>
-                        ) : (
-                          'Baixar Excel'
-                        )}
-                      </button>
+                    <div className='border-2 border-gray-200 rounded-xl p-6 hover:border-green-500 hover:shadow-lg transition'>
+                      <div className='flex items-center gap-3 mb-4'>
+                        <div className='w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center'>
+                          <svg className='w-6 h-6 text-green-600' fill='currentColor' viewBox='0 0 24 24'>
+                            <path d='M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 2l5 5h-5V4zM8 17l2-3-2-3h1.5l1.25 2 1.25-2H14l-2 3 2 3h-1.5l-1.25-2-1.25 2H8z'/>
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className='font-bold text-lg'>Excel (.xlsx)</h3>
+                          <p className='text-sm text-gray-500'>Arquivo leve e editável</p>
+                        </div>
+                      </div>
+                      
+                      <div className='space-y-3'>
+                        <button
+                          onClick={exportarExcel}
+                          disabled={exportando}
+                          className='w-full bg-green-500 text-white px-4 py-3 rounded-lg hover:bg-green-600 transition disabled:opacity-50 flex items-center justify-center gap-2 font-medium'
+                        >
+                          <IconDownload />
+                          Baixar Excel
+                        </button>
+                        
+                        <button
+                          onClick={compartilharExcel}
+                          disabled={exportando}
+                          className='w-full bg-gray-100 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-200 transition disabled:opacity-50 flex items-center justify-center gap-2 font-medium'
+                        >
+                          <IconShare />
+                          Compartilhar
+                        </button>
+                      </div>
                     </div>
 
                     {/* PDF */}
-                    <div className='border rounded-lg p-6 text-center hover:border-red-500 hover:bg-red-50 transition'>
-                      <div className='text-5xl mb-4'>📄</div>
-                      <h3 className='font-bold text-lg mb-2'>PDF / Imprimir</h3>
-                      <p className='text-sm text-gray-600 mb-4'>
-                        Visual formatado.<br />
-                        Use Ctrl+P para salvar como PDF.
-                      </p>
-                      <button
-                        onClick={exportarPdf}
-                        disabled={exportando}
-                        className='bg-red-500 text-white px-6 py-2 rounded-lg hover:bg-red-600 transition disabled:opacity-50 flex items-center justify-center gap-2 mx-auto'
-                      >
-                        {exportando ? (
-                          <>
-                            <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin'></div>
-                            Gerando...
-                          </>
-                        ) : (
-                          'Abrir para Imprimir'
-                        )}
-                      </button>
+                    <div className='border-2 border-gray-200 rounded-xl p-6 hover:border-red-500 hover:shadow-lg transition'>
+                      <div className='flex items-center gap-3 mb-4'>
+                        <div className='w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center'>
+                          <svg className='w-6 h-6 text-red-600' fill='currentColor' viewBox='0 0 24 24'>
+                            <path d='M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 2l5 5h-5V4zM9 13h2v5H9v-5zm4 0h2v5h-2v-5z'/>
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className='font-bold text-lg'>PDF</h3>
+                          <p className='text-sm text-gray-500'>Visual formatado para impressão</p>
+                        </div>
+                      </div>
+                      
+                      <div className='space-y-3'>
+                        <button
+                          onClick={baixarPDF}
+                          disabled={exportando || !jsPdfLoaded}
+                          className='w-full bg-red-500 text-white px-4 py-3 rounded-lg hover:bg-red-600 transition disabled:opacity-50 flex items-center justify-center gap-2 font-medium'
+                        >
+                          <IconDownload />
+                          Baixar PDF
+                        </button>
+                        
+                        <button
+                          onClick={compartilharPDF}
+                          disabled={exportando || !jsPdfLoaded}
+                          className='w-full bg-gray-100 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-200 transition disabled:opacity-50 flex items-center justify-center gap-2 font-medium'
+                        >
+                          <IconShare />
+                          Compartilhar
+                        </button>
+                        
+                        <button
+                          onClick={visualizarPDF}
+                          disabled={exportando || !jsPdfLoaded}
+                          className='w-full bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition disabled:opacity-50 flex items-center justify-center gap-2 text-sm'
+                        >
+                          <IconPrint />
+                          Visualizar / Imprimir
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Preview */}
-                  <div className='mt-8'>
+                  {/* Dica */}
+                  <div className='mt-6 p-4 bg-blue-50 rounded-lg'>
+                    <p className='text-sm text-blue-800'>
+                      <strong>💡 Dica:</strong> No celular, o botão "Compartilhar" abre diretamente o WhatsApp, Email e outros apps. 
+                      No computador, o arquivo será baixado para você enviar manualmente.
+                    </p>
+                  </div>
+
+                  {/* Preview compacto */}
+                  <div className='mt-6'>
                     <h3 className='font-bold text-gray-800 mb-4'>Preview da Tabela</h3>
-                    <div className='border rounded-lg overflow-hidden max-h-96 overflow-y-auto'>
-                      <div className='bg-gray-800 text-white p-4 text-center'>
-                        <p className='font-bold text-lg'>ELITE SURFING</p>
-                        <p className='text-sm opacity-80'>Tabela de Preços - {user?.nome}</p>
+                    <div className='border rounded-lg overflow-hidden max-h-64 overflow-y-auto text-sm'>
+                      <div className='bg-gray-800 text-white p-2 text-center'>
+                        <p className='font-bold text-sm'>ELITE SURFING - Tabela de Preços</p>
+                        <p className='text-xs opacity-80'>{user?.nome}</p>
                       </div>
 
                       {Object.entries(porCategoria).map(([categoria, produtosCategoria]) => {
@@ -640,22 +949,27 @@ export default function TabelaPrecos() {
                         if (produtosComPreco.length === 0) return null;
 
                         return (
-                          <div key={categoria} className='border-b'>
-                            <div className='bg-gray-100 px-4 py-2 font-bold text-gray-700'>
+                          <div key={categoria}>
+                            <div className='bg-gray-700 text-white px-3 py-1 text-xs font-bold'>
                               {categoria}
                             </div>
                             <div className='divide-y'>
-                              {produtosComPreco.map(produto => (
-                                <div key={produto._id} className='flex justify-between px-4 py-2 text-sm'>
-                                  <div>
-                                    <span className='text-gray-500 mr-2'>{produto.codigo}</span>
-                                    <span>{produto.nome}</span>
+                              {produtosComPreco.slice(0, 2).map(produto => (
+                                <div key={produto._id} className='flex justify-between px-3 py-1 text-xs'>
+                                  <div className='flex gap-2'>
+                                    <span className='text-gray-400'>{produto.codigo}</span>
+                                    <span className='truncate max-w-[200px]'>{produto.nome}</span>
                                   </div>
-                                  <span className='font-bold text-green-600'>
+                                  <span className='font-bold text-green-600 whitespace-nowrap'>
                                     R$ {formatarMoeda(precos[produto._id])}
                                   </span>
                                 </div>
                               ))}
+                              {produtosComPreco.length > 2 && (
+                                <div className='px-3 py-0.5 text-xs text-gray-400 text-center'>
+                                  + {produtosComPreco.length - 2} produtos
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
