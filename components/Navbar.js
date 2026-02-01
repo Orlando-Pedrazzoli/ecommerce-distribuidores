@@ -1,6 +1,6 @@
 // components/Navbar.js
 // ===================================
-// ATUALIZADO: Adicionado link de Pagamentos para distribuidores
+// ATUALIZADO: Link para Tabela de Preços
 
 import Link from 'next/link';
 import Image from 'next/image';
@@ -30,7 +30,6 @@ export default function Navbar() {
         const data = await response.json();
         setUser(data.user);
         
-        // Se for distribuidor, buscar pendências
         if (data.user?.tipo === 'distribuidor') {
           buscarPendencias();
         }
@@ -45,7 +44,6 @@ export default function Navbar() {
     }
   };
 
-  // Buscar total de pendências para mostrar badge
   const buscarPendencias = async () => {
     try {
       const response = await fetch('/api/user/pagamentos');
@@ -75,7 +73,6 @@ export default function Navbar() {
     return router.pathname === path;
   };
 
-  // Se ainda está carregando, não mostra nada
   if (loadingUser) {
     return (
       <nav className='bg-gray-800 text-white shadow-lg'>
@@ -88,7 +85,6 @@ export default function Navbar() {
     );
   }
 
-  // Se não tem usuário, não mostra navbar
   if (!user) {
     return null;
   }
@@ -104,7 +100,6 @@ export default function Navbar() {
               className='flex items-center hover:opacity-80 transition'
             >
               <div className='relative'>
-                {/* Logo para Desktop */}
                 <Image
                   src='/logo.png'
                   alt='Elite Surfing Logo'
@@ -113,7 +108,6 @@ export default function Navbar() {
                   className='hidden md:block h-8 w-auto object-contain'
                   priority
                 />
-                {/* Logo para Mobile */}
                 <Image
                   src='/logo.png'
                   alt='Elite Surfing Logo'
@@ -127,7 +121,6 @@ export default function Navbar() {
 
             {/* Desktop Menu */}
             <div className='hidden md:flex items-center space-x-4'>
-              {/* Navigation Links para Distribuidores */}
               {user?.tipo === 'distribuidor' && (
                 <>
                   {/* Dashboard */}
@@ -139,7 +132,10 @@ export default function Navbar() {
                         : 'hover:bg-gray-700'
                     }`}
                   >
-                    🏠 Início
+                    <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' />
+                    </svg>
+                    Início
                   </Link>
 
                   {/* Meus Pedidos */}
@@ -151,10 +147,13 @@ export default function Navbar() {
                         : 'hover:bg-gray-700'
                     }`}
                   >
-                    📋 Pedidos
+                    <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' />
+                    </svg>
+                    Pedidos
                   </Link>
 
-                  {/* Pagamentos - COM BADGE DE PENDÊNCIA */}
+                  {/* Pagamentos */}
                   <Link
                     href='/pagamentos'
                     className={`relative px-3 py-2 rounded transition flex items-center gap-1 ${
@@ -163,13 +162,30 @@ export default function Navbar() {
                         : 'hover:bg-gray-700'
                     }`}
                   >
-                    💳 Pagamentos
-                    {/* Badge de pendência */}
+                    <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' />
+                    </svg>
+                    Pagamentos
                     {pendencias > 0 && (
                       <span className='absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold animate-pulse'>
                         !
                       </span>
                     )}
+                  </Link>
+
+                  {/* Tabela de Preços */}
+                  <Link
+                    href='/tabela-precos'
+                    className={`px-3 py-2 rounded transition flex items-center gap-1 ${
+                      isActive('/tabela-precos')
+                        ? 'bg-purple-600 text-white'
+                        : 'hover:bg-gray-700'
+                    }`}
+                  >
+                    <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z' />
+                    </svg>
+                    Tabela de Preços
                   </Link>
                 </>
               )}
@@ -184,18 +200,20 @@ export default function Navbar() {
                       : 'bg-red-500 hover:bg-red-600'
                   }`}
                 >
-                  ⚙️ Admin
+                  Admin
                 </Link>
               )}
 
-              {/* Cart Button - apenas para distribuidores */}
+              {/* Cart Button */}
               {user?.tipo === 'distribuidor' && (
                 <button
                   onClick={toggleCart}
                   className='relative p-2 hover:bg-gray-700 rounded transition'
                   title='Abrir carrinho'
                 >
-                  <span className='text-2xl'>🛒</span>
+                  <svg className='w-6 h-6' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z' />
+                  </svg>
                   {cartCount > 0 && (
                     <span className='absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold animate-pulse'>
                       {cartCount > 99 ? '99+' : cartCount}
@@ -218,20 +236,23 @@ export default function Navbar() {
                 onClick={handleLogout}
                 className='bg-gray-600 px-4 py-2 rounded hover:bg-gray-700 transition flex items-center gap-2'
               >
-                <span>🚪</span>
+                <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                  <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1' />
+                </svg>
                 Sair
               </button>
             </div>
 
             {/* Mobile Menu Button */}
             <div className='md:hidden flex items-center space-x-2'>
-              {/* Mobile Cart Button - apenas para distribuidores */}
               {user?.tipo === 'distribuidor' && (
                 <button
                   onClick={toggleCart}
                   className='relative p-2 hover:bg-gray-700 rounded transition'
                 >
-                  <span className='text-xl'>🛒</span>
+                  <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z' />
+                  </svg>
                   {cartCount > 0 && (
                     <span className='absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold'>
                       {cartCount > 9 ? '9+' : cartCount}
@@ -293,7 +314,12 @@ export default function Navbar() {
                     }`}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    🏠 Dashboard
+                    <span className='flex items-center gap-2'>
+                      <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' />
+                      </svg>
+                      Dashboard
+                    </span>
                   </Link>
 
                   <Link
@@ -305,12 +331,17 @@ export default function Navbar() {
                     }`}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    📋 Meus Pedidos
+                    <span className='flex items-center gap-2'>
+                      <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' />
+                      </svg>
+                      Meus Pedidos
+                    </span>
                   </Link>
 
                   <Link
                     href='/pagamentos'
-                    className={`block px-3 py-2 rounded transition relative ${
+                    className={`block px-3 py-2 rounded transition ${
                       isActive('/pagamentos')
                         ? 'bg-yellow-600 text-white'
                         : 'hover:bg-gray-700'
@@ -318,12 +349,35 @@ export default function Navbar() {
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
                     <span className='flex items-center justify-between'>
-                      <span>💳 Pagamentos</span>
+                      <span className='flex items-center gap-2'>
+                        <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' />
+                        </svg>
+                        Pagamentos
+                      </span>
                       {pendencias > 0 && (
                         <span className='bg-red-500 text-white rounded-full px-2 py-0.5 text-xs font-bold'>
                           Pendente
                         </span>
                       )}
+                    </span>
+                  </Link>
+
+                  {/* Tabela de Preços - Mobile */}
+                  <Link
+                    href='/tabela-precos'
+                    className={`block px-3 py-2 rounded transition ${
+                      isActive('/tabela-precos')
+                        ? 'bg-purple-600 text-white'
+                        : 'hover:bg-gray-700'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <span className='flex items-center gap-2'>
+                      <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z' />
+                      </svg>
+                      Tabela de Preços
                     </span>
                   </Link>
 
@@ -336,7 +390,12 @@ export default function Navbar() {
                     }`}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    🛒 Carrinho {cartCount > 0 && `(${cartCount})`}
+                    <span className='flex items-center gap-2'>
+                      <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z' />
+                      </svg>
+                      Carrinho {cartCount > 0 && `(${cartCount})`}
+                    </span>
                   </Link>
                 </>
               )}
@@ -352,7 +411,7 @@ export default function Navbar() {
                   }`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
-                  ⚙️ Admin
+                  Admin
                 </Link>
               )}
 
@@ -364,7 +423,12 @@ export default function Navbar() {
                 }}
                 className='block w-full text-left px-3 py-2 bg-gray-600 rounded hover:bg-gray-700 transition'
               >
-                🚪 Sair
+                <span className='flex items-center gap-2'>
+                  <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1' />
+                  </svg>
+                  Sair
+                </span>
               </button>
             </div>
           </div>

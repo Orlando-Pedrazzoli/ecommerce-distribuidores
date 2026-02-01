@@ -1,4 +1,4 @@
-// models/User.js - ATUALIZADO PARA DISTRIBUIDORES
+// models/User.js - ATUALIZADO COM TABELA DE PREÇOS
 // ===================================
 
 import mongoose from 'mongoose';
@@ -10,7 +10,7 @@ const UserSchema = new mongoose.Schema(
     usuario: {
       type: String,
       unique: true,
-      sparse: true, // Permite null/undefined para alguns usuários
+      sparse: true,
       trim: true,
     },
     nome: {
@@ -64,6 +64,20 @@ const UserSchema = new mongoose.Schema(
         ref: 'Pedido',
       },
     ],
+
+    // ══════════════════════════════════════════════════════════════
+    // TABELA DE PREÇOS DO DISTRIBUIDOR
+    // ══════════════════════════════════════════════════════════════
+    tabelaPrecos: {
+      type: Map,
+      of: Number,
+      default: new Map(),
+    },
+    // Data da última atualização da tabela de preços
+    ultimaAtualizacaoTabela: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -72,11 +86,12 @@ const UserSchema = new mongoose.Schema(
 
 // Hash da senha antes de salvar
 UserSchema.pre('save', async function (next) {
-  // Só fazer hash se password foi modificado
   if (!this.isModified('password')) {
-    // Atualizar data de modificação do endereço se foi alterado
     if (this.isModified('endereco')) {
       this.ultimaAtualizacaoEndereco = new Date();
+    }
+    if (this.isModified('tabelaPrecos')) {
+      this.ultimaAtualizacaoTabela = new Date();
     }
     return next();
   }
@@ -90,10 +105,13 @@ UserSchema.pre('save', async function (next) {
   }
 });
 
-// Middleware para atualizar data do endereço
+// Middleware para atualizar datas
 UserSchema.pre('save', function (next) {
   if (this.isModified('endereco')) {
     this.ultimaAtualizacaoEndereco = new Date();
+  }
+  if (this.isModified('tabelaPrecos')) {
+    this.ultimaAtualizacaoTabela = new Date();
   }
   next();
 });
@@ -118,7 +136,7 @@ UserSchema.virtual('enderecoCompleto').get(function () {
   return enderecoFormatado;
 });
 
-// Índice para busca por usuário (distribuidores .env)
+// Índices
 UserSchema.index({ usuario: 1 });
 UserSchema.index({ email: 1 });
 UserSchema.index({ tipo: 1 });
