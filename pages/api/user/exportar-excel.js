@@ -1,7 +1,7 @@
 // pages/api/user/exportar-excel.js
 // ===================================
 // API para exportar tabela de preços em Excel (.xlsx)
-// Separado por categorias (abas)
+// Tudo numa única planilha com categorias como separadores
 
 import dbConnect from '../../../lib/mongodb';
 import TabelaPrecos from '../../../models/TabelaPrecos';
@@ -73,9 +73,6 @@ export default async function handler(req, res) {
       return acc;
     }, {});
 
-    // Criar workbook
-    const wb = XLSX.utils.book_new();
-
     // Formatar moeda
     const formatarMoeda = (valor) => {
       return `R$ ${(valor || 0).toLocaleString('pt-BR', { 
@@ -84,35 +81,66 @@ export default async function handler(req, res) {
       })}`;
     };
 
-    // Criar uma aba para cada categoria
+    // Data formatada
+    const dataFormatada = new Date().toLocaleDateString('pt-BR');
+
+    // Criar dados para uma única planilha
+    const dados = [];
+
+    // Título
+    dados.push(['ELITE SURFING - Tabela de Preços']);
+    dados.push([`Distribuidor: ${nomeDistribuidor}`]);
+    dados.push([`Data: ${dataFormatada}`]);
+    dados.push([]); // Linha vazia
+
+    // Iterar por categorias
     Object.entries(porCategoria).forEach(([categoria, produtosCategoria]) => {
-      const dados = produtosCategoria.map(produto => ({
-        'Código': produto.codigo || '',
-        'Produto': produto.nome || '',
-        'Preço': formatarMoeda(tabelaPrecos[produto._id.toString()]),
-      }));
-
-      const ws = XLSX.utils.json_to_sheet(dados);
-
-      ws['!cols'] = [
-        { wch: 12 },
-        { wch: 40 },
-        { wch: 15 },
-      ];
-
-      const nomeAba = categoria
-        .substring(0, 31)
-        .replace(/[\\\/\?\*\[\]]/g, '');
-
-      XLSX.utils.book_append_sheet(wb, ws, nomeAba);
+      // Título da categoria
+      dados.push([categoria.toUpperCase()]);
+      
+      // Header dos produtos
+      dados.push(['Código', 'Produto', 'Preço']);
+      
+      // Produtos da categoria
+      produtosCategoria.forEach(produto => {
+        dados.push([
+          produto.codigo || '',
+          produto.nome || '',
+          formatarMoeda(tabelaPrecos[produto._id.toString()])
+        ]);
+      });
+      
+      // Linha vazia entre categorias
+      dados.push([]);
     });
+
+    // Criar worksheet
+    const ws = XLSX.utils.aoa_to_sheet(dados);
+
+    // Ajustar largura das colunas
+    ws['!cols'] = [
+      { wch: 15 },  // Código
+      { wch: 45 },  // Produto
+      { wch: 15 },  // Preço
+    ];
+
+    // Mesclar células do título principal (A1:C1)
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }, // Título
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } }, // Distribuidor
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 2 } }, // Data
+    ];
+
+    // Criar workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Tabela de Preços');
 
     // Gerar buffer
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
     // Nome do arquivo
-    const dataFormatada = new Date().toISOString().split('T')[0];
-    const nomeArquivo = `Tabela_Precos_${nomeDistribuidor.replace(/\s+/g, '_')}_${dataFormatada}.xlsx`;
+    const dataArquivo = new Date().toISOString().split('T')[0];
+    const nomeArquivo = `Tabela_Precos_${nomeDistribuidor.replace(/\s+/g, '_')}_${dataArquivo}.xlsx`;
 
     // Enviar resposta
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
