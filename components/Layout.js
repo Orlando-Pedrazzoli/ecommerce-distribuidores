@@ -25,7 +25,7 @@ export default function Layout({ children }) {
       >
         <div className='max-w-6xl mx-auto px-4'>
           <p className='mb-2'>
-            &copy; 2025 E-commerce Distribuidores. Todos os direitos reservados.
+            &copy; 2025 Elite Surfing Portal. Todos os direitos reservados.
           </p>
           <p>
             <a
