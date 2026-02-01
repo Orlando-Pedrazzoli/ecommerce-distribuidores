@@ -27,7 +27,7 @@ export default function TabelaPrecos() {
   const [hasChanges, setHasChanges] = useState(false);
 
   // Estados de UI
-  const [abaAtiva, setAbaAtiva] = useState('editar'); // editar | compartilhar | margens
+  const [abaAtiva, setAbaAtiva] = useState('editar');
   const [busca, setBusca] = useState('');
   const [categoriasExpandidas, setCategoriasExpandidas] = useState({});
   const [margemRapida, setMargemRapida] = useState('30');
@@ -164,7 +164,6 @@ export default function TabelaPrecos() {
       setUltimaAtualizacao(data.ultimaAtualizacao);
       toast.success('Tabela de preços salva com sucesso!');
       
-      // Recarregar para atualizar stats
       carregarTabela();
 
     } catch (error) {
@@ -205,7 +204,7 @@ export default function TabelaPrecos() {
     }
   };
 
-  // Exportar PDF
+  // Exportar PDF (HTML para imprimir)
   const exportarPdf = async () => {
     try {
       setExportando(true);
@@ -218,18 +217,14 @@ export default function TabelaPrecos() {
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Tabela_Precos_${new Date().toISOString().split('T')[0]}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
       
-      toast.success('PDF exportado com sucesso!');
+      // Abrir em nova aba para o usuário imprimir/salvar como PDF
+      window.open(url, '_blank');
+      
+      toast.success('Tabela aberta! Use Ctrl+P para salvar como PDF');
     } catch (error) {
-      console.error('Erro ao exportar PDF:', error);
-      toast.error(error.message || 'Erro ao exportar PDF');
+      console.error('Erro ao exportar:', error);
+      toast.error(error.message || 'Erro ao exportar');
     } finally {
       setExportando(false);
     }
@@ -587,8 +582,8 @@ export default function TabelaPrecos() {
                       <div className='text-5xl mb-4'>📥</div>
                       <h3 className='font-bold text-lg mb-2'>Excel (.xlsx)</h3>
                       <p className='text-sm text-gray-600 mb-4'>
-                        Sem fotos, arquivo leve.<br />
-                        Ideal para envio por WhatsApp.
+                        Arquivo leve para envio.<br />
+                        Ideal para WhatsApp/Email.
                       </p>
                       <button
                         onClick={exportarExcel}
@@ -609,10 +604,10 @@ export default function TabelaPrecos() {
                     {/* PDF */}
                     <div className='border rounded-lg p-6 text-center hover:border-red-500 hover:bg-red-50 transition'>
                       <div className='text-5xl mb-4'>📄</div>
-                      <h3 className='font-bold text-lg mb-2'>PDF com Fotos</h3>
+                      <h3 className='font-bold text-lg mb-2'>PDF / Imprimir</h3>
                       <p className='text-sm text-gray-600 mb-4'>
-                        Visual rico com imagens.<br />
-                        Ideal para impressão.
+                        Visual formatado.<br />
+                        Use Ctrl+P para salvar como PDF.
                       </p>
                       <button
                         onClick={exportarPdf}
@@ -625,7 +620,7 @@ export default function TabelaPrecos() {
                             Gerando...
                           </>
                         ) : (
-                          'Baixar PDF'
+                          'Abrir para Imprimir'
                         )}
                       </button>
                     </div>

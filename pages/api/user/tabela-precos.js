@@ -1,9 +1,10 @@
 // pages/api/user/tabela-precos.js
 // ===================================
 // API para gerenciar tabela de preços do distribuidor
+// Usa modelo TabelaPrecos separado (não depende do User model)
 
 import dbConnect from '../../../lib/mongodb';
-import User from '../../../models/User';
+import TabelaPrecos from '../../../models/TabelaPrecos';
 import Produto from '../../../models/Produto';
 import { verifyToken } from '../../../utils/auth';
 
@@ -21,25 +22,21 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: 'Token inválido' });
   }
 
-  const usuarioId = decoded.id || decoded.userId || decoded.usuario;
+  // Pegar usuario e nome do token
+  const usuario = decoded.usuario || decoded.id;
+  const nomeDistribuidor = decoded.nome || usuario;
 
   // ══════════════════════════════════════════════════════════════
   // GET - Carregar tabela de preços com produtos
   // ══════════════════════════════════════════════════════════════
   if (req.method === 'GET') {
     try {
-      // Buscar usuário - tenta por _id primeiro, depois por usuario
-      let user;
-      if (usuarioId && usuarioId.match(/^[0-9a-fA-F]{24}$/)) {
-        // É um ObjectId válido
-        user = await User.findById(usuarioId).select('tabelaPrecos ultimaAtualizacaoTabela nome');
-      } else {
-        // É um username (distribuidor do .env)
-        user = await User.findOne({ usuario: usuarioId }).select('tabelaPrecos ultimaAtualizacaoTabela nome');
-      }
+      // Buscar tabela de preços do distribuidor
+      let tabela = await TabelaPrecos.findOne({ usuario }).lean();
       
-      if (!user) {
-        return res.status(404).json({ message: 'Usuário não encontrado' });
+      // Se não existe, criar uma vazia
+      if (!tabela) {
+        tabela = { usuario, precos: {}, ultimaAtualizacao: null };
       }
 
       // Buscar todos os produtos ativos
@@ -48,8 +45,10 @@ export default async function handler(req, res) {
         .sort({ categoria: 1, nome: 1 })
         .lean();
 
-      // Converter Map para objeto
-      const tabelaPrecos = user.tabelaPrecos ? Object.fromEntries(user.tabelaPrecos) : {};
+      // Converter Map para objeto (se necessário)
+      const tabelaPrecos = tabela.precos instanceof Map 
+        ? Object.fromEntries(tabela.precos) 
+        : (tabela.precos || {});
 
       // Calcular custo total de cada produto e adicionar preço de venda
       const produtosComPrecos = produtos.map(produto => {
@@ -120,8 +119,8 @@ export default async function handler(req, res) {
         produtos: produtosComPrecos,
         porCategoria,
         stats,
-        ultimaAtualizacao: user.ultimaAtualizacaoTabela,
-        distribuidorNome: user.nome,
+        ultimaAtualizacao: tabela.ultimaAtualizacao,
+        distribuidorNome: nomeDistribuidor,
       });
 
     } catch (error) {
@@ -145,7 +144,6 @@ export default async function handler(req, res) {
       const precosValidados = {};
       for (const [produtoId, preco] of Object.entries(precos)) {
         if (preco === null || preco === '' || preco === undefined) {
-          // Não incluir produtos sem preço
           continue;
         }
         const precoNum = parseFloat(preco);
@@ -157,36 +155,22 @@ export default async function handler(req, res) {
         precosValidados[produtoId] = precoNum;
       }
 
-      // Atualizar usuário - tenta por _id primeiro, depois por usuario
-      let user;
-      if (usuarioId && usuarioId.match(/^[0-9a-fA-F]{24}$/)) {
-        user = await User.findByIdAndUpdate(
-          usuarioId,
-          {
-            tabelaPrecos: precosValidados,
-            ultimaAtualizacaoTabela: new Date(),
-          },
-          { new: true }
-        );
-      } else {
-        user = await User.findOneAndUpdate(
-          { usuario: usuarioId },
-          {
-            tabelaPrecos: precosValidados,
-            ultimaAtualizacaoTabela: new Date(),
-          },
-          { new: true }
-        );
-      }
-
-      if (!user) {
-        return res.status(404).json({ message: 'Usuário não encontrado' });
-      }
+      // Upsert - criar se não existe, atualizar se existe
+      const tabela = await TabelaPrecos.findOneAndUpdate(
+        { usuario },
+        {
+          usuario,
+          nomeDistribuidor,
+          precos: precosValidados,
+          ultimaAtualizacao: new Date(),
+        },
+        { new: true, upsert: true }
+      );
 
       return res.status(200).json({
         message: 'Tabela de preços salva com sucesso',
         totalProdutos: Object.keys(precosValidados).length,
-        ultimaAtualizacao: user.ultimaAtualizacaoTabela,
+        ultimaAtualizacao: tabela.ultimaAtualizacao,
       });
 
     } catch (error) {
@@ -200,31 +184,14 @@ export default async function handler(req, res) {
   // ══════════════════════════════════════════════════════════════
   if (req.method === 'DELETE') {
     try {
-      // Limpar tabela - tenta por _id primeiro, depois por usuario
-      let user;
-      if (usuarioId && usuarioId.match(/^[0-9a-fA-F]{24}$/)) {
-        user = await User.findByIdAndUpdate(
-          usuarioId,
-          {
-            tabelaPrecos: {},
-            ultimaAtualizacaoTabela: new Date(),
-          },
-          { new: true }
-        );
-      } else {
-        user = await User.findOneAndUpdate(
-          { usuario: usuarioId },
-          {
-            tabelaPrecos: {},
-            ultimaAtualizacaoTabela: new Date(),
-          },
-          { new: true }
-        );
-      }
-
-      if (!user) {
-        return res.status(404).json({ message: 'Usuário não encontrado' });
-      }
+      await TabelaPrecos.findOneAndUpdate(
+        { usuario },
+        {
+          precos: {},
+          ultimaAtualizacao: new Date(),
+        },
+        { new: true }
+      );
 
       return res.status(200).json({
         message: 'Tabela de preços limpa com sucesso',

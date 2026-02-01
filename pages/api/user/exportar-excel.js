@@ -4,7 +4,7 @@
 // Separado por categorias (abas)
 
 import dbConnect from '../../../lib/mongodb';
-import User from '../../../models/User';
+import TabelaPrecos from '../../../models/TabelaPrecos';
 import Produto from '../../../models/Produto';
 import { verifyToken } from '../../../utils/auth';
 import * as XLSX from 'xlsx';
@@ -27,29 +27,29 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: 'Token inválido' });
   }
 
-  const usuarioId = decoded.id || decoded.userId || decoded.usuario;
+  const usuario = decoded.usuario || decoded.id;
+  const nomeDistribuidor = decoded.nome || usuario;
 
   try {
-    // Buscar usuário - tenta por _id primeiro, depois por usuario
-    let user;
-    if (usuarioId && usuarioId.match(/^[0-9a-fA-F]{24}$/)) {
-      user = await User.findById(usuarioId).select('tabelaPrecos nome');
-    } else {
-      user = await User.findOne({ usuario: usuarioId }).select('tabelaPrecos nome');
-    }
+    // Buscar tabela de preços
+    const tabela = await TabelaPrecos.findOne({ usuario }).lean();
     
-    if (!user) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
+    if (!tabela || !tabela.precos || Object.keys(tabela.precos).length === 0) {
+      return res.status(400).json({ 
+        message: 'Nenhum produto com preço definido. Defina os preços antes de exportar.' 
+      });
     }
+
+    // Converter preços
+    const tabelaPrecos = tabela.precos instanceof Map 
+      ? Object.fromEntries(tabela.precos) 
+      : tabela.precos;
 
     // Buscar produtos ativos
     const produtos = await Produto.find({ ativo: true })
       .populate('fornecedorId', 'nome')
       .sort({ categoria: 1, codigo: 1 })
       .lean();
-
-    // Converter tabela de preços
-    const tabelaPrecos = user.tabelaPrecos ? Object.fromEntries(user.tabelaPrecos) : {};
 
     // Filtrar apenas produtos com preço definido
     const produtosComPreco = produtos.filter(p => 
@@ -86,24 +86,20 @@ export default async function handler(req, res) {
 
     // Criar uma aba para cada categoria
     Object.entries(porCategoria).forEach(([categoria, produtosCategoria]) => {
-      // Dados da planilha
       const dados = produtosCategoria.map(produto => ({
         'Código': produto.codigo || '',
         'Produto': produto.nome || '',
         'Preço': formatarMoeda(tabelaPrecos[produto._id.toString()]),
       }));
 
-      // Criar worksheet
       const ws = XLSX.utils.json_to_sheet(dados);
 
-      // Ajustar largura das colunas
       ws['!cols'] = [
-        { wch: 12 },  // Código
-        { wch: 40 },  // Produto
-        { wch: 15 },  // Preço
+        { wch: 12 },
+        { wch: 40 },
+        { wch: 15 },
       ];
 
-      // Nome da aba (máx 31 caracteres, sem caracteres especiais)
       const nomeAba = categoria
         .substring(0, 31)
         .replace(/[\\\/\?\*\[\]]/g, '');
@@ -114,9 +110,9 @@ export default async function handler(req, res) {
     // Gerar buffer
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
-    // Data formatada para nome do arquivo
+    // Nome do arquivo
     const dataFormatada = new Date().toISOString().split('T')[0];
-    const nomeArquivo = `Tabela_Precos_${user.nome.replace(/\s+/g, '_')}_${dataFormatada}.xlsx`;
+    const nomeArquivo = `Tabela_Precos_${nomeDistribuidor.replace(/\s+/g, '_')}_${dataFormatada}.xlsx`;
 
     // Enviar resposta
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

@@ -1,10 +1,10 @@
 // pages/api/user/exportar-pdf.js
 // ===================================
-// API para exportar tabela de preços em PDF
-// Versão simplificada (sem imagens externas para compatibilidade com Vercel)
+// API para exportar tabela de preços em PDF (HTML para imprimir)
+// Separado por categorias
 
 import dbConnect from '../../../lib/mongodb';
-import User from '../../../models/User';
+import TabelaPrecos from '../../../models/TabelaPrecos';
 import Produto from '../../../models/Produto';
 import { verifyToken } from '../../../utils/auth';
 
@@ -26,29 +26,29 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: 'Token inválido' });
   }
 
-  const usuarioId = decoded.id || decoded.userId || decoded.usuario;
+  const usuario = decoded.usuario || decoded.id;
+  const nomeDistribuidor = decoded.nome || usuario;
 
   try {
-    // Buscar usuário - tenta por _id primeiro, depois por usuario
-    let user;
-    if (usuarioId && usuarioId.match(/^[0-9a-fA-F]{24}$/)) {
-      user = await User.findById(usuarioId).select('tabelaPrecos nome telefone');
-    } else {
-      user = await User.findOne({ usuario: usuarioId }).select('tabelaPrecos nome telefone');
-    }
+    // Buscar tabela de preços
+    const tabela = await TabelaPrecos.findOne({ usuario }).lean();
     
-    if (!user) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
+    if (!tabela || !tabela.precos || Object.keys(tabela.precos).length === 0) {
+      return res.status(400).json({ 
+        message: 'Nenhum produto com preço definido. Defina os preços antes de exportar.' 
+      });
     }
+
+    // Converter preços
+    const tabelaPrecos = tabela.precos instanceof Map 
+      ? Object.fromEntries(tabela.precos) 
+      : tabela.precos;
 
     // Buscar produtos ativos
     const produtos = await Produto.find({ ativo: true })
       .populate('fornecedorId', 'nome')
       .sort({ categoria: 1, codigo: 1 })
       .lean();
-
-    // Converter tabela de preços
-    const tabelaPrecos = user.tabelaPrecos ? Object.fromEntries(user.tabelaPrecos) : {};
 
     // Filtrar apenas produtos com preço definido
     const produtosComPreco = produtos.filter(p => 
@@ -83,13 +83,13 @@ export default async function handler(req, res) {
     // Data formatada
     const dataFormatada = new Date().toLocaleDateString('pt-BR');
 
-    // Gerar HTML para PDF
+    // Gerar HTML
     let html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Tabela de Preços - ${user.nome}</title>
+  <title>Tabela de Preços - ${nomeDistribuidor}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
@@ -115,7 +115,7 @@ export default async function handler(req, res) {
   <div class="header">
     <h1>ELITE SURFING</h1>
     <p>Tabela de Preços</p>
-    <p><strong>Distribuidor:</strong> ${user.nome}</p>
+    <p><strong>Distribuidor:</strong> ${nomeDistribuidor}</p>
     <p>Atualizada em: ${dataFormatada}</p>
   </div>
 `;
@@ -157,23 +157,18 @@ export default async function handler(req, res) {
     // Footer
     html += `
   <div class="footer">
-    <p>${user.telefone ? `Contato: ${user.telefone}` : 'Elite Surfing - Produtos de Qualidade'}</p>
+    <p>Elite Surfing - Produtos de Qualidade</p>
   </div>
 </body>
 </html>
 `;
 
-    // Data formatada para nome do arquivo
-    const dataArquivo = new Date().toISOString().split('T')[0];
-    const nomeArquivo = `Tabela_Precos_${user.nome.replace(/\s+/g, '_')}_${dataArquivo}.html`;
-
-    // Enviar como HTML (usuário pode imprimir como PDF)
+    // Enviar como HTML
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${nomeArquivo}"`);
     res.send(html);
 
   } catch (error) {
-    console.error('Erro ao exportar PDF:', error);
+    console.error('Erro ao exportar:', error);
     return res.status(500).json({ message: 'Erro ao exportar: ' + error.message });
   }
 }
