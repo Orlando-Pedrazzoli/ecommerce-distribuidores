@@ -80,7 +80,7 @@ export default async function handler(req, res) {
       {
         codigo: 'D',
         nome: 'Wakum - WKM',
-        email: '',
+        email: 'wakum@wakum.com.br', // Email obrigatório
         especialidade: 'Especialista em Capas, Leashes e Decks',
         descricao: 'Qualidade e preço',
         cor: '#ef4444', // Vermelho
