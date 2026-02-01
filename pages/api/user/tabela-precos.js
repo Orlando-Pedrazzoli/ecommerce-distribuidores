@@ -5,18 +5,23 @@
 import dbConnect from '../../../lib/mongodb';
 import User from '../../../models/User';
 import Produto from '../../../models/Produto';
-import { verifyAuth } from '../../../utils/auth';
+import { verifyToken } from '../../../utils/auth';
 
 export default async function handler(req, res) {
   await dbConnect();
 
   // Verificar autenticação
-  const authResult = verifyAuth(req);
-  if (!authResult.success) {
+  const token = req.cookies['auth-token'];
+  if (!token) {
     return res.status(401).json({ message: 'Não autorizado' });
   }
 
-  const userId = authResult.userId;
+  const decoded = verifyToken(token);
+  if (!decoded) {
+    return res.status(401).json({ message: 'Token inválido' });
+  }
+
+  const userId = decoded.id || decoded.userId;
 
   // ══════════════════════════════════════════════════════════════
   // GET - Carregar tabela de preços com produtos
