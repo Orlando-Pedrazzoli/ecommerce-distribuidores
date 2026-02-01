@@ -1,5 +1,6 @@
-// pages/api/seed/index.js - APENAS ADICIONAR NOVAS CATEGORIAS (PRESERVAR DADOS EXISTENTES)
+// pages/api/seed/index.js
 // ===================================
+// SEED - Criar/Atualizar fornecedores e categorias
 
 import dbConnect from '../../../lib/mongodb';
 import Fornecedor from '../../../models/Fornecedor';
@@ -12,117 +13,175 @@ export default async function handler(req, res) {
   try {
     await dbConnect();
 
-    console.log('🔍 Verificando fornecedores existentes...');
+    console.log('🔍 Iniciando seed de fornecedores...');
 
-    // 🎯 CATEGORIAS DEFINIDAS PELO USUÁRIO - ALTERE AQUI AS CATEGORIAS QUE VOCÊ QUER ADICIONAR
-    const novasCategoriasPorFornecedor = {
-      A: [
-        // Categorias existentes do Vitor - Pandawa (DECKS)
-        'Deck Noronha',
-        'Deck Saquarema',
-        'Deck J-bay',
-        'Deck Fiji Classic',
-        'Deck Hawaii',
-        'Deck Peniche',
-      ],
-      B: [
-        // Categorias existentes do Mauricio - Maos Acessórios (CAPAS E ACESSÓRIOS)
-        'Capa Toalha',
-        'Capa Simples',
-        'Capa Premium',
-        'Capa Sarcófago',
-        'Capa Sarcófago/Rodas',
-        'Capa Sarcófago Simples',
-        'Sarcófago Simples/Rodas',
-        'Leash Nó',
-        'Acessórios',
-      ],
-      C: [
-        // Categorias existentes do Rodrigo - Godas (LEASHES)
-        'Leash One Piece 5 x 5,5mm',
-        'Leash One Piece 6 x 6,3mm',
-        'Leash One Piece 6 x 7mm',
-        'Leash One Piece 7 x 7mm',
-        'Leash One Piece 8 x 7,5mm',
-        'Deck Mentawai',
-        'Deck Maldivas',
-      ],
-    };
+    // ══════════════════════════════════════════════════════════════
+    // 🎯 FORNECEDORES E CATEGORIAS - ADICIONE/EDITE AQUI
+    // ══════════════════════════════════════════════════════════════
+    const fornecedoresConfig = [
+      {
+        codigo: 'A',
+        nome: 'Vitor - Pandawa',
+        email: 'vitaobrasil@hotmail.com',
+        especialidade: 'Especialista em Decks',
+        descricao: 'Decks premium para todas as condições de surf',
+        cor: '#22c55e',
+        logo: '/vitor-logo.jpg',
+        categorias: [
+          'Deck Noronha',
+          'Deck Saquarema',
+          'Deck J-bay',
+          'Deck Fiji Classic',
+          'Deck Hawaii',
+          'Deck Peniche',
+        ],
+      },
+      {
+        codigo: 'B',
+        nome: 'Mauricio - Maos Acessórios',
+        email: 'mauricio.maos@uol.com.br',
+        especialidade: 'Especialista em Capas e Acessórios',
+        descricao: 'Capas e acessórios para proteção e transporte',
+        cor: '#f59e0b',
+        logo: '/maos-logo.jpg',
+        categorias: [
+          'Capa Toalha',
+          'Capa Simples',
+          'Capa Premium',
+          'Capa Sarcófago',
+          'Capa Sarcófago/Rodas',
+          'Capa Sarcófago Simples',
+          'Sarcófago Simples/Rodas',
+          'Leash Nó',
+          'Acessórios',
+        ],
+      },
+      {
+        codigo: 'C',
+        nome: 'Rodrigo - Godas',
+        email: 'godassurfproducts@hotmail.com',
+        especialidade: 'Especialista em Leashes',
+        descricao: 'Leashes superiores para máxima segurança',
+        cor: '#06b6d4',
+        logo: '/godas-logo.jpg',
+        categorias: [
+          'Leash One Piece 5 x 5,5mm',
+          'Leash One Piece 6 x 6,3mm',
+          'Leash One Piece 6 x 7mm',
+          'Leash One Piece 7 x 7mm',
+          'Leash One Piece 8 x 7,5mm',
+          'Deck Mentawai',
+          'Deck Maldivas',
+        ],
+      },
+      // ══════════════════════════════════════════════════════════════
+      // 🆕 FORNECEDOR D - WAKUM
+      // ══════════════════════════════════════════════════════════════
+      {
+        codigo: 'D',
+        nome: 'Wakum - WKM',
+        email: '',
+        especialidade: 'Especialista em Capas, Leashes e Decks',
+        descricao: 'Qualidade e preço',
+        cor: '#ef4444', // Vermelho
+        logo: '/wakum-logo.jpg',
+        categorias: [
+          'Deck Stand Up',
+          'Deck Combate',
+          'Deck Longboard',
+          'Deck Frontal',
+          'Deck Tahiti',
+          'Deck J-bay W',
+          'Deck Fiji Classic W',
+          'Deck Hawaii W',
+          'Leash Premium 9" CALF KNEE 9 x 7mm',
+          'Leash Premium 9"TORNOZELO 9 x 7mm',
+          'Leash Premium 10" LONGBOARD 10 x 7mm',
+          'Leash Premium STAND UP 10 x 8mm',
+          'Leash Premium STAND UP espiral 7mm',
+          'Leash Premium Bodyboard espiral 6mm',
+          'Capa Toalha W',
+          'Capa Simples W',
+          'Capa Premium W',
+          'Capa Térmica',
+          'Capa Sarcófago W',
+          'Capa Sarcófago/Rodas W',
+        ],
+      },
+    ];
 
+    let fornecedoresCriados = 0;
     let fornecedoresAtualizados = 0;
-    let novasCategoriasCriadas = 0;
 
-    // Atualizar categorias dos fornecedores existentes
-    for (const [codigo, novasCategorias] of Object.entries(
-      novasCategoriasPorFornecedor
-    )) {
-      const fornecedor = await Fornecedor.findOne({ codigo: codigo });
+    // Processar cada fornecedor
+    for (const config of fornecedoresConfig) {
+      const fornecedorExistente = await Fornecedor.findOne({ codigo: config.codigo });
 
-      if (fornecedor) {
-        // Verificar se há categorias novas
-        const categoriasExistentes = fornecedor.categorias || [];
-        const categoriasParaAdicionar = novasCategorias.filter(
-          cat => !categoriasExistentes.includes(cat)
-        );
+      if (fornecedorExistente) {
+        // Atualizar fornecedor existente
+        console.log(`🔄 Atualizando ${config.codigo} - ${config.nome}`);
 
-        if (categoriasParaAdicionar.length > 0) {
-          console.log(
-            `🔄 Atualizando fornecedor ${codigo}: ${fornecedor.nome}`
-          );
-          console.log(
-            `   📝 Adicionando ${categoriasParaAdicionar.length} novas categorias:`,
-            categoriasParaAdicionar
-          );
+        await Fornecedor.findByIdAndUpdate(fornecedorExistente._id, {
+          nome: config.nome,
+          email: config.email || fornecedorExistente.email,
+          especialidade: config.especialidade,
+          descricao: config.descricao,
+          cor: config.cor,
+          logo: config.logo,
+          categorias: config.categorias,
+        });
 
-          // Atualizar com todas as categorias (existentes + novas)
-          await Fornecedor.findByIdAndUpdate(fornecedor._id, {
-            categorias: novasCategorias,
-          });
-
-          fornecedoresAtualizados++;
-          novasCategoriasCriadas += categoriasParaAdicionar.length;
-        } else {
-          console.log(`✅ Fornecedor ${codigo} já possui todas as categorias`);
-        }
+        fornecedoresAtualizados++;
       } else {
-        console.log(
-          `⚠️ Fornecedor com código ${codigo} não encontrado no banco`
-        );
+        // Criar novo fornecedor
+        console.log(`🆕 Criando fornecedor ${config.codigo} - ${config.nome}`);
+
+        const novoFornecedor = new Fornecedor({
+          codigo: config.codigo,
+          nome: config.nome,
+          email: config.email,
+          especialidade: config.especialidade,
+          descricao: config.descricao,
+          cor: config.cor,
+          logo: config.logo,
+          categorias: config.categorias,
+          ativo: true,
+        });
+
+        await novoFornecedor.save();
+        fornecedoresCriados++;
+
+        console.log(`   ✅ Criado com ${config.categorias.length} categorias`);
       }
     }
 
-    // Buscar dados atualizados para retorno
-    const fornecedores = await Fornecedor.find({});
-    const totalCategorias = fornecedores.reduce(
-      (total, f) => total + (f.categorias?.length || 0),
-      0
-    );
+    // Buscar dados atualizados
+    const fornecedores = await Fornecedor.find({}).sort({ codigo: 1 });
 
-    console.log('✅ Categorias atualizadas com sucesso!');
+    console.log('✅ Seed concluído!');
 
     return res.status(200).json({
       success: true,
-      message: `Categorias atualizadas com sucesso! ${novasCategoriasCriadas} novas categorias adicionadas.`,
+      message: `Seed concluído! ${fornecedoresCriados} criados, ${fornecedoresAtualizados} atualizados.`,
       resumo: {
+        fornecedoresCriados,
         fornecedoresAtualizados,
-        novasCategoriasCriadas,
-        totalCategorias,
+        totalFornecedores: fornecedores.length,
       },
-      detalhes: {
-        fornecedores: fornecedores.map(f => ({
-          codigo: f.codigo,
-          nome: f.nome,
-          totalCategorias: f.categorias?.length || 0,
-          categorias: f.categorias || [],
-        })),
-      },
-      observacao:
-        '🔒 Dados existentes (produtos e usuários) foram preservados. Apenas categorias foram atualizadas.',
+      fornecedores: fornecedores.map(f => ({
+        codigo: f.codigo,
+        nome: f.nome,
+        especialidade: f.especialidade,
+        cor: f.cor,
+        totalCategorias: f.categorias?.length || 0,
+        categorias: f.categorias,
+      })),
     });
+
   } catch (error) {
-    console.error('💥 Erro ao atualizar categorias:', error);
+    console.error('💥 Erro no seed:', error);
     return res.status(500).json({
-      message: 'Erro ao atualizar categorias',
+      message: 'Erro no seed',
       error: error.message,
     });
   }
