@@ -101,7 +101,7 @@ export default async function handler(req, res) {
           'Leash Premium STAND UP espiral 7mm',
           'Leash Premium Bodyboard espiral 6mm',
           'Capa Toalha W',
-          'Capa Simples W',
+          'Capa Toalha',
           'Capa Premium W',
           'Capa Térmica',
           'Capa Sarcófago W',
