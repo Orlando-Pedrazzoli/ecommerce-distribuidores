@@ -36,7 +36,7 @@ export default async function handler(req, res) {
       
       // Se não existe, criar uma vazia
       if (!tabela) {
-        tabela = { usuario, precos: {}, ultimaAtualizacao: null };
+        tabela = { usuario, precos: {}, produtosOcultos: [], ultimaAtualizacao: null };
       }
 
       // Buscar todos os produtos ativos
@@ -49,6 +49,9 @@ export default async function handler(req, res) {
       const tabelaPrecos = tabela.precos instanceof Map 
         ? Object.fromEntries(tabela.precos) 
         : (tabela.precos || {});
+
+      // Lista de produtos ocultos
+      const produtosOcultos = tabela.produtosOcultos || [];
 
       // Calcular custo total de cada produto e adicionar preço de venda
       const produtosComPrecos = produtos.map(produto => {
@@ -75,6 +78,7 @@ export default async function handler(req, res) {
           categoria: produto.categoria,
           imagem: produto.imagem || produto.imagens?.[0] || null,
           fornecedor: produto.fornecedorId?.nome || 'N/A',
+          fornecedorCodigo: produto.fornecedorId?.codigo || '',
           // Custos
           custoBase,
           royalties,
@@ -85,6 +89,8 @@ export default async function handler(req, res) {
           precoVenda,
           margem: margem !== null ? Math.round(margem * 100) / 100 : null,
           lucro: lucro !== null ? Math.round(lucro * 100) / 100 : null,
+          // Oculto
+          oculto: produtosOcultos.includes(produto._id.toString()),
         };
       });
 
@@ -119,6 +125,7 @@ export default async function handler(req, res) {
         produtos: produtosComPrecos,
         porCategoria,
         stats,
+        produtosOcultos,
         ultimaAtualizacao: tabela.ultimaAtualizacao,
         distribuidorNome: nomeDistribuidor,
       });
@@ -134,7 +141,7 @@ export default async function handler(req, res) {
   // ══════════════════════════════════════════════════════════════
   if (req.method === 'PUT') {
     try {
-      const { precos } = req.body;
+      const { precos, produtosOcultos } = req.body;
 
       if (!precos || typeof precos !== 'object') {
         return res.status(400).json({ message: 'Dados inválidos' });
@@ -155,6 +162,11 @@ export default async function handler(req, res) {
         precosValidados[produtoId] = precoNum;
       }
 
+      // Validar produtos ocultos (array de strings)
+      const ocultosValidados = Array.isArray(produtosOcultos) 
+        ? produtosOcultos.filter(id => typeof id === 'string') 
+        : [];
+
       // Upsert - criar se não existe, atualizar se existe
       const tabela = await TabelaPrecos.findOneAndUpdate(
         { usuario },
@@ -162,6 +174,7 @@ export default async function handler(req, res) {
           usuario,
           nomeDistribuidor,
           precos: precosValidados,
+          produtosOcultos: ocultosValidados,
           ultimaAtualizacao: new Date(),
         },
         { new: true, upsert: true }
@@ -170,6 +183,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         message: 'Tabela de preços salva com sucesso',
         totalProdutos: Object.keys(precosValidados).length,
+        produtosOcultos: ocultosValidados.length,
         ultimaAtualizacao: tabela.ultimaAtualizacao,
       });
 

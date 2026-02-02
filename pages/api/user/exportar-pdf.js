@@ -44,16 +44,20 @@ export default async function handler(req, res) {
       ? Object.fromEntries(tabela.precos) 
       : tabela.precos;
 
+    // Lista de produtos ocultos
+    const produtosOcultos = tabela.produtosOcultos || [];
+
     // Buscar produtos ativos
     const produtos = await Produto.find({ ativo: true })
       .populate('fornecedorId', 'nome')
       .sort({ categoria: 1, codigo: 1 })
       .lean();
 
-    // Filtrar apenas produtos com preço definido
+    // Filtrar apenas produtos com preço definido E não ocultos
     const produtosComPreco = produtos.filter(p => 
       tabelaPrecos[p._id.toString()] !== undefined && 
-      tabelaPrecos[p._id.toString()] !== null
+      tabelaPrecos[p._id.toString()] !== null &&
+      !produtosOcultos.includes(p._id.toString())
     );
 
     if (produtosComPreco.length === 0) {

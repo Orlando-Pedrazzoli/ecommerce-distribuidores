@@ -35,6 +35,15 @@ export default function TabelaPrecos() {
   const [margemRapida, setMargemRapida] = useState('30');
   const [exportando, setExportando] = useState(false);
   const [jsPdfLoaded, setJsPdfLoaded] = useState(false);
+  const [inputEmEdicao, setInputEmEdicao] = useState(null);
+  const [valorTemporario, setValorTemporario] = useState('');
+  
+  // Estados para produtos ocultos
+  const [produtosOcultos, setProdutosOcultos] = useState([]);
+  const [mostrarOcultos, setMostrarOcultos] = useState(false);
+  
+  // Estado para email
+  const [emailCliente, setEmailCliente] = useState('');
 
   // Formatar moeda
   const formatarMoeda = (valor) => {
@@ -88,6 +97,7 @@ export default function TabelaPrecos() {
       setPorCategoria(data.porCategoria || {});
       setStats(data.stats || null);
       setUltimaAtualizacao(data.ultimaAtualizacao);
+      setProdutosOcultos(data.produtosOcultos || []);
 
       // Inicializar preços
       const precosIniciais = {};
@@ -128,6 +138,52 @@ export default function TabelaPrecos() {
     }));
   };
 
+  // Quando o input recebe foco - mostra valor simples para edição
+  const handleFocus = (produtoId) => {
+    const valorAtual = precos[produtoId];
+    setInputEmEdicao(produtoId);
+    // Mostra o valor como número simples (ex: 65.01 ou vazio)
+    setValorTemporario(valorAtual !== null && valorAtual !== undefined ? valorAtual.toString().replace('.', ',') : '');
+  };
+
+  // Quando o input perde foco - salva o valor
+  const handleBlur = (produtoId) => {
+    // Parsear o valor temporário e salvar
+    const valorParseado = parsearMoeda(valorTemporario);
+    setPrecos(prev => ({
+      ...prev,
+      [produtoId]: valorParseado
+    }));
+    setInputEmEdicao(null);
+    setValorTemporario('');
+  };
+
+  // Quando digita no input durante edição
+  const handleChangeTemporario = (valor) => {
+    // Permite apenas números, vírgula e ponto
+    const valorLimpo = valor.replace(/[^0-9.,]/g, '');
+    setValorTemporario(valorLimpo);
+  };
+
+  // Quando pressiona Enter - salva e sai do campo
+  const handleKeyDown = (e, produtoId) => {
+    if (e.key === 'Enter') {
+      e.target.blur();
+    }
+  };
+
+  // Toggle produto oculto
+  const toggleOculto = (produtoId) => {
+    setProdutosOcultos(prev => {
+      if (prev.includes(produtoId)) {
+        return prev.filter(id => id !== produtoId);
+      } else {
+        return [...prev, produtoId];
+      }
+    });
+    setHasChanges(true);
+  };
+
   // Aplicar margem global
   const aplicarMargemGlobal = () => {
     const margem = parseFloat(margemRapida) / 100;
@@ -153,7 +209,7 @@ export default function TabelaPrecos() {
       const response = await fetch('/api/user/tabela-precos', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ precos })
+        body: JSON.stringify({ precos, produtosOcultos })
       });
 
       if (!response.ok) {
@@ -257,7 +313,10 @@ export default function TabelaPrecos() {
 
     // Iterar por categorias
     Object.entries(porCategoria).forEach(([categoria, produtosCategoria]) => {
-      const produtosComPreco = produtosCategoria.filter(p => precos[p._id]);
+      // Filtrar produtos com preço E não ocultos
+      const produtosComPreco = produtosCategoria.filter(p => 
+        precos[p._id] && !produtosOcultos.includes(p._id)
+      );
       if (produtosComPreco.length === 0) return;
 
       // Verificar se precisa de nova página
@@ -421,7 +480,7 @@ export default function TabelaPrecos() {
         await navigator.share({
           files: [file],
           title: 'Tabela de Preços - Elite Surfing',
-          text: 'Tabela de preços Elite Surfing 2026!'
+          text: 'Confira minha tabela de preços!'
         });
         toast.success('Compartilhado!');
       } else {
@@ -457,7 +516,7 @@ export default function TabelaPrecos() {
         await navigator.share({
           files: [file],
           title: 'Tabela de Preços - Elite Surfing',
-          text: 'Tabela de preços Elite Surfing 2026!'
+          text: 'Confira minha tabela de preços!'
         });
         toast.success('Compartilhado!');
       } else {
@@ -475,25 +534,71 @@ export default function TabelaPrecos() {
     }
   };
 
-  // Filtrar produtos por busca
-  const produtosFiltrados = useMemo(() => {
-    if (!busca.trim()) return porCategoria;
+  // ══════════════════════════════════════════════════════════════
+  // ENVIAR POR EMAIL (mailto)
+  // ══════════════════════════════════════════════════════════════
+  const enviarPorEmail = () => {
+    if (!emailCliente.trim()) {
+      toast.warning('Digite o email do cliente');
+      return;
+    }
+
+    const nomeDistribuidor = user?.nome || 'Distribuidor';
+    const dataFormatada = new Date().toLocaleDateString('pt-BR');
     
-    const termo = busca.toLowerCase();
+    const assunto = encodeURIComponent(`Tabela de Preços - Elite Surfing`);
+    const corpo = encodeURIComponent(
+`Olá!
+
+Segue em anexo minha tabela de preços atualizada.
+
+📋 Distribuidor: ${nomeDistribuidor}
+📅 Data: ${dataFormatada}
+📦 Produtos: ${stats?.comPreco || 0} itens
+
+⚠️ IMPORTANTE: Não esqueça de anexar o arquivo PDF ou Excel antes de enviar!
+
+Qualquer dúvida, estou à disposição.
+
+Atenciosamente,
+${nomeDistribuidor}
+Elite Surfing`
+    );
+
+    // Abrir cliente de email
+    window.open(`mailto:${emailCliente}?subject=${assunto}&body=${corpo}`, '_blank');
+    
+    toast.success('Email aberto! Anexe o PDF ou Excel antes de enviar.');
+  };
+
+  // Filtrar produtos por busca e ocultos
+  const produtosFiltrados = useMemo(() => {
+    const termo = busca.toLowerCase().trim();
     const filtrado = {};
     
     Object.entries(porCategoria).forEach(([cat, prods]) => {
-      const prodsFiltrados = prods.filter(p => 
-        p.nome?.toLowerCase().includes(termo) ||
-        p.codigo?.toLowerCase().includes(termo)
-      );
+      const prodsFiltrados = prods.filter(p => {
+        // Filtrar por busca
+        const passaBusca = !termo || 
+          p.nome?.toLowerCase().includes(termo) ||
+          p.codigo?.toLowerCase().includes(termo);
+        
+        // Filtrar ocultos (se não estiver mostrando ocultos)
+        const passaOculto = mostrarOcultos || !produtosOcultos.includes(p._id);
+        
+        return passaBusca && passaOculto;
+      });
+      
       if (prodsFiltrados.length > 0) {
         filtrado[cat] = prodsFiltrados;
       }
     });
     
     return filtrado;
-  }, [porCategoria, busca]);
+  }, [porCategoria, busca, mostrarOcultos, produtosOcultos]);
+
+  // Contar produtos ocultos
+  const totalOcultos = produtosOcultos.length;
 
   // Calcular margem em tempo real
   const calcularMargem = (produtoId) => {
@@ -663,6 +768,27 @@ export default function TabelaPrecos() {
                     />
                   </div>
 
+                  {/* Toggle mostrar ocultos */}
+                  {totalOcultos > 0 && (
+                    <button
+                      onClick={() => setMostrarOcultos(!mostrarOcultos)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition ${
+                        mostrarOcultos 
+                          ? 'bg-gray-200 text-gray-700' 
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      }`}
+                    >
+                      <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                        {mostrarOcultos ? (
+                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z' />
+                        ) : (
+                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21' />
+                        )}
+                      </svg>
+                      <span>{mostrarOcultos ? 'Mostrando' : 'Mostrar'} ocultos ({totalOcultos})</span>
+                    </button>
+                  )}
+
                   {/* Salvar */}
                   <button
                     onClick={salvarAlteracoes}
@@ -728,27 +854,44 @@ export default function TabelaPrecos() {
                       <div className='divide-y'>
                         {/* Header da tabela - Desktop */}
                         <div className='hidden lg:grid lg:grid-cols-12 gap-4 px-4 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase'>
-                          <div className='col-span-2'>Código</div>
+                          <div className='col-span-1'>Código</div>
                           <div className='col-span-4'>Produto</div>
                           <div className='col-span-2 text-right'>Custo</div>
                           <div className='col-span-2 text-center'>Preço Venda</div>
-                          <div className='col-span-2 text-right'>Margem</div>
+                          <div className='col-span-3 text-right'>Margem</div>
                         </div>
 
                         {produtosCategoria.map(produto => {
                           const margem = calcularMargem(produto._id);
+                          const isOculto = produtosOcultos.includes(produto._id);
                           
                           return (
                             <div
                               key={produto._id}
-                              className='p-4 hover:bg-gray-50 transition'
+                              className={`p-4 hover:bg-gray-50 transition ${isOculto ? 'opacity-50 bg-gray-100' : ''}`}
                             >
                               {/* Mobile */}
                               <div className='lg:hidden space-y-2'>
                                 <div className='flex justify-between items-start'>
-                                  <div>
-                                    <span className='text-xs text-gray-500'>{produto.codigo}</span>
-                                    <p className='font-medium text-gray-800'>{produto.nome}</p>
+                                  <div className='flex items-start gap-2'>
+                                    {/* Botão ocultar - Mobile */}
+                                    <button
+                                      onClick={() => toggleOculto(produto._id)}
+                                      className={`p-1 rounded transition ${isOculto ? 'text-gray-400' : 'text-gray-300 hover:text-gray-500'}`}
+                                      title={isOculto ? 'Mostrar produto' : 'Ocultar produto'}
+                                    >
+                                      <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                                        {isOculto ? (
+                                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21' />
+                                        ) : (
+                                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z' />
+                                        )}
+                                      </svg>
+                                    </button>
+                                    <div>
+                                      <span className='text-xs text-gray-500'>{produto.codigo}</span>
+                                      <p className='font-medium text-gray-800'>{produto.nome}</p>
+                                    </div>
                                   </div>
                                   <span className={`text-sm font-bold ${corMargem(margem)}`}>
                                     {margem !== null ? `${margem.toFixed(1)}% ${badgeMargem(margem)}` : '-'}
@@ -762,10 +905,16 @@ export default function TabelaPrecos() {
                                     <span className='text-sm'>R$</span>
                                     <input
                                       type='text'
-                                      value={precos[produto._id] !== null ? formatarMoeda(precos[produto._id]) : ''}
-                                      onChange={(e) => atualizarPreco(produto._id, e.target.value)}
+                                      inputMode='decimal'
+                                      value={inputEmEdicao === produto._id 
+                                        ? valorTemporario 
+                                        : (precos[produto._id] !== null ? formatarMoeda(precos[produto._id]) : '')}
+                                      onChange={(e) => handleChangeTemporario(e.target.value)}
+                                      onFocus={() => handleFocus(produto._id)}
+                                      onBlur={() => handleBlur(produto._id)}
+                                      onKeyDown={(e) => handleKeyDown(e, produto._id)}
                                       placeholder='0,00'
-                                      className='w-24 border rounded px-2 py-1 text-sm text-right'
+                                      className='w-24 border rounded px-2 py-1 text-sm text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none'
                                     />
                                   </div>
                                 </div>
@@ -773,8 +922,22 @@ export default function TabelaPrecos() {
 
                               {/* Desktop */}
                               <div className='hidden lg:grid lg:grid-cols-12 gap-4 items-center'>
-                                <div className='col-span-2 text-sm text-gray-600'>
-                                  {produto.codigo}
+                                {/* Botão ocultar - Desktop */}
+                                <div className='col-span-1 flex items-center'>
+                                  <button
+                                    onClick={() => toggleOculto(produto._id)}
+                                    className={`p-1 rounded transition ${isOculto ? 'text-gray-400' : 'text-gray-300 hover:text-gray-500'}`}
+                                    title={isOculto ? 'Mostrar produto' : 'Ocultar produto'}
+                                  >
+                                    <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                                      {isOculto ? (
+                                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21' />
+                                      ) : (
+                                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z' />
+                                      )}
+                                    </svg>
+                                  </button>
+                                  <span className='text-sm text-gray-600 ml-1'>{produto.codigo}</span>
                                 </div>
                                 <div className='col-span-4'>
                                   <p className='font-medium text-gray-800 truncate' title={produto.nome}>
@@ -789,14 +952,20 @@ export default function TabelaPrecos() {
                                     <span className='text-sm text-gray-500'>R$</span>
                                     <input
                                       type='text'
-                                      value={precos[produto._id] !== null ? formatarMoeda(precos[produto._id]) : ''}
-                                      onChange={(e) => atualizarPreco(produto._id, e.target.value)}
+                                      inputMode='decimal'
+                                      value={inputEmEdicao === produto._id 
+                                        ? valorTemporario 
+                                        : (precos[produto._id] !== null ? formatarMoeda(precos[produto._id]) : '')}
+                                      onChange={(e) => handleChangeTemporario(e.target.value)}
+                                      onFocus={() => handleFocus(produto._id)}
+                                      onBlur={() => handleBlur(produto._id)}
+                                      onKeyDown={(e) => handleKeyDown(e, produto._id)}
                                       placeholder='0,00'
-                                      className='w-24 border rounded px-2 py-1.5 text-sm text-right focus:border-blue-500 focus:outline-none'
+                                      className='w-24 border rounded px-2 py-1.5 text-sm text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none'
                                     />
                                   </div>
                                 </div>
-                                <div className={`col-span-2 text-right font-medium ${corMargem(margem)}`}>
+                                <div className={`col-span-3 text-right font-medium ${corMargem(margem)}`}>
                                   {margem !== null ? (
                                     <span>{margem.toFixed(1)}% {badgeMargem(margem)}</span>
                                   ) : (
@@ -927,6 +1096,49 @@ export default function TabelaPrecos() {
                     </div>
                   </div>
 
+                  {/* Email */}
+                  <div className='mt-6 border-2 border-gray-200 rounded-xl p-6 hover:border-blue-500 hover:shadow-lg transition'>
+                    <div className='flex items-center gap-3 mb-4'>
+                      <div className='w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center'>
+                        <svg className='w-6 h-6 text-blue-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' />
+                        </svg>
+                      </div>
+                      <div>
+                        <h3 className='font-bold text-lg'>Enviar por Email</h3>
+                        <p className='text-sm text-gray-500'>Baixe o arquivo e envie para seu cliente</p>
+                      </div>
+                    </div>
+                    
+                    <div className='space-y-3'>
+                      <div>
+                        <label className='block text-sm text-gray-600 mb-1'>Email do cliente:</label>
+                        <input
+                          type='email'
+                          value={emailCliente}
+                          onChange={(e) => setEmailCliente(e.target.value)}
+                          placeholder='cliente@email.com'
+                          className='w-full border rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none'
+                        />
+                      </div>
+                      
+                      <button
+                        onClick={enviarPorEmail}
+                        disabled={!emailCliente.trim()}
+                        className='w-full bg-blue-500 text-white px-4 py-3 rounded-lg hover:bg-blue-600 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-medium'
+                      >
+                        <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M12 19l9 2-9-18-9 18 9-2zm0 0v-8' />
+                        </svg>
+                        Abrir Email para Enviar
+                      </button>
+                      
+                      <p className='text-xs text-gray-500 text-center'>
+                        Abre seu aplicativo de email com a mensagem pronta. Anexe o PDF ou Excel antes de enviar.
+                      </p>
+                    </div>
+                  </div>
+
                   {/* Dica */}
                   <div className='mt-6 p-4 bg-blue-50 rounded-lg'>
                     <p className='text-sm text-blue-800'>
@@ -945,7 +1157,10 @@ export default function TabelaPrecos() {
                       </div>
 
                       {Object.entries(porCategoria).map(([categoria, produtosCategoria]) => {
-                        const produtosComPreco = produtosCategoria.filter(p => precos[p._id]);
+                        // Filtrar produtos com preço E não ocultos
+                        const produtosComPreco = produtosCategoria.filter(p => 
+                          precos[p._id] && !produtosOcultos.includes(p._id)
+                        );
                         if (produtosComPreco.length === 0) return null;
 
                         return (

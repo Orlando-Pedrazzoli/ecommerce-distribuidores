@@ -26,6 +26,12 @@ const TabelaPrecosSchema = new mongoose.Schema(
       of: Number,
       default: new Map(),
     },
+    // Produtos ocultos pelo distribuidor
+    // Array de IDs de produtos que o distribuidor não quer exibir
+    produtosOcultos: {
+      type: [String],
+      default: [],
+    },
     // Data da última atualização
     ultimaAtualizacao: {
       type: Date,
