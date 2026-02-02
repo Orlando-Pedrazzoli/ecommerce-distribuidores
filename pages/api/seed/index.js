@@ -100,7 +100,6 @@ export default async function handler(req, res) {
           'Leash Premium STAND UP 10 x 8mm',
           'Leash Premium STAND UP espiral 7mm',
           'Leash Premium Bodyboard espiral 6mm',
-          'Capa Toalha W',
           'Capa Toalha',
           'Capa Premium W',
           'Capa Térmica',
