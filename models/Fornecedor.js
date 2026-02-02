@@ -1,6 +1,5 @@
-// MODELS/FORNECEDOR.JS - SIMPLIFICADO
+// MODELS/FORNECEDOR.JS - COM CATEGORIAS ISENTAS DE ROYALTIES
 // ===================================
-
 import mongoose from 'mongoose';
 
 const FornecedorSchema = new mongoose.Schema(
@@ -27,6 +26,15 @@ const FornecedorSchema = new mongoose.Schema(
         trim: true,
       },
     ],
+    // ══════════════════════════════════════════════════════════════
+    // 🆕 CATEGORIAS ISENTAS DE ROYALTIES
+    // Produtos nestas categorias NÃO pagam royalties (5%)
+    // Exemplo: ['Produtos Próprios', 'Parafinas']
+    // ══════════════════════════════════════════════════════════════
+    categoriasIsentasRoyalty: {
+      type: [String],
+      default: [],
+    },
     ativo: {
       type: Boolean,
       default: true,

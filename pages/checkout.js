@@ -1,7 +1,7 @@
-// PAGES/CHECKOUT.JS - COM FORMATO BRASILEIRO E LAYOUT OTIMIZADO
+// PAGES/CHECKOUT.JS - COM CATEGORIAS ISENTAS DE ROYALTIES
 // ===================================
 // 3 steps: Endereço → Pagamento → Confirmar
-// Detalhamento: Subtotal + Etiquetas + Embalagens + Royalties
+// 🆕 Verifica categorias isentas de royalties por fornecedor
 
 import { useState, useEffect } from 'react';
 import { useCart } from '../pages/_app';
@@ -32,6 +32,9 @@ export default function Checkout() {
   const [showSummary, setShowSummary] = useState(false);
   const router = useRouter();
 
+  // 🆕 Estado para fornecedores com categorias isentas
+  const [fornecedoresInfo, setFornecedoresInfo] = useState({});
+
   // Formato brasileiro de moeda
   const formatarMoeda = (valor) => {
     return `R$ ${(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -40,6 +43,13 @@ export default function Checkout() {
   useEffect(() => {
     buscarDadosUsuario();
   }, []);
+
+  // 🆕 Buscar informações dos fornecedores quando o carrinho mudar
+  useEffect(() => {
+    if (cart.length > 0) {
+      buscarFornecedoresInfo();
+    }
+  }, [cart]);
 
   useEffect(() => {
     if (!loadingUser && cart.length === 0) {
@@ -72,6 +82,31 @@ export default function Checkout() {
     }
   };
 
+  // 🆕 Buscar informações dos fornecedores (categorias isentas)
+  const buscarFornecedoresInfo = async () => {
+    try {
+      const response = await fetch('/api/produtos/fornecedores-info');
+      if (response.ok) {
+        const data = await response.json();
+        // Criar mapa de fornecedorId -> categoriasIsentas
+        const info = {};
+        (data.fornecedores || []).forEach(f => {
+          info[f._id] = f.categoriasIsentasRoyalty || [];
+        });
+        setFornecedoresInfo(info);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar info dos fornecedores:', error);
+    }
+  };
+
+  // 🆕 Verificar se item é isento de royalties
+  const isItemIsentoRoyalty = (item) => {
+    const fornecedorId = item.fornecedorId?._id || item.fornecedorId;
+    const categoriasIsentas = fornecedoresInfo[fornecedorId] || [];
+    return categoriasIsentas.includes(item.categoria);
+  };
+
   const salvarEndereco = async novoEndereco => {
     try {
       const response = await fetch('/api/user/endereco', {
@@ -95,7 +130,7 @@ export default function Checkout() {
   };
 
   // ══════════════════════════════════════════════════════════════
-  // CÁLCULOS
+  // CÁLCULOS - 🆕 COM VERIFICAÇÃO DE ISENÇÃO
   // ══════════════════════════════════════════════════════════════
 
   // Função para calcular preço total de um item
@@ -108,6 +143,17 @@ export default function Checkout() {
     (acc, item) => acc + (item.preco || 0) * item.quantidade,
     0
   );
+
+  // 🆕 Subtotal APENAS de itens que pagam royalties (não isentos)
+  const subtotalComRoyalty = cart.reduce((acc, item) => {
+    if (isItemIsentoRoyalty(item)) {
+      return acc;
+    }
+    return acc + (item.preco || 0) * item.quantidade;
+  }, 0);
+
+  // 🆕 Subtotal de itens isentos
+  const subtotalIsento = subtotalBase - subtotalComRoyalty;
 
   // Total de etiquetas
   const totalEtiquetas = cart.reduce(
@@ -124,8 +170,8 @@ export default function Checkout() {
   // Subtotal dos produtos (base + etiqueta + embalagem)
   const subtotalProdutos = subtotalBase + totalEtiquetas + totalEmbalagens;
 
-  // Royalties = 5% APENAS do subtotal BASE
-  const royalties = subtotalBase * 0.05;
+  // 🆕 Royalties = 5% APENAS do subtotal COM royalties (não isentos)
+  const royalties = subtotalComRoyalty * 0.05;
 
   // Total final
   const total = subtotalProdutos + royalties;
@@ -153,6 +199,8 @@ export default function Checkout() {
           itens: [],
           subtotalBase: 0,
           subtotalTotal: 0,
+          // 🆕 Flag se categoria é isenta
+          isenta: isItemIsentoRoyalty(item),
         };
       }
 
@@ -304,7 +352,15 @@ export default function Checkout() {
                 <div key={categoria} className='mb-2'>
                   <div className='bg-gray-50 px-2 py-1 rounded mb-1'>
                     <h4 className='text-xs font-semibold text-gray-600 flex items-center justify-between'>
-                      <span>{categoria}</span>
+                      <span className='flex items-center gap-1'>
+                        {categoria}
+                        {/* 🆕 Badge se categoria é isenta */}
+                        {catData.isenta && (
+                          <span className='bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded-full font-medium'>
+                            Sem royalty
+                          </span>
+                        )}
+                      </span>
                       <span className='text-gray-400'>
                         {catData.itens.length} {catData.itens.length === 1 ? 'item' : 'itens'}
                       </span>
@@ -369,8 +425,14 @@ export default function Checkout() {
             </div>
           )}
 
+          {/* 🆕 Mostrar royalties com info de isenção */}
           <div className='flex justify-between items-center text-sm text-gray-500'>
-            <span>Royalties (5%):</span>
+            <span className='flex items-center gap-1'>
+              Royalties (5%)
+              {subtotalIsento > 0 && (
+                <span className='text-[10px] text-green-600'>*</span>
+              )}
+            </span>
             <span>+ {formatarMoeda(royalties)}</span>
           </div>
 
@@ -388,6 +450,12 @@ export default function Checkout() {
           <p className='text-xs text-gray-400 text-center'>
             Etiquetas e embalagens são isentas de Royalties.
           </p>
+          {/* 🆕 Info se há itens isentos */}
+          {subtotalIsento > 0 && (
+            <p className='text-xs text-green-600 text-center mt-1'>
+              * Produtos isentos: {formatarMoeda(subtotalIsento)} (sem royalty)
+            </p>
+          )}
         </div>
       </>
     );

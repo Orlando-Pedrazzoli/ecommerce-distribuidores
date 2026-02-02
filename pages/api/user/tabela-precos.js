@@ -1,12 +1,16 @@
 // pages/api/user/tabela-precos.js
 // ===================================
 // API para gerenciar tabela de preços do distribuidor
-// Usa modelo TabelaPrecos separado (não depende do User model)
+// 🆕 COM SUPORTE A CATEGORIAS ISENTAS DE ROYALTIES
 
 import dbConnect from '../../../lib/mongodb';
 import TabelaPrecos from '../../../models/TabelaPrecos';
 import Produto from '../../../models/Produto';
+import Fornecedor from '../../../models/Fornecedor';
 import { verifyToken } from '../../../utils/auth';
+
+// 🆕 Taxa de royalty do .env (padrão 5%)
+const ROYALTY_RATE = parseFloat(process.env.ROYALTY_PERCENTAGE) || 0.05;
 
 export default async function handler(req, res) {
   await dbConnect();
@@ -39,9 +43,9 @@ export default async function handler(req, res) {
         tabela = { usuario, precos: {}, produtosOcultos: [], ultimaAtualizacao: null };
       }
 
-      // Buscar todos os produtos ativos
+      // 🆕 Buscar todos os produtos ativos COM dados do fornecedor (incluindo categoriasIsentasRoyalty)
       const produtos = await Produto.find({ ativo: true })
-        .populate('fornecedorId', 'nome codigo')
+        .populate('fornecedorId', 'nome codigo categoriasIsentasRoyalty')
         .sort({ categoria: 1, nome: 1 })
         .lean();
 
@@ -56,7 +60,16 @@ export default async function handler(req, res) {
       // Calcular custo total de cada produto e adicionar preço de venda
       const produtosComPrecos = produtos.map(produto => {
         const custoBase = produto.preco || 0;
-        const royalties = custoBase * 0.05;
+        
+        // ══════════════════════════════════════════════════════════════
+        // 🆕 VERIFICAR SE CATEGORIA É ISENTA DE ROYALTIES
+        // ══════════════════════════════════════════════════════════════
+        const categoriasIsentas = produto.fornecedorId?.categoriasIsentasRoyalty || [];
+        const categoriaIsenta = categoriasIsentas.includes(produto.categoria);
+        
+        // Se categoria isenta → royalties = 0, senão usa ROYALTY_RATE do .env
+        const royalties = categoriaIsenta ? 0 : custoBase * ROYALTY_RATE;
+        
         const etiqueta = produto.precoEtiqueta || 0;
         const embalagem = produto.precoEmbalagem || 0;
         const custoTotal = custoBase + royalties + etiqueta + embalagem;
@@ -85,6 +98,8 @@ export default async function handler(req, res) {
           etiqueta,
           embalagem,
           custoTotal,
+          // 🆕 Flag se é isento de royalties
+          isentoRoyalty: categoriaIsenta,
           // Venda
           precoVenda,
           margem: margem !== null ? Math.round(margem * 100) / 100 : null,
@@ -119,6 +134,8 @@ export default async function handler(req, res) {
         margemVerde: comPreco.filter(p => p.margem >= 30).length,
         margemAmarela: comPreco.filter(p => p.margem >= 15 && p.margem < 30).length,
         margemVermelha: comPreco.filter(p => p.margem !== null && p.margem < 15).length,
+        // 🆕 Estatísticas de isenção
+        produtosIsentos: produtosComPrecos.filter(p => p.isentoRoyalty).length,
       };
 
       return res.status(200).json({
@@ -128,6 +145,8 @@ export default async function handler(req, res) {
         produtosOcultos,
         ultimaAtualizacao: tabela.ultimaAtualizacao,
         distribuidorNome: nomeDistribuidor,
+        // 🆕 Informar taxa de royalty atual (em percentual)
+        royaltyRate: ROYALTY_RATE * 100,
       });
 
     } catch (error) {

@@ -1,12 +1,16 @@
-// PAGES/API/PEDIDOS/CRIAR.JS - ATUALIZADO COM ETIQUETAS E EMBALAGENS
+// PAGES/API/PEDIDOS/CRIAR.JS - COM CATEGORIAS ISENTAS DE ROYALTIES
 // ===================================
 // Inclui: totalEtiquetas, totalEmbalagens, controle financeiro
+// 🆕 Verifica categorias isentas de royalties
 
 import dbConnect from '../../../lib/mongodb';
 import Pedido from '../../../models/Pedido';
 import Fornecedor from '../../../models/Fornecedor';
 import { enviarEmailsPedido } from '../../../lib/email';
 import jwt from 'jsonwebtoken';
+
+// 🆕 Taxa de royalty do .env (padrão 5%)
+const ROYALTY_RATE = parseFloat(process.env.ROYALTY_PERCENTAGE) || 0.05;
 
 // Função para buscar dados do distribuidor do .env
 const getDistribuidor = usuario => {
@@ -77,14 +81,37 @@ export default async function handler(req, res) {
     });
 
     // ══════════════════════════════════════════════════════════════
+    // 🆕 BUSCAR FORNECEDOR PARA VERIFICAR CATEGORIAS ISENTAS
+    // ══════════════════════════════════════════════════════════════
+    const fornecedor = await Fornecedor.findById(fornecedorId);
+    const categoriasIsentas = fornecedor?.categoriasIsentasRoyalty || [];
+
+    console.log('🏭 Fornecedor:', {
+      nome: fornecedor?.nome,
+      categoriasIsentas: categoriasIsentas,
+    });
+
+    // ══════════════════════════════════════════════════════════════
     // CALCULAR TOTAIS
     // ══════════════════════════════════════════════════════════════
 
-    // Subtotal BASE (preços base dos produtos)
+    // Subtotal BASE (preços base dos produtos) - TODOS os itens
     const subtotal = itens.reduce(
       (acc, item) => acc + item.quantidade * item.precoUnitario,
       0
     );
+
+    // 🆕 Subtotal APENAS de itens que pagam royalty (categorias NÃO isentas)
+    const subtotalComRoyalty = itens.reduce((acc, item) => {
+      // Se a categoria do item está na lista de isentas, não conta para royalties
+      if (categoriasIsentas.includes(item.categoria)) {
+        return acc;
+      }
+      return acc + item.quantidade * item.precoUnitario;
+    }, 0);
+
+    // 🆕 Subtotal de itens isentos (para log/debug)
+    const subtotalIsento = subtotal - subtotalComRoyalty;
 
     // Total de etiquetas
     const totalEtiquetas = itens.reduce(
@@ -98,8 +125,8 @@ export default async function handler(req, res) {
       0
     );
 
-    // Royalties = 5% APENAS do subtotal base
-    const royalties = subtotal * 0.05;
+    // 🆕 Royalties = ROYALTY_RATE APENAS do subtotal COM royalty (não isentos)
+    const royalties = subtotalComRoyalty * ROYALTY_RATE;
 
     // Total que o fornecedor recebe (apenas subtotal base)
     const totalFornecedor = subtotal;
@@ -109,8 +136,11 @@ export default async function handler(req, res) {
 
     console.log('💰 Valores calculados:', {
       subtotal,
+      subtotalComRoyalty,
+      subtotalIsento,
       totalEtiquetas,
       totalEmbalagens,
+      royaltyRate: `${ROYALTY_RATE * 100}%`,
       royalties,
       totalFornecedor,
       total,
@@ -150,8 +180,6 @@ export default async function handler(req, res) {
     // ENVIAR EMAILS
     // ══════════════════════════════════════════════════════════════
 
-    const fornecedor = await Fornecedor.findById(fornecedorId);
-
     if (fornecedor) {
       console.log('📧 Iniciando envio de emails...');
 
@@ -180,6 +208,8 @@ export default async function handler(req, res) {
       numeroPedido: pedido._id.toString().slice(-8).toUpperCase(),
       resumo: {
         subtotal,
+        subtotalComRoyalty,
+        subtotalIsento,
         totalEtiquetas,
         totalEmbalagens,
         royalties,

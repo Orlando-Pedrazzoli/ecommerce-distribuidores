@@ -1,6 +1,7 @@
 // pages/api/seed/index.js
 // ===================================
 // SEED - Criar/Atualizar fornecedores e categorias
+// 🆕 COM SUPORTE A CATEGORIAS ISENTAS DE ROYALTIES
 
 import dbConnect from '../../../lib/mongodb';
 import Fornecedor from '../../../models/Fornecedor';
@@ -35,6 +36,8 @@ export default async function handler(req, res) {
           'Deck Hawaii',
           'Deck Peniche',
         ],
+        // 🆕 Categorias sem royalties (deixe vazio [] se todas pagam)
+        categoriasIsentasRoyalty: [],
       },
       {
         codigo: 'B',
@@ -55,6 +58,7 @@ export default async function handler(req, res) {
           'Leash Nó',
           'Acessórios',
         ],
+        categoriasIsentasRoyalty: [],
       },
       {
         codigo: 'C',
@@ -73,17 +77,15 @@ export default async function handler(req, res) {
           'Deck Mentawai',
           'Deck Maldivas',
         ],
+        categoriasIsentasRoyalty: [],
       },
-      // ══════════════════════════════════════════════════════════════
-      // 🆕 FORNECEDOR D - WAKUM
-      // ══════════════════════════════════════════════════════════════
       {
         codigo: 'D',
         nome: 'Wakum - WKM',
-        email: 'wakum@wakum.com.br', // Email obrigatório
+        email: 'wakum@wakum.com.br',
         especialidade: 'Especialista em Capas, Leashes e Decks',
         descricao: 'Qualidade e preço',
-        cor: '#ef4444', // Vermelho
+        cor: '#ef4444',
         logo: '/wakum-logo.jpg',
         categorias: [
           'Deck Stand Up',
@@ -106,7 +108,31 @@ export default async function handler(req, res) {
           'Capa Sarcófago W',
           'Capa Sarcófago/Rodas W',
         ],
+        categoriasIsentasRoyalty: [],
       },
+      // ══════════════════════════════════════════════════════════════
+      // 🆕 EXEMPLO: FORNECEDOR E - PRODUTOS PRÓPRIOS (SEM ROYALTIES)
+      // ══════════════════════════════════════════════════════════════
+      // Descomente e edite para criar um fornecedor com categorias isentas:
+      //
+       {
+         codigo: 'E',
+         nome: 'Elite - Produtos Próprios',
+         email: 'contact.elitesurfing@gmail.com',
+         especialidade: 'Produtos próprios distribuidores',
+         descricao: 'Produtos exclusivos sem royalties',
+         cor: '#8b5cf6', // Roxo
+         logo: '/elite-logo.jpg',
+         categorias: [
+           'Quilhas & Acessórios',
+           'Skateboard Bags',
+         ],
+         // 🆕 TODAS as categorias deste fornecedor são isentas de royalties
+         categoriasIsentasRoyalty: [
+           'Quilhas & Acessórios',
+           'Skateboard Bags',
+         ],
+       },
     ];
 
     let fornecedoresCriados = 0;
@@ -128,6 +154,8 @@ export default async function handler(req, res) {
           cor: config.cor,
           logo: config.logo,
           categorias: config.categorias,
+          // 🆕 Atualizar categorias isentas
+          categoriasIsentasRoyalty: config.categoriasIsentasRoyalty || [],
         });
 
         fornecedoresAtualizados++;
@@ -144,6 +172,8 @@ export default async function handler(req, res) {
           cor: config.cor,
           logo: config.logo,
           categorias: config.categorias,
+          // 🆕 Adicionar categorias isentas
+          categoriasIsentasRoyalty: config.categoriasIsentasRoyalty || [],
           ativo: true,
         });
 
@@ -151,6 +181,9 @@ export default async function handler(req, res) {
         fornecedoresCriados++;
 
         console.log(`   ✅ Criado com ${config.categorias.length} categorias`);
+        if (config.categoriasIsentasRoyalty?.length > 0) {
+          console.log(`   💰 ${config.categoriasIsentasRoyalty.length} categorias isentas de royalties`);
+        }
       }
     }
 
@@ -174,6 +207,9 @@ export default async function handler(req, res) {
         cor: f.cor,
         totalCategorias: f.categorias?.length || 0,
         categorias: f.categorias,
+        // 🆕 Mostrar categorias isentas no response
+        categoriasIsentasRoyalty: f.categoriasIsentasRoyalty || [],
+        totalIsentas: f.categoriasIsentasRoyalty?.length || 0,
       })),
     });
 
