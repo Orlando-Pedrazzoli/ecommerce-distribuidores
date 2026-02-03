@@ -109,7 +109,6 @@ export default async function handler(req, res) {
           'Capa Térmica',
           'Sarcófago Premium',
           'Sarcófago Premium/Rodas',
-          'Sarcófago Premium/Rodas',
         ],
         categoriasIsentasRoyalty: [],
       },
