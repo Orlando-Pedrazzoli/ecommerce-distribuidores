@@ -1,8 +1,7 @@
 // pages/tabela-precos.js
 // ===================================
 // Página de Tabela de Preços do Distribuidor
-// 3 abas: Editar Preços | Compartilhar | Minhas Margens
-// Com geração de PDF real e compartilhamento
+// 🆕 COM DRAG & DROP PARA CATEGORIAS E PRODUTOS
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
@@ -11,6 +10,86 @@ import Script from 'next/script';
 import Layout from '../components/Layout';
 import { useToastContext } from '../pages/_app';
 
+// 🆕 Imports do dnd-kit
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// ══════════════════════════════════════════════════════════════
+// 🆕 COMPONENTE: Item Arrastável de Categoria
+// ══════════════════════════════════════════════════════════════
+function SortableCategory({ id, children, disabled }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, disabled });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 1000 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      {/* Tornar TODA a header da categoria arrastável */}
+      <div className="category-drag-area" {...listeners}>
+        {children({ isDragging })}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// 🆕 COMPONENTE: Item Arrastável de Produto
+// ══════════════════════════════════════════════════════════════
+function SortableProduct({ id, children, disabled }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, disabled });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 1000 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      {children({ listeners, isDragging })}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// COMPONENTE PRINCIPAL
+// ══════════════════════════════════════════════════════════════
 export default function TabelaPrecos() {
   const router = useRouter();
   const toast = useToastContext();
@@ -28,6 +107,12 @@ export default function TabelaPrecos() {
   const [precosOriginais, setPrecosOriginais] = useState({});
   const [hasChanges, setHasChanges] = useState(false);
 
+  // Estados de ordenação
+  const [ordemCategorias, setOrdemCategorias] = useState([]);
+  const [ordemCategoriasOriginal, setOrdemCategoriasOriginal] = useState([]);
+  const [ordemProdutos, setOrdemProdutos] = useState({});
+  const [ordemProdutosOriginal, setOrdemProdutosOriginal] = useState({});
+
   // Estados de UI
   const [abaAtiva, setAbaAtiva] = useState('editar');
   const [busca, setBusca] = useState('');
@@ -44,6 +129,24 @@ export default function TabelaPrecos() {
   
   // Estado para email
   const [emailCliente, setEmailCliente] = useState('');
+
+  // 🆕 Estado para modo de reordenação
+  const [modoReordenar, setModoReordenar] = useState(false);
+  const [activeId, setActiveId] = useState(null);
+  const [activeType, setActiveType] = useState(null); // 'category' ou 'product'
+
+  // 🆕 Sensores para drag & drop (mouse, touch, teclado)
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 5 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   // Formatar moeda
   const formatarMoeda = (valor) => {
@@ -98,6 +201,16 @@ export default function TabelaPrecos() {
       setStats(data.stats || null);
       setUltimaAtualizacao(data.ultimaAtualizacao);
       setProdutosOcultos(data.produtosOcultos || []);
+      
+      // Carregar ordem das categorias
+      const ordem = data.ordemCategorias || Object.keys(data.porCategoria || {});
+      setOrdemCategorias(ordem);
+      setOrdemCategoriasOriginal(ordem);
+
+      // 🆕 Carregar ordem dos produtos
+      const ordemProds = data.ordemProdutos || {};
+      setOrdemProdutos(ordemProds);
+      setOrdemProdutosOriginal(ordemProds);
 
       // Inicializar preços
       const precosIniciais = {};
@@ -124,31 +237,77 @@ export default function TabelaPrecos() {
 
   // Detectar mudanças
   useEffect(() => {
-    const changed = Object.keys(precos).some(
+    const precosChanged = Object.keys(precos).some(
       id => precos[id] !== precosOriginais[id]
     );
-    setHasChanges(changed);
-  }, [precos, precosOriginais]);
+    const ordemCatChanged = JSON.stringify(ordemCategorias) !== JSON.stringify(ordemCategoriasOriginal);
+    const ordemProdChanged = JSON.stringify(ordemProdutos) !== JSON.stringify(ordemProdutosOriginal);
+    setHasChanges(precosChanged || ordemCatChanged || ordemProdChanged);
+  }, [precos, precosOriginais, ordemCategorias, ordemCategoriasOriginal, ordemProdutos, ordemProdutosOriginal]);
 
-  // Atualizar preço de um produto
-  const atualizarPreco = (produtoId, valor) => {
-    setPrecos(prev => ({
-      ...prev,
-      [produtoId]: valor === '' ? null : parsearMoeda(valor)
-    }));
+  // ══════════════════════════════════════════════════════════════
+  // 🆕 HANDLERS DE DRAG & DROP
+  // ══════════════════════════════════════════════════════════════
+  const handleDragStart = (event) => {
+    const { active } = event;
+    setActiveId(active.id);
+    
+    // Determinar se é categoria ou produto
+    if (ordemCategorias.includes(active.id)) {
+      setActiveType('category');
+    } else {
+      setActiveType('product');
+    }
   };
 
-  // Quando o input recebe foco - mostra valor simples para edição
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    setActiveId(null);
+    setActiveType(null);
+
+    if (!over || active.id === over.id) return;
+
+    // Se está arrastando uma categoria
+    if (ordemCategorias.includes(active.id) && ordemCategorias.includes(over.id)) {
+      const oldIndex = ordemCategorias.indexOf(active.id);
+      const newIndex = ordemCategorias.indexOf(over.id);
+      setOrdemCategorias(arrayMove(ordemCategorias, oldIndex, newIndex));
+      return;
+    }
+
+    // Se está arrastando um produto
+    // Encontrar a categoria do produto
+    for (const [categoria, prods] of Object.entries(porCategoria)) {
+      const prodIds = prods.map(p => p._id);
+      const activeIndex = prodIds.indexOf(active.id);
+      const overIndex = prodIds.indexOf(over.id);
+
+      if (activeIndex !== -1 && overIndex !== -1) {
+        // Ambos estão na mesma categoria
+        const novaOrdem = arrayMove(prodIds, activeIndex, overIndex);
+        setOrdemProdutos(prev => ({
+          ...prev,
+          [categoria]: novaOrdem
+        }));
+        
+        // Atualizar porCategoria para refletir a nova ordem
+        setPorCategoria(prev => ({
+          ...prev,
+          [categoria]: novaOrdem.map(id => prev[categoria].find(p => p._id === id))
+        }));
+        return;
+      }
+    }
+  };
+
+  // Handlers de edição de preços
   const handleFocus = (produtoId) => {
     const valorAtual = precos[produtoId];
     setInputEmEdicao(produtoId);
-    // Mostra o valor como número simples (ex: 65.01 ou vazio)
     setValorTemporario(valorAtual !== null && valorAtual !== undefined ? valorAtual.toString().replace('.', ',') : '');
   };
 
-  // Quando o input perde foco - salva o valor
   const handleBlur = (produtoId) => {
-    // Parsear o valor temporário e salvar
     const valorParseado = parsearMoeda(valorTemporario);
     setPrecos(prev => ({
       ...prev,
@@ -158,14 +317,11 @@ export default function TabelaPrecos() {
     setValorTemporario('');
   };
 
-  // Quando digita no input durante edição
   const handleChangeTemporario = (valor) => {
-    // Permite apenas números, vírgula e ponto
     const valorLimpo = valor.replace(/[^0-9.,]/g, '');
     setValorTemporario(valorLimpo);
   };
 
-  // Quando pressiona Enter - salva e sai do campo
   const handleKeyDown = (e, produtoId) => {
     if (e.key === 'Enter') {
       e.target.blur();
@@ -209,7 +365,12 @@ export default function TabelaPrecos() {
       const response = await fetch('/api/user/tabela-precos', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ precos, produtosOcultos })
+        body: JSON.stringify({ 
+          precos, 
+          produtosOcultos,
+          ordemCategorias,
+          ordemProdutos
+        })
       });
 
       if (!response.ok) {
@@ -219,6 +380,8 @@ export default function TabelaPrecos() {
 
       const data = await response.json();
       setPrecosOriginais({ ...precos });
+      setOrdemCategoriasOriginal([...ordemCategorias]);
+      setOrdemProdutosOriginal({ ...ordemProdutos });
       setHasChanges(false);
       setUltimaAtualizacao(data.ultimaAtualizacao);
       toast.success('Tabela de preços salva com sucesso!');
@@ -266,7 +429,7 @@ export default function TabelaPrecos() {
   };
 
   // ══════════════════════════════════════════════════════════════
-  // GERAR PDF REAL (usando jsPDF)
+  // GERAR PDF
   // ══════════════════════════════════════════════════════════════
   const gerarPDF = async () => {
     if (!window.jspdf || !window.jspdf.jsPDF) {
@@ -288,7 +451,7 @@ export default function TabelaPrecos() {
     // Header
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(26, 54, 93); // Azul escuro
+    doc.setTextColor(26, 54, 93);
     doc.text('ELITE SURFING', pageWidth / 2, yPos, { align: 'center' });
     
     yPos += 7;
@@ -311,21 +474,21 @@ export default function TabelaPrecos() {
     doc.line(margin, yPos, pageWidth - margin, yPos);
     yPos += 8;
 
-    // Iterar por categorias
-    Object.entries(porCategoria).forEach(([categoria, produtosCategoria]) => {
-      // Filtrar produtos com preço E não ocultos
+    // Iterar por categorias NA ORDEM PERSONALIZADA
+    ordemCategorias.forEach((categoria) => {
+      const produtosCategoria = porCategoria[categoria];
+      if (!produtosCategoria) return;
+
       const produtosComPreco = produtosCategoria.filter(p => 
         precos[p._id] && !produtosOcultos.includes(p._id)
       );
       if (produtosComPreco.length === 0) return;
 
-      // Verificar se precisa de nova página
       if (yPos > 270) {
         doc.addPage();
         yPos = 15;
       }
 
-      // Título da categoria
       doc.setFillColor(26, 54, 93);
       doc.rect(margin, yPos - 4, contentWidth, 7, 'F');
       doc.setFontSize(10);
@@ -334,28 +497,26 @@ export default function TabelaPrecos() {
       doc.text(categoria.toUpperCase(), margin + 3, yPos);
       yPos += 6;
 
-      // Header da tabela
       doc.setFillColor(240, 240, 240);
       doc.rect(margin, yPos - 3, contentWidth, 5, 'F');
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(100);
       doc.text('Código', margin + 2, yPos);
+      
+      // Mostrar nome do produto completo no PDF
       doc.text('Produto', margin + 25, yPos);
       doc.text('Preço', pageWidth - margin - 2, yPos, { align: 'right' });
       yPos += 4;
 
-      // Produtos
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(50);
       
       produtosComPreco.forEach((produto, index) => {
-        // Verificar se precisa de nova página
         if (yPos > 280) {
           doc.addPage();
           yPos = 15;
           
-          // Repetir header da categoria na nova página
           doc.setFillColor(26, 54, 93);
           doc.rect(margin, yPos - 4, contentWidth, 7, 'F');
           doc.setFontSize(10);
@@ -364,7 +525,6 @@ export default function TabelaPrecos() {
           doc.text(`${categoria.toUpperCase()} (cont.)`, margin + 3, yPos);
           yPos += 6;
           
-          // Header
           doc.setFillColor(240, 240, 240);
           doc.rect(margin, yPos - 3, contentWidth, 5, 'F');
           doc.setFontSize(8);
@@ -379,7 +539,6 @@ export default function TabelaPrecos() {
           doc.setTextColor(50);
         }
 
-        // Linha zebrada
         if (index % 2 === 0) {
           doc.setFillColor(250, 250, 250);
           doc.rect(margin, yPos - 3, contentWidth, 5, 'F');
@@ -390,14 +549,10 @@ export default function TabelaPrecos() {
         doc.text(produto.codigo || '', margin + 2, yPos);
         
         doc.setTextColor(50);
-        // Truncar nome se muito longo
         let nomeProduto = produto.nome || '';
-        if (nomeProduto.length > 55) {
-          nomeProduto = nomeProduto.substring(0, 52) + '...';
-        }
+        // Mostrar nome completo no PDF
         doc.text(nomeProduto, margin + 25, yPos);
         
-        // Preço em verde
         doc.setTextColor(22, 163, 74);
         doc.setFont('helvetica', 'bold');
         doc.text(`R$ ${formatarMoeda(precos[produto._id])}`, pageWidth - margin - 2, yPos, { align: 'right' });
@@ -406,10 +561,9 @@ export default function TabelaPrecos() {
         yPos += 5;
       });
 
-      yPos += 4; // Espaço entre categorias
+      yPos += 4;
     });
 
-    // Footer
     const totalPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
@@ -426,7 +580,6 @@ export default function TabelaPrecos() {
     return doc;
   };
 
-  // Baixar PDF
   const baixarPDF = async () => {
     try {
       setExportando(true);
@@ -444,7 +597,6 @@ export default function TabelaPrecos() {
     }
   };
 
-  // Abrir PDF para visualização
   const visualizarPDF = async () => {
     try {
       setExportando(true);
@@ -463,9 +615,6 @@ export default function TabelaPrecos() {
     }
   };
 
-  // ══════════════════════════════════════════════════════════════
-  // COMPARTILHAMENTO
-  // ══════════════════════════════════════════════════════════════
   const compartilharExcel = async () => {
     try {
       setExportando(true);
@@ -484,7 +633,6 @@ export default function TabelaPrecos() {
         });
         toast.success('Compartilhado!');
       } else {
-        // Fallback: baixar o arquivo
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -520,7 +668,6 @@ export default function TabelaPrecos() {
         });
         toast.success('Compartilhado!');
       } else {
-        // Fallback: baixar o arquivo
         doc.save(nomeArquivo);
         toast.info('PDF baixado. Compartilhe manualmente via WhatsApp ou Email.');
       }
@@ -534,9 +681,6 @@ export default function TabelaPrecos() {
     }
   };
 
-  // ══════════════════════════════════════════════════════════════
-  // ENVIAR POR EMAIL (mailto)
-  // ══════════════════════════════════════════════════════════════
   const enviarPorEmail = () => {
     if (!emailCliente.trim()) {
       toast.warning('Digite o email do cliente');
@@ -565,27 +709,24 @@ ${nomeDistribuidor}
 Elite Surfing`
     );
 
-    // Abrir cliente de email
     window.open(`mailto:${emailCliente}?subject=${assunto}&body=${corpo}`, '_blank');
-    
     toast.success('Email aberto! Anexe o PDF ou Excel antes de enviar.');
   };
 
-  // Filtrar produtos por busca e ocultos
+  // Filtrar produtos
   const produtosFiltrados = useMemo(() => {
     const termo = busca.toLowerCase().trim();
     const filtrado = {};
     
-    Object.entries(porCategoria).forEach(([cat, prods]) => {
+    ordemCategorias.forEach((cat) => {
+      const prods = porCategoria[cat];
+      if (!prods) return;
+      
       const prodsFiltrados = prods.filter(p => {
-        // Filtrar por busca
         const passaBusca = !termo || 
           p.nome?.toLowerCase().includes(termo) ||
           p.codigo?.toLowerCase().includes(termo);
-        
-        // Filtrar ocultos (se não estiver mostrando ocultos)
         const passaOculto = mostrarOcultos || !produtosOcultos.includes(p._id);
-        
         return passaBusca && passaOculto;
       });
       
@@ -595,12 +736,10 @@ Elite Surfing`
     });
     
     return filtrado;
-  }, [porCategoria, busca, mostrarOcultos, produtosOcultos]);
+  }, [porCategoria, busca, mostrarOcultos, produtosOcultos, ordemCategorias]);
 
-  // Contar produtos ocultos
   const totalOcultos = produtosOcultos.length;
 
-  // Calcular margem em tempo real
   const calcularMargem = (produtoId) => {
     const produto = produtos.find(p => p._id === produtoId);
     if (!produto) return null;
@@ -611,7 +750,6 @@ Elite Surfing`
     return ((preco - produto.custoTotal) / produto.custoTotal) * 100;
   };
 
-  // Cor da margem
   const corMargem = (margem) => {
     if (margem === null) return 'text-gray-400';
     if (margem >= 30) return 'text-green-600';
@@ -619,7 +757,6 @@ Elite Surfing`
     return 'text-red-600';
   };
 
-  // Badge da margem
   const badgeMargem = (margem) => {
     if (margem === null) return null;
     if (margem >= 30) return '🟢';
@@ -627,7 +764,6 @@ Elite Surfing`
     return '🔴';
   };
 
-  // Toggle categoria expandida
   const toggleCategoria = (categoria) => {
     setCategoriasExpandidas(prev => ({
       ...prev,
@@ -635,7 +771,7 @@ Elite Surfing`
     }));
   };
 
-  // Ícones SVG
+  // Ícones
   const IconDownload = () => (
     <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
       <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4' />
@@ -651,6 +787,13 @@ Elite Surfing`
   const IconPrint = () => (
     <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
       <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z' />
+    </svg>
+  );
+
+  // 🆕 Ícone de arrastar
+  const IconDrag = () => (
+    <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M4 8h16M4 16h16' />
     </svg>
   );
 
@@ -673,7 +816,6 @@ Elite Surfing`
         <title>Tabela de Preços - Elite Surfing</title>
       </Head>
       
-      {/* Carregar jsPDF via CDN */}
       <Script 
         src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
         onLoad={() => setJsPdfLoaded(true)}
@@ -768,26 +910,44 @@ Elite Surfing`
                     />
                   </div>
 
-                  {/* Toggle mostrar ocultos */}
-                  {totalOcultos > 0 && (
+                  {/* Botões de controle */}
+                  <div className='flex items-center gap-2 flex-wrap'>
+                    {/* Toggle modo reordenar */}
                     <button
-                      onClick={() => setMostrarOcultos(!mostrarOcultos)}
+                      onClick={() => setModoReordenar(!modoReordenar)}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition ${
-                        mostrarOcultos 
-                          ? 'bg-gray-200 text-gray-700' 
-                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        modoReordenar 
+                          ? 'bg-purple-500 text-white' 
+                          : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
                       }`}
                     >
                       <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                        {mostrarOcultos ? (
-                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z' />
-                        ) : (
-                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21' />
-                        )}
+                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4' />
                       </svg>
-                      <span>{mostrarOcultos ? 'Mostrando' : 'Mostrar'} ocultos ({totalOcultos})</span>
+                      <span>{modoReordenar ? 'Sair Ordenação' : 'Ordenar'}</span>
                     </button>
-                  )}
+
+                    {/* Toggle mostrar ocultos */}
+                    {totalOcultos > 0 && (
+                      <button
+                        onClick={() => setMostrarOcultos(!mostrarOcultos)}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition ${
+                          mostrarOcultos 
+                            ? 'bg-gray-200 text-gray-700' 
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        }`}
+                      >
+                        <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                          {mostrarOcultos ? (
+                            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z' />
+                          ) : (
+                            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21' />
+                          )}
+                        </svg>
+                        <span>Ocultos ({totalOcultos})</span>
+                      </button>
+                    )}
+                  </div>
 
                   {/* Salvar */}
                   <button
@@ -817,170 +977,303 @@ Elite Surfing`
 
                 {hasChanges && (
                   <p className='text-sm text-yellow-600 mt-2'>
-                    Você tem alterações não salvas
+                    ⚠️ Você tem alterações não salvas
                   </p>
+                )}
+
+                {/* Dica do modo reordenar */}
+                {modoReordenar && (
+                  <div className='mt-3 p-3 bg-purple-50 border border-purple-200 rounded-lg'>
+                    <p className='text-sm text-purple-800'>
+                      <strong>📋 Modo Ordenação:</strong> Arraste as categorias ou produtos usando o ícone ≡ para reordenar. 
+                      A nova ordem será aplicada na tabela, PDF e Excel após salvar.
+                    </p>
+                  </div>
                 )}
               </div>
 
-              {/* Lista de produtos por categoria */}
-              <div className='space-y-4'>
-                {Object.entries(produtosFiltrados).map(([categoria, produtosCategoria]) => (
-                  <div key={categoria} className='bg-white rounded-lg shadow-md overflow-hidden'>
-                    {/* Header da categoria */}
-                    <button
-                      onClick={() => toggleCategoria(categoria)}
-                      className='w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition'
-                    >
+              {/* 🆕 Lista com Drag & Drop */}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={ordemCategorias}
+                  strategy={verticalListSortingStrategy}
+                  disabled={!modoReordenar}
+                >
+                  <div className='space-y-4'>
+                    {ordemCategorias.map((categoria) => {
+                      const produtosCategoria = produtosFiltrados[categoria];
+                      if (!produtosCategoria) return null;
+
+                      return (
+                        <SortableCategory 
+                          key={categoria} 
+                          id={categoria}
+                          disabled={!modoReordenar}
+                        >
+                          {({ isDragging: catIsDragging }) => (
+                            <div 
+                              className={`bg-white rounded-lg shadow-md overflow-hidden ${catIsDragging ? 'ring-2 ring-purple-500 shadow-lg' : ''} ${modoReordenar ? 'cursor-move' : ''}`}
+                              data-id={categoria}
+                            >
+                              {/* Header da categoria - Toda área é arrastável quando modoReordenar está ativo */}
+                              <div 
+                                className={`flex items-center bg-gray-50 ${modoReordenar ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                                onClick={(e) => {
+                                  // Impede o toggle da categoria quando arrastando
+                                  if (modoReordenar) {
+                                    e.stopPropagation();
+                                  }
+                                }}
+                              >
+                                {/* Indicador visual de arraste */}
+                                {modoReordenar && (
+                                  <div className='p-3 text-purple-500'>
+                                    <IconDrag />
+                                  </div>
+                                )}
+
+                                <button
+                                  onClick={(e) => {
+                                    if (modoReordenar) {
+                                      e.stopPropagation(); // Evita clique durante arraste
+                                    } else {
+                                      toggleCategoria(categoria);
+                                    }
+                                  }}
+                                  className='flex-1 flex items-center justify-between p-4 hover:bg-gray-100 transition text-left'
+                                >
+                                  <div className='flex items-center gap-2'>
+                                    {modoReordenar && (
+                                      <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                                        Arraste
+                                      </span>
+                                    )}
+                                    <span className='font-bold text-gray-800'>{categoria}</span>
+                                    <span className='text-sm text-gray-500'>
+                                      ({produtosCategoria.length} produtos)
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {catIsDragging && (
+                                      <span className="text-xs bg-purple-500 text-white px-2 py-1 rounded-full animate-pulse">
+                                        Solte para reposicionar
+                                      </span>
+                                    )}
+                                    <svg
+                                      className={`w-5 h-5 text-gray-500 transition-transform ${
+                                        categoriasExpandidas[categoria] ? 'rotate-180' : ''
+                                      }`}
+                                      fill='none'
+                                      stroke='currentColor'
+                                      viewBox='0 0 24 24'
+                                    >
+                                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 9l-7 7-7-7' />
+                                    </svg>
+                                  </div>
+                                </button>
+                              </div>
+
+                              {/* Produtos */}
+                              {categoriasExpandidas[categoria] && (
+                                <div className='divide-y'>
+                                  {/* Header da tabela - Desktop */}
+                                  <div className='hidden lg:grid lg:grid-cols-12 gap-4 px-4 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase'>
+                                    {modoReordenar && <div className='col-span-1'></div>}
+                                    <div className={modoReordenar ? 'col-span-1' : 'col-span-1'}>Código</div>
+                                    <div className={modoReordenar ? 'col-span-3' : 'col-span-4'}>Produto</div>
+                                    <div className='col-span-2 text-right'>Custo</div>
+                                    <div className='col-span-2 text-center'>Preço Venda</div>
+                                    <div className='col-span-3 text-right'>Margem</div>
+                                  </div>
+
+                                  <SortableContext
+                                    items={produtosCategoria.map(p => p._id)}
+                                    strategy={verticalListSortingStrategy}
+                                    disabled={!modoReordenar}
+                                  >
+                                    {produtosCategoria.map(produto => {
+                                      const margem = calcularMargem(produto._id);
+                                      const isOculto = produtosOcultos.includes(produto._id);
+                                      
+                                      return (
+                                        <SortableProduct
+                                          key={produto._id}
+                                          id={produto._id}
+                                          disabled={!modoReordenar}
+                                        >
+                                          {({ listeners: prodListeners, isDragging: prodIsDragging }) => (
+                                            <div
+                                              className={`p-4 hover:bg-gray-50 transition ${isOculto ? 'opacity-50 bg-gray-100' : ''} ${prodIsDragging ? 'bg-purple-50 ring-2 ring-purple-300' : ''}`}
+                                            >
+                                              {/* Mobile */}
+                                              <div className='lg:hidden space-y-2'>
+                                                <div className='flex justify-between items-start'>
+                                                  <div className='flex items-start gap-2'>
+                                                    {/* Handle para arrastar produto - Mobile */}
+                                                    {modoReordenar && (
+                                                      <div 
+                                                        {...prodListeners}
+                                                        className='p-1 cursor-grab active:cursor-grabbing text-purple-400'
+                                                      >
+                                                        <IconDrag />
+                                                      </div>
+                                                    )}
+                                                    {/* Botão ocultar */}
+                                                    {!modoReordenar && (
+                                                      <button
+                                                        onClick={() => toggleOculto(produto._id)}
+                                                        className={`p-1 rounded transition ${isOculto ? 'text-gray-400' : 'text-gray-300 hover:text-gray-500'}`}
+                                                        title={isOculto ? 'Mostrar produto' : 'Ocultar produto'}
+                                                      >
+                                                        <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                                                          {isOculto ? (
+                                                            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21' />
+                                                          ) : (
+                                                            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z' />
+                                                          )}
+                                                        </svg>
+                                                      </button>
+                                                    )}
+                                                    <div>
+                                                      <span className='text-xs text-gray-500'>{produto.codigo}</span>
+                                                      <p className='font-medium text-gray-800 whitespace-normal break-words'>{produto.nome}</p>
+                                                    </div>
+                                                  </div>
+                                                  <span className={`text-sm font-bold ${corMargem(margem)}`}>
+                                                    {margem !== null ? `${margem.toFixed(1)}% ${badgeMargem(margem)}` : '-'}
+                                                  </span>
+                                                </div>
+                                                <div className='flex items-center justify-between'>
+                                                  <span className='text-sm text-gray-500'>
+                                                    Custo: R$ {formatarMoeda(produto.custoTotal)}
+                                                  </span>
+                                                  <div className='flex items-center gap-1'>
+                                                    <span className='text-sm'>R$</span>
+                                                    <input
+                                                      type='text'
+                                                      inputMode='decimal'
+                                                      value={inputEmEdicao === produto._id 
+                                                        ? valorTemporario 
+                                                        : (precos[produto._id] !== null ? formatarMoeda(precos[produto._id]) : '')}
+                                                      onChange={(e) => handleChangeTemporario(e.target.value)}
+                                                      onFocus={() => handleFocus(produto._id)}
+                                                      onBlur={() => handleBlur(produto._id)}
+                                                      onKeyDown={(e) => handleKeyDown(e, produto._id)}
+                                                      placeholder='0,00'
+                                                      disabled={modoReordenar}
+                                                      className='w-24 border rounded px-2 py-1 text-sm text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100'
+                                                    />
+                                                  </div>
+                                                </div>
+                                              </div>
+
+                                              {/* Desktop */}
+                                              <div className='hidden lg:grid lg:grid-cols-12 gap-4 items-center'>
+                                                {/* Handle para arrastar produto - Desktop */}
+                                                {modoReordenar && (
+                                                  <div 
+                                                    {...prodListeners}
+                                                    className='col-span-1 flex justify-center cursor-grab active:cursor-grabbing text-purple-400 hover:text-purple-600'
+                                                  >
+                                                    <IconDrag />
+                                                  </div>
+                                                )}
+                                                {/* Botão ocultar + Código */}
+                                                <div className={`${modoReordenar ? 'col-span-1' : 'col-span-1'} flex items-center`}>
+                                                  {!modoReordenar && (
+                                                    <button
+                                                      onClick={() => toggleOculto(produto._id)}
+                                                      className={`p-1 rounded transition ${isOculto ? 'text-gray-400' : 'text-gray-300 hover:text-gray-500'}`}
+                                                      title={isOculto ? 'Mostrar produto' : 'Ocultar produto'}
+                                                    >
+                                                      <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                                                        {isOculto ? (
+                                                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21' />
+                                                        ) : (
+                                                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z' />
+                                                        )}
+                                                      </svg>
+                                                    </button>
+                                                  )}
+                                                  <span className='text-sm text-gray-600 ml-1'>{produto.codigo}</span>
+                                                </div>
+                                                <div className={modoReordenar ? 'col-span-3' : 'col-span-4'}>
+                                                  <p className='font-medium text-gray-800 whitespace-normal break-words' title={produto.nome}>
+                                                    {produto.nome}
+                                                  </p>
+                                                </div>
+                                                <div className='col-span-2 text-right text-sm text-gray-600'>
+                                                  R$ {formatarMoeda(produto.custoTotal)}
+                                                </div>
+                                                <div className='col-span-2 flex justify-center'>
+                                                  <div className='flex items-center gap-1'>
+                                                    <span className='text-sm text-gray-500'>R$</span>
+                                                    <input
+                                                      type='text'
+                                                      inputMode='decimal'
+                                                      value={inputEmEdicao === produto._id 
+                                                        ? valorTemporario 
+                                                        : (precos[produto._id] !== null ? formatarMoeda(precos[produto._id]) : '')}
+                                                      onChange={(e) => handleChangeTemporario(e.target.value)}
+                                                      onFocus={() => handleFocus(produto._id)}
+                                                      onBlur={() => handleBlur(produto._id)}
+                                                      onKeyDown={(e) => handleKeyDown(e, produto._id)}
+                                                      placeholder='0,00'
+                                                      disabled={modoReordenar}
+                                                      className='w-24 border rounded px-2 py-1.5 text-sm text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100'
+                                                    />
+                                                  </div>
+                                                </div>
+                                                <div className={`col-span-3 text-right font-medium ${corMargem(margem)}`}>
+                                                  {margem !== null ? (
+                                                    <span>{margem.toFixed(1)}% {badgeMargem(margem)}</span>
+                                                  ) : (
+                                                    <span className='text-gray-400'>-</span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </SortableProduct>
+                                      );
+                                    })}
+                                  </SortableContext>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </SortableCategory>
+                      );
+                    })}
+                  </div>
+                </SortableContext>
+
+                {/* Overlay durante arraste */}
+                <DragOverlay>
+                  {activeId && activeType === 'category' ? (
+                    <div className='bg-purple-100 border-2 border-purple-500 rounded-lg p-4 shadow-xl transform rotate-2'>
                       <div className='flex items-center gap-2'>
-                        <span className='font-bold text-gray-800'>{categoria}</span>
-                        <span className='text-sm text-gray-500'>
-                          ({produtosCategoria.length} produtos)
+                        <IconDrag />
+                        <span className='font-bold text-purple-800'>{activeId}</span>
+                        <span className="text-xs bg-purple-500 text-white px-2 py-1 rounded-full">
+                          Arrastando
                         </span>
                       </div>
-                      <svg
-                        className={`w-5 h-5 text-gray-500 transition-transform ${
-                          categoriasExpandidas[categoria] ? 'rotate-180' : ''
-                        }`}
-                        fill='none'
-                        stroke='currentColor'
-                        viewBox='0 0 24 24'
-                      >
-                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 9l-7 7-7-7' />
-                      </svg>
-                    </button>
-
-                    {/* Produtos */}
-                    {categoriasExpandidas[categoria] && (
-                      <div className='divide-y'>
-                        {/* Header da tabela - Desktop */}
-                        <div className='hidden lg:grid lg:grid-cols-12 gap-4 px-4 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase'>
-                          <div className='col-span-1'>Código</div>
-                          <div className='col-span-4'>Produto</div>
-                          <div className='col-span-2 text-right'>Custo</div>
-                          <div className='col-span-2 text-center'>Preço Venda</div>
-                          <div className='col-span-3 text-right'>Margem</div>
-                        </div>
-
-                        {produtosCategoria.map(produto => {
-                          const margem = calcularMargem(produto._id);
-                          const isOculto = produtosOcultos.includes(produto._id);
-                          
-                          return (
-                            <div
-                              key={produto._id}
-                              className={`p-4 hover:bg-gray-50 transition ${isOculto ? 'opacity-50 bg-gray-100' : ''}`}
-                            >
-                              {/* Mobile */}
-                              <div className='lg:hidden space-y-2'>
-                                <div className='flex justify-between items-start'>
-                                  <div className='flex items-start gap-2'>
-                                    {/* Botão ocultar - Mobile */}
-                                    <button
-                                      onClick={() => toggleOculto(produto._id)}
-                                      className={`p-1 rounded transition ${isOculto ? 'text-gray-400' : 'text-gray-300 hover:text-gray-500'}`}
-                                      title={isOculto ? 'Mostrar produto' : 'Ocultar produto'}
-                                    >
-                                      <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                                        {isOculto ? (
-                                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21' />
-                                        ) : (
-                                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z' />
-                                        )}
-                                      </svg>
-                                    </button>
-                                    <div>
-                                      <span className='text-xs text-gray-500'>{produto.codigo}</span>
-                                      <p className='font-medium text-gray-800'>{produto.nome}</p>
-                                    </div>
-                                  </div>
-                                  <span className={`text-sm font-bold ${corMargem(margem)}`}>
-                                    {margem !== null ? `${margem.toFixed(1)}% ${badgeMargem(margem)}` : '-'}
-                                  </span>
-                                </div>
-                                <div className='flex items-center justify-between'>
-                                  <span className='text-sm text-gray-500'>
-                                    Custo: R$ {formatarMoeda(produto.custoTotal)}
-                                  </span>
-                                  <div className='flex items-center gap-1'>
-                                    <span className='text-sm'>R$</span>
-                                    <input
-                                      type='text'
-                                      inputMode='decimal'
-                                      value={inputEmEdicao === produto._id 
-                                        ? valorTemporario 
-                                        : (precos[produto._id] !== null ? formatarMoeda(precos[produto._id]) : '')}
-                                      onChange={(e) => handleChangeTemporario(e.target.value)}
-                                      onFocus={() => handleFocus(produto._id)}
-                                      onBlur={() => handleBlur(produto._id)}
-                                      onKeyDown={(e) => handleKeyDown(e, produto._id)}
-                                      placeholder='0,00'
-                                      className='w-24 border rounded px-2 py-1 text-sm text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none'
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Desktop */}
-                              <div className='hidden lg:grid lg:grid-cols-12 gap-4 items-center'>
-                                {/* Botão ocultar - Desktop */}
-                                <div className='col-span-1 flex items-center'>
-                                  <button
-                                    onClick={() => toggleOculto(produto._id)}
-                                    className={`p-1 rounded transition ${isOculto ? 'text-gray-400' : 'text-gray-300 hover:text-gray-500'}`}
-                                    title={isOculto ? 'Mostrar produto' : 'Ocultar produto'}
-                                  >
-                                    <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                                      {isOculto ? (
-                                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21' />
-                                      ) : (
-                                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z' />
-                                      )}
-                                    </svg>
-                                  </button>
-                                  <span className='text-sm text-gray-600 ml-1'>{produto.codigo}</span>
-                                </div>
-                                <div className='col-span-4'>
-                                  <p className='font-medium text-gray-800 truncate' title={produto.nome}>
-                                    {produto.nome}
-                                  </p>
-                                </div>
-                                <div className='col-span-2 text-right text-sm text-gray-600'>
-                                  R$ {formatarMoeda(produto.custoTotal)}
-                                </div>
-                                <div className='col-span-2 flex justify-center'>
-                                  <div className='flex items-center gap-1'>
-                                    <span className='text-sm text-gray-500'>R$</span>
-                                    <input
-                                      type='text'
-                                      inputMode='decimal'
-                                      value={inputEmEdicao === produto._id 
-                                        ? valorTemporario 
-                                        : (precos[produto._id] !== null ? formatarMoeda(precos[produto._id]) : '')}
-                                      onChange={(e) => handleChangeTemporario(e.target.value)}
-                                      onFocus={() => handleFocus(produto._id)}
-                                      onBlur={() => handleBlur(produto._id)}
-                                      onKeyDown={(e) => handleKeyDown(e, produto._id)}
-                                      placeholder='0,00'
-                                      className='w-24 border rounded px-2 py-1.5 text-sm text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none'
-                                    />
-                                  </div>
-                                </div>
-                                <div className={`col-span-3 text-right font-medium ${corMargem(margem)}`}>
-                                  {margem !== null ? (
-                                    <span>{margem.toFixed(1)}% {badgeMargem(margem)}</span>
-                                  ) : (
-                                    <span className='text-gray-400'>-</span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+                    </div>
+                  ) : activeId && activeType === 'product' ? (
+                    <div className='bg-purple-50 border-2 border-purple-400 rounded p-3 shadow-lg'>
+                      <span className='text-purple-700'>
+                        {produtos.find(p => p._id === activeId)?.nome || activeId}
+                      </span>
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
             </div>
           )}
 
@@ -1139,57 +1432,11 @@ Elite Surfing`
                     </div>
                   </div>
 
-                  {/* Dica */}
                   <div className='mt-6 p-4 bg-blue-50 rounded-lg'>
                     <p className='text-sm text-blue-800'>
                       <strong>💡 Dica:</strong> No celular, o botão "Compartilhar" abre diretamente o WhatsApp, Email e outros apps. 
                       No computador, o arquivo será baixado para você enviar manualmente.
                     </p>
-                  </div>
-
-                  {/* Preview compacto */}
-                  <div className='mt-6'>
-                    <h3 className='font-bold text-gray-800 mb-4'>Preview da Tabela</h3>
-                    <div className='border rounded-lg overflow-hidden max-h-64 overflow-y-auto text-sm'>
-                      <div className='bg-gray-800 text-white p-2 text-center'>
-                        <p className='font-bold text-sm'>ELITE SURFING - Tabela de Preços</p>
-                        <p className='text-xs opacity-80'>{user?.nome}</p>
-                      </div>
-
-                      {Object.entries(porCategoria).map(([categoria, produtosCategoria]) => {
-                        // Filtrar produtos com preço E não ocultos
-                        const produtosComPreco = produtosCategoria.filter(p => 
-                          precos[p._id] && !produtosOcultos.includes(p._id)
-                        );
-                        if (produtosComPreco.length === 0) return null;
-
-                        return (
-                          <div key={categoria}>
-                            <div className='bg-gray-700 text-white px-3 py-1 text-xs font-bold'>
-                              {categoria}
-                            </div>
-                            <div className='divide-y'>
-                              {produtosComPreco.slice(0, 2).map(produto => (
-                                <div key={produto._id} className='flex justify-between px-3 py-1 text-xs'>
-                                  <div className='flex gap-2'>
-                                    <span className='text-gray-400'>{produto.codigo}</span>
-                                    <span className='truncate max-w-[200px]'>{produto.nome}</span>
-                                  </div>
-                                  <span className='font-bold text-green-600 whitespace-nowrap'>
-                                    R$ {formatarMoeda(precos[produto._id])}
-                                  </span>
-                                </div>
-                              ))}
-                              {produtosComPreco.length > 2 && (
-                                <div className='px-3 py-0.5 text-xs text-gray-400 text-center'>
-                                  + {produtosComPreco.length - 2} produtos
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
                   </div>
                 </>
               )}
@@ -1201,7 +1448,6 @@ Elite Surfing`
           {/* ══════════════════════════════════════════════════════════════ */}
           {abaAtiva === 'margens' && (
             <div>
-              {/* Aviso de confidencialidade */}
               <div className='bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4'>
                 <div className='flex items-center gap-2'>
                   <span className='text-xl'>🔒</span>
@@ -1214,7 +1460,6 @@ Elite Surfing`
                 </p>
               </div>
 
-              {/* Resumo */}
               {stats && (
                 <div className='bg-white rounded-lg shadow-md p-4 mb-4'>
                   <h3 className='font-bold text-gray-800 mb-4'>Resumo Geral</h3>
@@ -1247,9 +1492,11 @@ Elite Surfing`
                 </div>
               )}
 
-              {/* Tabela de margens por categoria */}
               <div className='space-y-4'>
-                {Object.entries(porCategoria).map(([categoria, produtosCategoria]) => {
+                {ordemCategorias.map((categoria) => {
+                  const produtosCategoria = porCategoria[categoria];
+                  if (!produtosCategoria) return null;
+
                   const produtosComMargem = produtosCategoria.filter(p => precos[p._id]);
                   if (produtosComMargem.length === 0) return null;
 
@@ -1284,7 +1531,6 @@ Elite Surfing`
 
                       {categoriasExpandidas[categoria] && (
                         <div className='divide-y'>
-                          {/* Header - Desktop */}
                           <div className='hidden lg:grid lg:grid-cols-12 gap-4 px-4 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase'>
                             <div className='col-span-1'>Código</div>
                             <div className='col-span-4'>Produto</div>
@@ -1301,12 +1547,11 @@ Elite Surfing`
 
                             return (
                               <div key={produto._id} className='p-4 hover:bg-gray-50'>
-                                {/* Mobile */}
                                 <div className='lg:hidden space-y-2'>
                                   <div className='flex justify-between'>
                                     <div>
                                       <span className='text-xs text-gray-500'>{produto.codigo}</span>
-                                      <p className='font-medium'>{produto.nome}</p>
+                                      <p className='font-medium whitespace-normal break-words'>{produto.nome}</p>
                                     </div>
                                     <span className={`font-bold ${corMargem(margem)}`}>
                                       {margem !== null ? `${margem.toFixed(1)}% ${badgeMargem(margem)}` : '-'}
@@ -1321,10 +1566,9 @@ Elite Surfing`
                                   </div>
                                 </div>
 
-                                {/* Desktop */}
                                 <div className='hidden lg:grid lg:grid-cols-12 gap-4 items-center'>
                                   <div className='col-span-1 text-sm text-gray-600'>{produto.codigo}</div>
-                                  <div className='col-span-4 font-medium truncate'>{produto.nome}</div>
+                                  <div className='col-span-4 font-medium whitespace-normal break-words'>{produto.nome}</div>
                                   <div className='col-span-2 text-right text-sm text-gray-600'>
                                     R$ {formatarMoeda(produto.custoTotal)}
                                   </div>

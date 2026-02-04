@@ -1,7 +1,7 @@
 // pages/api/user/tabela-precos.js
 // ===================================
 // API para gerenciar tabela de preços do distribuidor
-// 🆕 COM SUPORTE A CATEGORIAS ISENTAS DE ROYALTIES
+// 🆕 COM SUPORTE A ORDENAÇÃO DE CATEGORIAS E PRODUTOS (DRAG & DROP)
 
 import dbConnect from '../../../lib/mongodb';
 import TabelaPrecos from '../../../models/TabelaPrecos';
@@ -9,7 +9,7 @@ import Produto from '../../../models/Produto';
 import Fornecedor from '../../../models/Fornecedor';
 import { verifyToken } from '../../../utils/auth';
 
-// 🆕 Taxa de royalty do .env (padrão 5%)
+// Taxa de royalty do .env (padrão 5%)
 const ROYALTY_RATE = parseFloat(process.env.ROYALTY_PERCENTAGE) || 0.05;
 
 export default async function handler(req, res) {
@@ -40,10 +40,17 @@ export default async function handler(req, res) {
       
       // Se não existe, criar uma vazia
       if (!tabela) {
-        tabela = { usuario, precos: {}, produtosOcultos: [], ultimaAtualizacao: null };
+        tabela = { 
+          usuario, 
+          precos: {}, 
+          produtosOcultos: [], 
+          ordemCategorias: [],
+          ordemProdutos: {},
+          ultimaAtualizacao: null 
+        };
       }
 
-      // 🆕 Buscar todos os produtos ativos COM dados do fornecedor (incluindo categoriasIsentasRoyalty)
+      // Buscar todos os produtos ativos COM dados do fornecedor
       const produtos = await Produto.find({ ativo: true })
         .populate('fornecedorId', 'nome codigo categoriasIsentasRoyalty')
         .sort({ categoria: 1, nome: 1 })
@@ -56,18 +63,23 @@ export default async function handler(req, res) {
 
       // Lista de produtos ocultos
       const produtosOcultos = tabela.produtosOcultos || [];
+      
+      // Ordem personalizada das categorias
+      const ordemCategorias = tabela.ordemCategorias || [];
+      
+      // 🆕 Ordem personalizada dos produtos por categoria
+      const ordemProdutos = tabela.ordemProdutos instanceof Map
+        ? Object.fromEntries(tabela.ordemProdutos)
+        : (tabela.ordemProdutos || {});
 
       // Calcular custo total de cada produto e adicionar preço de venda
       const produtosComPrecos = produtos.map(produto => {
         const custoBase = produto.preco || 0;
         
-        // ══════════════════════════════════════════════════════════════
-        // 🆕 VERIFICAR SE CATEGORIA É ISENTA DE ROYALTIES
-        // ══════════════════════════════════════════════════════════════
+        // Verificar se categoria é isenta de royalties
         const categoriasIsentas = produto.fornecedorId?.categoriasIsentasRoyalty || [];
         const categoriaIsenta = categoriasIsentas.includes(produto.categoria);
         
-        // Se categoria isenta → royalties = 0, senão usa ROYALTY_RATE do .env
         const royalties = categoriaIsenta ? 0 : custoBase * ROYALTY_RATE;
         
         const etiqueta = produto.precoEtiqueta || 0;
@@ -85,32 +97,28 @@ export default async function handler(req, res) {
         }
 
         return {
-          _id: produto._id,
+          _id: produto._id.toString(),
           codigo: produto.codigo,
           nome: produto.nome,
           categoria: produto.categoria,
           imagem: produto.imagem || produto.imagens?.[0] || null,
           fornecedor: produto.fornecedorId?.nome || 'N/A',
           fornecedorCodigo: produto.fornecedorId?.codigo || '',
-          // Custos
           custoBase,
           royalties,
           etiqueta,
           embalagem,
           custoTotal,
-          // 🆕 Flag se é isento de royalties
           isentoRoyalty: categoriaIsenta,
-          // Venda
           precoVenda,
           margem: margem !== null ? Math.round(margem * 100) / 100 : null,
           lucro: lucro !== null ? Math.round(lucro * 100) / 100 : null,
-          // Oculto
           oculto: produtosOcultos.includes(produto._id.toString()),
         };
       });
 
       // Agrupar por categoria
-      const porCategoria = produtosComPrecos.reduce((acc, produto) => {
+      const porCategoriaObj = produtosComPrecos.reduce((acc, produto) => {
         const cat = produto.categoria || 'Sem Categoria';
         if (!acc[cat]) {
           acc[cat] = [];
@@ -118,6 +126,55 @@ export default async function handler(req, res) {
         acc[cat].push(produto);
         return acc;
       }, {});
+
+      // ══════════════════════════════════════════════════════════════
+      // ORDENAR CATEGORIAS
+      // ══════════════════════════════════════════════════════════════
+      const todasCategorias = Object.keys(porCategoriaObj);
+      const categoriasComOrdem = ordemCategorias.filter(cat => todasCategorias.includes(cat));
+      const categoriasSemOrdem = todasCategorias
+        .filter(cat => !ordemCategorias.includes(cat))
+        .sort();
+      const ordemFinalCategorias = [...categoriasComOrdem, ...categoriasSemOrdem];
+
+      // ══════════════════════════════════════════════════════════════
+      // 🆕 ORDENAR PRODUTOS DENTRO DE CADA CATEGORIA
+      // ══════════════════════════════════════════════════════════════
+      const porCategoria = {};
+      const ordemFinalProdutos = {};
+
+      ordemFinalCategorias.forEach(cat => {
+        if (porCategoriaObj[cat]) {
+          const produtosDaCategoria = porCategoriaObj[cat];
+          const ordemSalva = ordemProdutos[cat] || [];
+          
+          // Ordenar produtos: primeiro os que têm ordem, depois os novos (por nome)
+          const produtosComOrdem = [];
+          const produtosSemOrdem = [];
+          
+          produtosDaCategoria.forEach(p => {
+            if (ordemSalva.includes(p._id)) {
+              produtosComOrdem.push(p);
+            } else {
+              produtosSemOrdem.push(p);
+            }
+          });
+          
+          // Ordenar os com ordem conforme a ordem salva
+          produtosComOrdem.sort((a, b) => {
+            return ordemSalva.indexOf(a._id) - ordemSalva.indexOf(b._id);
+          });
+          
+          // Ordenar os sem ordem por nome
+          produtosSemOrdem.sort((a, b) => a.nome.localeCompare(b.nome));
+          
+          // Juntar: primeiro ordenados, depois novos
+          porCategoria[cat] = [...produtosComOrdem, ...produtosSemOrdem];
+          
+          // Gerar ordem final dos produtos desta categoria
+          ordemFinalProdutos[cat] = porCategoria[cat].map(p => p._id);
+        }
+      });
 
       // Calcular estatísticas
       const comPreco = produtosComPrecos.filter(p => p.precoVenda !== null);
@@ -134,7 +191,6 @@ export default async function handler(req, res) {
         margemVerde: comPreco.filter(p => p.margem >= 30).length,
         margemAmarela: comPreco.filter(p => p.margem >= 15 && p.margem < 30).length,
         margemVermelha: comPreco.filter(p => p.margem !== null && p.margem < 15).length,
-        // 🆕 Estatísticas de isenção
         produtosIsentos: produtosComPrecos.filter(p => p.isentoRoyalty).length,
       };
 
@@ -143,9 +199,10 @@ export default async function handler(req, res) {
         porCategoria,
         stats,
         produtosOcultos,
+        ordemCategorias: ordemFinalCategorias,
+        ordemProdutos: ordemFinalProdutos,
         ultimaAtualizacao: tabela.ultimaAtualizacao,
         distribuidorNome: nomeDistribuidor,
-        // 🆕 Informar taxa de royalty atual (em percentual)
         royaltyRate: ROYALTY_RATE * 100,
       });
 
@@ -160,13 +217,13 @@ export default async function handler(req, res) {
   // ══════════════════════════════════════════════════════════════
   if (req.method === 'PUT') {
     try {
-      const { precos, produtosOcultos } = req.body;
+      const { precos, produtosOcultos, ordemCategorias, ordemProdutos } = req.body;
 
       if (!precos || typeof precos !== 'object') {
         return res.status(400).json({ message: 'Dados inválidos' });
       }
 
-      // Validar que todos os valores são números positivos ou null
+      // Validar preços
       const precosValidados = {};
       for (const [produtoId, preco] of Object.entries(precos)) {
         if (preco === null || preco === '' || preco === undefined) {
@@ -181,10 +238,25 @@ export default async function handler(req, res) {
         precosValidados[produtoId] = precoNum;
       }
 
-      // Validar produtos ocultos (array de strings)
+      // Validar produtos ocultos
       const ocultosValidados = Array.isArray(produtosOcultos) 
         ? produtosOcultos.filter(id => typeof id === 'string') 
         : [];
+
+      // Validar ordem das categorias
+      const ordemCategoriasValidada = Array.isArray(ordemCategorias)
+        ? ordemCategorias.filter(cat => typeof cat === 'string' && cat.trim())
+        : [];
+
+      // 🆕 Validar ordem dos produtos por categoria
+      const ordemProdutosValidada = {};
+      if (ordemProdutos && typeof ordemProdutos === 'object') {
+        for (const [categoria, ids] of Object.entries(ordemProdutos)) {
+          if (Array.isArray(ids)) {
+            ordemProdutosValidada[categoria] = ids.filter(id => typeof id === 'string');
+          }
+        }
+      }
 
       // Upsert - criar se não existe, atualizar se existe
       const tabela = await TabelaPrecos.findOneAndUpdate(
@@ -194,6 +266,8 @@ export default async function handler(req, res) {
           nomeDistribuidor,
           precos: precosValidados,
           produtosOcultos: ocultosValidados,
+          ordemCategorias: ordemCategoriasValidada,
+          ordemProdutos: ordemProdutosValidada,
           ultimaAtualizacao: new Date(),
         },
         { new: true, upsert: true }
@@ -203,6 +277,8 @@ export default async function handler(req, res) {
         message: 'Tabela de preços salva com sucesso',
         totalProdutos: Object.keys(precosValidados).length,
         produtosOcultos: ocultosValidados.length,
+        ordemCategorias: ordemCategoriasValidada,
+        ordemProdutos: ordemProdutosValidada,
         ultimaAtualizacao: tabela.ultimaAtualizacao,
       });
 
