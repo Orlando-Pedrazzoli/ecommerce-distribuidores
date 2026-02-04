@@ -1,4 +1,4 @@
-// COMPONENTS/ADMIN/PRODUCTFORM.JS - ATUALIZADO COM MÚLTIPLAS IMAGENS
+// COMPONENTS/ADMIN/PRODUCTFORM.JS - ATUALIZADO COM DRAG AND DROP
 // ===================================
 import { useState, useEffect } from 'react';
 
@@ -25,6 +25,9 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
 
   // Estado para rastrear campos modificados
   const [modifiedFields, setModifiedFields] = useState(new Set());
+
+  // 🆕 Estado para drag and drop
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     buscarFornecedores();
@@ -98,34 +101,96 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
     }
   };
 
-  // 🆕 SELEÇÃO DE MÚLTIPLOS ARQUIVOS
-  const handleFileSelect = e => {
-    const files = Array.from(e.target.files);
-
-    // Validar cada arquivo
+  // 🆕 VALIDAR E PROCESSAR ARQUIVOS
+  const processFiles = (files) => {
     const validFiles = files.filter(file => {
+      // Validar tipo
+      if (!file.type.startsWith('image/')) {
+        alert(`Arquivo ${file.name} não é uma imagem válida.`);
+        return false;
+      }
+
+      // Validar tamanho
       if (file.size > 5 * 1024 * 1024) {
         alert(`Arquivo ${file.name} é muito grande. Máximo 5MB.`);
         return false;
       }
+
       return true;
     });
 
-    // Limitar total de imagens (existentes + novas - removidas)
+    // Limitar total de imagens
     const totalImages = currentImages.length - imagesToRemove.length + selectedFiles.length + validFiles.length;
     if (totalImages > 10) {
       alert('Máximo de 10 imagens por produto.');
-      return;
+      const available = 10 - (currentImages.length - imagesToRemove.length + selectedFiles.length);
+      return validFiles.slice(0, available);
     }
 
-    setSelectedFiles(prev => [...prev, ...validFiles]);
+    return validFiles;
+  };
 
-    if (editingProduct) {
-      setModifiedFields(prev => new Set([...prev, 'imagens']));
+  // 🆕 SELEÇÃO DE MÚLTIPLOS ARQUIVOS
+  const handleFileSelect = e => {
+    const files = Array.from(e.target.files);
+    const validFiles = processFiles(files);
+
+    if (validFiles.length > 0) {
+      setSelectedFiles(prev => [...prev, ...validFiles]);
+      
+      if (editingProduct) {
+        setModifiedFields(prev => new Set([...prev, 'imagens']));
+      }
     }
 
     // Limpar input para permitir selecionar o mesmo arquivo novamente
     e.target.value = '';
+  };
+
+  // 🆕 DRAG AND DROP - HANDLERS
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Verificar se realmente saiu da área (não apenas mudou de elemento filho)
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const validFiles = processFiles(files);
+
+    if (validFiles.length > 0) {
+      setSelectedFiles(prev => [...prev, ...validFiles]);
+      
+      if (editingProduct) {
+        setModifiedFields(prev => new Set([...prev, 'imagens']));
+      }
+
+      // Feedback visual
+      console.log(`✅ ${validFiles.length} imagem(ns) adicionada(s)`);
+    }
   };
 
   // 🆕 REMOVER IMAGEM EXISTENTE
@@ -635,7 +700,7 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         </div>
 
         {/* ══════════════════════════════════════════════════════════════ */}
-        {/* 🆕 SEÇÃO DE IMAGENS - MÚLTIPLAS */}
+        {/* 🆕 SEÇÃO DE IMAGENS - COM DRAG AND DROP */}
         {/* ══════════════════════════════════════════════════════════════ */}
         <div className='bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg p-4'>
           <h3 className='text-base sm:text-lg font-semibold text-purple-800 mb-2 flex items-center gap-2'>
@@ -778,38 +843,71 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             </div>
           )}
 
-          {/* Input de Upload */}
-          <div>
+          {/* 🆕 ÁREA DE DRAG AND DROP */}
+          <div
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            className={`relative transition-all duration-200 ${
+              totalImagesCount >= 10 ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+          >
             <label
               htmlFor='imageFiles'
-              className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition ${
+              className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200 ${
                 totalImagesCount >= 10
                   ? 'border-gray-300 bg-gray-100 cursor-not-allowed'
-                  : 'border-purple-300 bg-purple-50 hover:bg-purple-100'
+                  : isDragging
+                  ? 'border-purple-500 bg-purple-100 scale-105 shadow-lg'
+                  : 'border-purple-300 bg-purple-50 hover:bg-purple-100 hover:border-purple-400'
               }`}
             >
-              <div className='flex flex-col items-center justify-center pt-5 pb-6'>
-                <svg
-                  className='w-8 h-8 mb-2 text-purple-500'
-                  fill='none'
-                  stroke='currentColor'
-                  viewBox='0 0 24 24'
-                >
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    strokeWidth={2}
-                    d='M12 6v6m0 0v6m0-6h6m-6 0H6'
-                  />
-                </svg>
-                <p className='text-sm text-purple-600'>
-                  {totalImagesCount >= 10
-                    ? 'Limite de imagens atingido'
-                    : 'Clique para adicionar imagens'}
-                </p>
-                <p className='text-xs text-gray-500 mt-1'>
-                  PNG, JPG, WEBP até 5MB cada
-                </p>
+              <div className='flex flex-col items-center justify-center pt-5 pb-6 pointer-events-none'>
+                {isDragging ? (
+                  <>
+                    <svg
+                      className='w-10 h-10 mb-2 text-purple-600 animate-bounce'
+                      fill='none'
+                      stroke='currentColor'
+                      viewBox='0 0 24 24'
+                    >
+                      <path
+                        strokeLinecap='round'
+                        strokeLinejoin='round'
+                        strokeWidth={2}
+                        d='M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12'
+                      />
+                    </svg>
+                    <p className='text-base font-semibold text-purple-700'>
+                      Solte as imagens aqui! 📸
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      className='w-8 h-8 mb-2 text-purple-500'
+                      fill='none'
+                      stroke='currentColor'
+                      viewBox='0 0 24 24'
+                    >
+                      <path
+                        strokeLinecap='round'
+                        strokeLinejoin='round'
+                        strokeWidth={2}
+                        d='M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12'
+                      />
+                    </svg>
+                    <p className='text-sm text-purple-600 font-medium'>
+                      {totalImagesCount >= 10
+                        ? 'Limite de imagens atingido'
+                        : 'Arraste imagens aqui ou clique para selecionar'}
+                    </p>
+                    <p className='text-xs text-gray-500 mt-1'>
+                      PNG, JPG, WEBP até 5MB cada
+                    </p>
+                  </>
+                )}
               </div>
               <input
                 type='file'
@@ -821,6 +919,11 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
                 className='hidden'
               />
             </label>
+
+            {/* Overlay visual durante drag */}
+            {isDragging && (
+              <div className='absolute inset-0 pointer-events-none rounded-lg ring-4 ring-purple-400 ring-opacity-50' />
+            )}
           </div>
         </div>
 
