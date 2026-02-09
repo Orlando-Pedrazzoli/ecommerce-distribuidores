@@ -1,7 +1,7 @@
 // pages/api/user/tabela-precos.js
 // ===================================
 // API para gerenciar tabela de preços do distribuidor
-// 🆕 COM SUPORTE A ORDENAÇÃO DE CATEGORIAS E PRODUTOS (DRAG & DROP)
+// 🆕 COM SUPORTE A ORDENAÇÃO E FILTRO POR FORNECEDOR
 
 import dbConnect from '../../../lib/mongodb';
 import TabelaPrecos from '../../../models/TabelaPrecos';
@@ -43,7 +43,8 @@ export default async function handler(req, res) {
         tabela = { 
           usuario, 
           precos: {}, 
-          produtosOcultos: [], 
+          produtosOcultos: [],
+          fornecedoresOcultos: [],
           ordemCategorias: [],
           ordemProdutos: {},
           ultimaAtualizacao: null 
@@ -63,11 +64,14 @@ export default async function handler(req, res) {
 
       // Lista de produtos ocultos
       const produtosOcultos = tabela.produtosOcultos || [];
+
+      // 🆕 Lista de fornecedores ocultos
+      const fornecedoresOcultos = tabela.fornecedoresOcultos || [];
       
       // Ordem personalizada das categorias
       const ordemCategorias = tabela.ordemCategorias || [];
       
-      // 🆕 Ordem personalizada dos produtos por categoria
+      // Ordem personalizada dos produtos por categoria
       const ordemProdutos = tabela.ordemProdutos instanceof Map
         ? Object.fromEntries(tabela.ordemProdutos)
         : (tabela.ordemProdutos || {});
@@ -138,7 +142,7 @@ export default async function handler(req, res) {
       const ordemFinalCategorias = [...categoriasComOrdem, ...categoriasSemOrdem];
 
       // ══════════════════════════════════════════════════════════════
-      // 🆕 ORDENAR PRODUTOS DENTRO DE CADA CATEGORIA
+      // ORDENAR PRODUTOS DENTRO DE CADA CATEGORIA
       // ══════════════════════════════════════════════════════════════
       const porCategoria = {};
       const ordemFinalProdutos = {};
@@ -199,6 +203,7 @@ export default async function handler(req, res) {
         porCategoria,
         stats,
         produtosOcultos,
+        fornecedoresOcultos,
         ordemCategorias: ordemFinalCategorias,
         ordemProdutos: ordemFinalProdutos,
         ultimaAtualizacao: tabela.ultimaAtualizacao,
@@ -217,7 +222,7 @@ export default async function handler(req, res) {
   // ══════════════════════════════════════════════════════════════
   if (req.method === 'PUT') {
     try {
-      const { precos, produtosOcultos, ordemCategorias, ordemProdutos } = req.body;
+      const { precos, produtosOcultos, fornecedoresOcultos, ordemCategorias, ordemProdutos } = req.body;
 
       if (!precos || typeof precos !== 'object') {
         return res.status(400).json({ message: 'Dados inválidos' });
@@ -243,12 +248,17 @@ export default async function handler(req, res) {
         ? produtosOcultos.filter(id => typeof id === 'string') 
         : [];
 
+      // 🆕 Validar fornecedores ocultos
+      const fornecedoresOcultosValidados = Array.isArray(fornecedoresOcultos)
+        ? fornecedoresOcultos.filter(f => typeof f === 'string' && f.trim())
+        : [];
+
       // Validar ordem das categorias
       const ordemCategoriasValidada = Array.isArray(ordemCategorias)
         ? ordemCategorias.filter(cat => typeof cat === 'string' && cat.trim())
         : [];
 
-      // 🆕 Validar ordem dos produtos por categoria
+      // Validar ordem dos produtos por categoria
       const ordemProdutosValidada = {};
       if (ordemProdutos && typeof ordemProdutos === 'object') {
         for (const [categoria, ids] of Object.entries(ordemProdutos)) {
@@ -266,6 +276,7 @@ export default async function handler(req, res) {
           nomeDistribuidor,
           precos: precosValidados,
           produtosOcultos: ocultosValidados,
+          fornecedoresOcultos: fornecedoresOcultosValidados,
           ordemCategorias: ordemCategoriasValidada,
           ordemProdutos: ordemProdutosValidada,
           ultimaAtualizacao: new Date(),
@@ -277,6 +288,7 @@ export default async function handler(req, res) {
         message: 'Tabela de preços salva com sucesso',
         totalProdutos: Object.keys(precosValidados).length,
         produtosOcultos: ocultosValidados.length,
+        fornecedoresOcultos: fornecedoresOcultosValidados.length,
         ordemCategorias: ordemCategoriasValidada,
         ordemProdutos: ordemProdutosValidada,
         ultimaAtualizacao: tabela.ultimaAtualizacao,

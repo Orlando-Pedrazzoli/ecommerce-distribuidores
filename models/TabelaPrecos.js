@@ -1,7 +1,7 @@
 // models/TabelaPrecos.js
 // ===================================
 // Modelo para armazenar tabelas de preços dos distribuidores
-// 🆕 COM SUPORTE A ORDENAÇÃO PERSONALIZADA DE CATEGORIAS E PRODUTOS
+// COM SUPORTE A ORDENAÇÃO PERSONALIZADA E FILTRO POR FORNECEDOR
 
 import mongoose from 'mongoose';
 
@@ -32,13 +32,19 @@ const TabelaPrecosSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
-    // 🆕 Ordem personalizada das categorias
+    // 🆕 Fornecedores ocultos pelo distribuidor
+    // Array de nomes de fornecedores que o distribuidor não quer exibir
+    fornecedoresOcultos: {
+      type: [String],
+      default: [],
+    },
+    // Ordem personalizada das categorias
     // Array de nomes de categorias na ordem desejada
     ordemCategorias: {
       type: [String],
       default: [],
     },
-    // 🆕 Ordem personalizada dos produtos por categoria
+    // Ordem personalizada dos produtos por categoria
     // Objeto: { "NomeCategoria": ["produtoId1", "produtoId2", ...], ... }
     ordemProdutos: {
       type: Map,
