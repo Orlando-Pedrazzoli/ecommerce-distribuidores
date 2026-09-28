@@ -7,28 +7,18 @@ import dbConnect from '../../../lib/mongodb';
 import TabelaPrecos from '../../../models/TabelaPrecos';
 import Produto from '../../../models/Produto';
 import Fornecedor from '../../../models/Fornecedor';
-import { verifyToken } from '../../../utils/auth';
+import { requireAuth } from '../../../lib/auth';
 
 // Taxa de royalty do .env (padrão 5%)
 const ROYALTY_RATE = parseFloat(process.env.ROYALTY_PERCENTAGE) || 0.05;
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   await dbConnect();
 
-  // Verificar autenticação
-  const token = req.cookies['auth-token'];
-  if (!token) {
-    return res.status(401).json({ message: 'Não autorizado' });
-  }
-
-  const decoded = verifyToken(token);
-  if (!decoded) {
-    return res.status(401).json({ message: 'Token inválido' });
-  }
-
+  // Autenticação garantida por requireAuth (req.user)
   // Pegar usuario e nome do token
-  const usuario = decoded.usuario || decoded.id;
-  const nomeDistribuidor = decoded.nome || usuario;
+  const usuario = req.user.usuario || req.user.id;
+  const nomeDistribuidor = req.user.nome || usuario;
 
   // ══════════════════════════════════════════════════════════════
   // GET - Carregar tabela de preços com produtos
@@ -326,3 +316,5 @@ export default async function handler(req, res) {
 
   return res.status(405).json({ message: 'Método não permitido' });
 }
+
+export default requireAuth(handler);

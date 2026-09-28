@@ -3,8 +3,9 @@
 import dbConnect from '../../../lib/mongodb';
 import Produto from '../../../models/Produto';
 import Fornecedor from '../../../models/Fornecedor';
+import { requireAdmin } from '../../../lib/auth';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   await dbConnect();
 
   if (req.method === 'POST') {
@@ -145,3 +146,5 @@ export default async function handler(req, res) {
 
   return res.status(405).json({ message: 'Method not allowed' });
 }
+
+export default requireAdmin(handler);

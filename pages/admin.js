@@ -74,6 +74,16 @@ export default function Admin() {
         setStats(prev => ({ ...prev, totalFornecedores: fornecedoresData.length || 0 }));
       }
 
+      // Buscar estatísticas de distribuidores
+      const distribuidoresRes = await fetch('/api/admin/distribuidores');
+      if (distribuidoresRes.ok) {
+        const distribuidoresData = await distribuidoresRes.json();
+        setStats(prev => ({
+          ...prev,
+          totalDistribuidores: distribuidoresData.total || 0,
+        }));
+      }
+
       // Buscar estatísticas de pedidos
       const pedidosRes = await fetch('/api/admin/pedidos/todos');
       if (pedidosRes.ok) {
@@ -109,9 +119,14 @@ export default function Admin() {
   };
 
   const handleLogout = async () => {
-    document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
-    document.cookie = 'auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
-    router.push('/');
+    try {
+      // Cookie HttpOnly: só o servidor consegue apagá-lo
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Erro ao encerrar sessão:', error);
+    } finally {
+      router.push('/');
+    }
   };
 
   const menuItems = [
@@ -146,6 +161,14 @@ export default function Admin() {
       badge: financeiro.totalPendente > 0 ? `R$ ${financeiro.totalPendente.toFixed(0)}` : null,
       badgeColor: 'red',
       action: () => router.push('/admin/financeiro'),
+    },
+    {
+      id: 'distribuidores',
+      label: 'Distribuidores',
+      icon: '👥',
+      color: 'indigo',
+      badge: stats.totalDistribuidores || null,
+      action: () => router.push('/admin/distribuidores'),
     },
     {
       id: 'fornecedores',
@@ -292,6 +315,7 @@ export default function Admin() {
                       {item.id === 'produtos' && 'Gerenciar catálogo completo'}
                       {item.id === 'pedidos' && 'Ver e processar pedidos'}
                       {item.id === 'financeiro' && 'Controle de pagamentos'}
+                      {item.id === 'distribuidores' && 'Contas, acessos e senhas'}
                       {item.id === 'fornecedores' && 'Cadastro de fornecedores'}
                       {item.id === 'configuracoes' && 'Ajustes do sistema'}
                       {item.id === 'dashboard' && 'Visão geral do sistema'}

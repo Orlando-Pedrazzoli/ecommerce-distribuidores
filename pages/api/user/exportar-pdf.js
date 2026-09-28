@@ -6,28 +6,18 @@
 import dbConnect from '../../../lib/mongodb';
 import TabelaPrecos from '../../../models/TabelaPrecos';
 import Produto from '../../../models/Produto';
-import { verifyToken } from '../../../utils/auth';
+import { requireAuth } from '../../../lib/auth';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Método não permitido' });
   }
 
   await dbConnect();
 
-  // Verificar autenticação
-  const token = req.cookies['auth-token'];
-  if (!token) {
-    return res.status(401).json({ message: 'Não autorizado' });
-  }
-
-  const decoded = verifyToken(token);
-  if (!decoded) {
-    return res.status(401).json({ message: 'Token inválido' });
-  }
-
-  const usuario = decoded.usuario || decoded.id;
-  const nomeDistribuidor = decoded.nome || usuario;
+  // Autenticação garantida por requireAuth (req.user)
+  const usuario = req.user.usuario || req.user.id;
+  const nomeDistribuidor = req.user.nome || usuario;
 
   try {
     // Buscar tabela de preços
@@ -306,3 +296,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ message: 'Erro ao exportar: ' + error.message });
   }
 }
+
+export default requireAuth(handler);

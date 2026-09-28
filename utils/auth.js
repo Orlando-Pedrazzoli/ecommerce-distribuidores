@@ -1,27 +1,12 @@
-﻿import jwt from 'jsonwebtoken'
+// utils/auth.js - COMPATIBILIDADE
+// ===================================
+// Mantido para os imports antigos (`import { requireAuth } from '../utils/auth'`).
+// Toda a lógica vive agora em lib/auth.js.
 
-export const verifyToken = (token) => {
-  try {
-    return jwt.verify(token, process.env.NEXTAUTH_SECRET)
-  } catch (error) {
-    return null
-  }
-}
-
-export const requireAuth = (handler) => {
-  return async (req, res) => {
-    const token = req.cookies['auth-token']
-    
-    if (!token) {
-      return res.status(401).json({ message: 'Token não fornecido' })
-    }
-
-    const decoded = verifyToken(token)
-    if (!decoded) {
-      return res.status(401).json({ message: 'Token inválido' })
-    }
-
-    req.user = decoded
-    return handler(req, res)
-  }
-}
+export {
+  verifyToken,
+  requireAuth,
+  requireAdmin,
+  requireDistribuidor,
+  getSessao,
+} from '../lib/auth';

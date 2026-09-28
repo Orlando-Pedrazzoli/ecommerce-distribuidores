@@ -4,23 +4,10 @@
 import dbConnect from '../../../lib/mongodb';
 import Pedido from '../../../models/Pedido';
 import Fornecedor from '../../../models/Fornecedor';
-import jwt from 'jsonwebtoken';
+import { requireAdmin } from '../../../lib/auth';
 
-export default async function handler(req, res) {
-  // Verificar autenticação admin
-  const token = req.cookies.token;
-  if (!token) {
-    return res.status(401).json({ message: 'Não autorizado' });
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.NEXTAUTH_SECRET);
-    if (decoded.role !== 'admin') {
-      return res.status(403).json({ message: 'Acesso negado. Apenas administradores.' });
-    }
-  } catch (error) {
-    return res.status(401).json({ message: 'Token inválido' });
-  }
+async function handler(req, res) {
+  // Autenticação admin garantida por requireAdmin (req.user disponível)
 
   await dbConnect();
 
@@ -250,3 +237,5 @@ export default async function handler(req, res) {
 
   return res.status(405).json({ message: 'Method not allowed' });
 }
+
+export default requireAdmin(handler);

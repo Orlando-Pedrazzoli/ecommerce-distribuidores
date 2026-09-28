@@ -5,38 +5,21 @@
 import dbConnect from '../../../lib/mongodb';
 import Pedido from '../../../models/Pedido';
 import Fornecedor from '../../../models/Fornecedor'; // ← NECESSÁRIO para populate
-import jwt from 'jsonwebtoken';
+import { requireDistribuidor } from '../../../lib/auth';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
   try {
-    // ══════════════════════════════════════════════════════════════
-    // CORREÇÃO: Usar 'auth-token' igual ao pedidos.js
-    // ══════════════════════════════════════════════════════════════
-    const token = req.cookies['auth-token'];
-    
-    if (!token) {
-      return res.status(401).json({ message: 'Token não fornecido' });
-    }
-
-    const decoded = jwt.verify(token, process.env.NEXTAUTH_SECRET);
-
-    // ══════════════════════════════════════════════════════════════
-    // CORREÇÃO: Usar 'tipo' igual ao pedidos.js (não 'role')
-    // ══════════════════════════════════════════════════════════════
-    if (decoded.tipo === 'admin') {
-      return res.status(403).json({ message: 'Use /api/admin/financeiro para administradores' });
-    }
-
+    // Autenticação garantida por requireDistribuidor (req.user)
     await dbConnect();
 
     // ══════════════════════════════════════════════════════════════
-    // CORREÇÃO: Usar 'decoded.usuario' igual ao pedidos.js (não 'decoded.id')
+    // CORREÇÃO: Usar 'req.user.usuario' igual ao pedidos.js (não 'req.user.id')
     // ══════════════════════════════════════════════════════════════
-    const pedidos = await Pedido.find({ userId: decoded.usuario })
+    const pedidos = await Pedido.find({ userId: req.user.usuario })
       .populate('fornecedorId', 'nome codigo')
       .sort({ createdAt: -1 });
 
@@ -105,3 +88,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ message: 'Erro ao buscar pagamentos' });
   }
 }
+
+export default requireDistribuidor(handler);

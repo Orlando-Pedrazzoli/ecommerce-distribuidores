@@ -57,10 +57,15 @@ export default function Navbar() {
     }
   };
 
-  const handleLogout = () => {
-    if (confirm('Deseja realmente sair?')) {
-      document.cookie =
-        'auth-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+  const handleLogout = async () => {
+    if (!confirm('Deseja realmente sair?')) return;
+    try {
+      // O cookie de sessão é HttpOnly: só o servidor consegue apagá-lo
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Erro ao encerrar sessão:', error);
+    } finally {
+      setUser(null);
       router.push('/');
     }
   };
@@ -226,8 +231,12 @@ export default function Navbar() {
               <div className='text-sm border-l border-gray-600 pl-4 ml-2'>
                 <span className='text-gray-300'>Olá, </span>
                 <span className='font-medium'>{user.nome}</span>
-                <div className='text-xs text-gray-400 capitalize'>
-                  {user.tipo}
+                <div className='text-xs text-gray-400'>
+                  <span className='capitalize'>{user.tipo}</span>
+                  <span className='mx-1'>·</span>
+                  <Link href='/alterar-senha' className='hover:text-white hover:underline'>
+                    Alterar senha
+                  </Link>
                 </div>
               </div>
 
@@ -290,7 +299,7 @@ export default function Navbar() {
           {/* Mobile Menu */}
           <div
             className={`md:hidden transition-all duration-200 ${
-              isMobileMenuOpen ? 'max-h-96 pb-4' : 'max-h-0 overflow-hidden'
+              isMobileMenuOpen ? 'max-h-[36rem] pb-4' : 'max-h-0 overflow-hidden'
             }`}
           >
             <div className='space-y-2 border-t border-gray-700 pt-4'>
@@ -414,6 +423,15 @@ export default function Navbar() {
                   Admin
                 </Link>
               )}
+
+              {/* Alterar senha - Mobile */}
+              <Link
+                href='/alterar-senha'
+                className='block px-3 py-2 rounded transition hover:bg-gray-700'
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                🔐 Alterar senha
+              </Link>
 
               {/* Logout */}
               <button

@@ -2,34 +2,19 @@
 // ===================================
 // Busca todos os pedidos do distribuidor logado (de TODOS os fornecedores)
 
-import jwt from 'jsonwebtoken';
 import Pedido from '../../../models/Pedido';
 import Fornecedor from '../../../models/Fornecedor'; // ← NECESSÁRIO para populate
 import Produto from '../../../models/Produto'; // ← NECESSÁRIO para populate
 import dbConnect from '../../../lib/mongodb';
+import { requireDistribuidor } from '../../../lib/auth';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
   try {
-    // ══════════════════════════════════════════════════════════════
-    // AUTENTICAÇÃO
-    // ══════════════════════════════════════════════════════════════
-    const token = req.cookies['auth-token'];
-    
-    if (!token) {
-      return res.status(401).json({ message: 'Token não fornecido' });
-    }
-
-    const decoded = jwt.verify(token, process.env.NEXTAUTH_SECRET);
-
-    // Admin deve usar rota específica
-    if (decoded.tipo === 'admin') {
-      return res.status(403).json({ message: 'Use a rota admin para pedidos' });
-    }
-
+    // Autenticação garantida por requireDistribuidor (req.user)
     await dbConnect();
 
     // ══════════════════════════════════════════════════════════════
@@ -43,7 +28,7 @@ export default async function handler(req, res) {
     } = req.query;
 
     // Filtro base: sempre pelo userId do distribuidor logado
-    let filter = { userId: decoded.usuario };
+    let filter = { userId: req.user.usuario };
 
     // Filtro opcional por status
     if (status && status !== 'todos') {
@@ -72,7 +57,7 @@ export default async function handler(req, res) {
     // ══════════════════════════════════════════════════════════════
     // CALCULAR RESUMO FINANCEIRO (para exibir no dashboard/pedidos)
     // ══════════════════════════════════════════════════════════════
-    const todosOsPedidos = await Pedido.find({ userId: decoded.usuario });
+    const todosOsPedidos = await Pedido.find({ userId: req.user.usuario });
     
     let resumoFinanceiro = {
       totalPedidos: 0,
@@ -128,3 +113,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ message: 'Erro interno do servidor' });
   }
 }
+
+export default requireDistribuidor(handler);

@@ -3,6 +3,7 @@
 
 import { uploadImage } from '../../../lib/cloudinary';
 import multer from 'multer';
+import { requireAdmin } from '../../../lib/auth';
 
 export const config = {
   api: {
@@ -15,7 +16,7 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
 });
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
@@ -43,3 +44,5 @@ export default async function handler(req, res) {
       .json({ message: 'Erro ao fazer upload das imagens' });
   }
 }
+
+export default requireAdmin(handler);

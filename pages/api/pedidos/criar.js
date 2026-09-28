@@ -2,41 +2,18 @@
 // ===================================
 // Inclui: totalEtiquetas, totalEmbalagens, controle financeiro
 // 🆕 Verifica categorias isentas de royalties
+// 🔐 Autenticação via requireDistribuidor (dados do distribuidor vêm do Mongo)
 
 import dbConnect from '../../../lib/mongodb';
 import Pedido from '../../../models/Pedido';
 import Fornecedor from '../../../models/Fornecedor';
 import { enviarEmailsPedido } from '../../../lib/email';
-import jwt from 'jsonwebtoken';
+import { requireDistribuidor } from '../../../lib/auth';
 
 // 🆕 Taxa de royalty do .env (padrão 5%)
 const ROYALTY_RATE = parseFloat(process.env.ROYALTY_PERCENTAGE) || 0.05;
 
-// Função para buscar dados do distribuidor do .env
-const getDistribuidor = usuario => {
-  for (let i = 1; i <= 20; i++) {
-    const distribuidorEnv = process.env[`DISTRIBUIDOR_${i}`];
-    if (distribuidorEnv) {
-      const parts = distribuidorEnv.split(':');
-
-      if (parts.length >= 5) {
-        const [user, password, nomeCompleto, email, telefone] = parts;
-
-        if (user && user.trim() === usuario) {
-          return {
-            usuario: user.trim(),
-            nome: nomeCompleto ? nomeCompleto.trim() : user.trim(),
-            email: email ? email.trim() : `${user.trim()}@distribuidora.com`,
-            telefone: telefone ? telefone.trim() : '(11) 99999-9999',
-          };
-        }
-      }
-    }
-  }
-  return null;
-};
-
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
@@ -44,21 +21,10 @@ export default async function handler(req, res) {
   await dbConnect();
 
   try {
-    // Verificar autenticação
-    const token = req.cookies['auth-token'];
-    if (!token) {
-      return res.status(401).json({ message: 'Token não fornecido' });
-    }
-
-    const decoded = jwt.verify(token, process.env.NEXTAUTH_SECRET);
-    if (decoded.tipo !== 'distribuidor') {
-      return res.status(403).json({ message: 'Acesso negado' });
-    }
-
     const { itens, fornecedorId, formaPagamento, endereco } = req.body;
 
     console.log('📦 Dados recebidos:', {
-      usuario: decoded.usuario,
+      usuario: req.user.usuario,
       fornecedorId,
       formaPagamento,
       itensCount: itens?.length,
@@ -68,11 +34,13 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: 'Dados obrigatórios não fornecidos' });
     }
 
-    // Buscar dados do distribuidor do .env
-    const distribuidor = getDistribuidor(decoded.usuario);
-    if (!distribuidor) {
-      return res.status(404).json({ message: 'Distribuidor não encontrado' });
-    }
+    // Dados do distribuidor (vêm do Mongo via requireDistribuidor)
+    const distribuidor = {
+      usuario: req.user.usuario,
+      nome: req.user.nome,
+      email: req.user.email,
+      telefone: req.user.telefone,
+    };
 
     console.log('👤 Distribuidor encontrado:', {
       nome: distribuidor.nome,
@@ -218,12 +186,11 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('💥 Erro ao criar pedido:', error);
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ message: 'Token inválido' });
-    }
     return res.status(500).json({
       message: 'Erro interno do servidor',
       erro: error.message,
     });
   }
 }
+
+export default requireDistribuidor(handler);

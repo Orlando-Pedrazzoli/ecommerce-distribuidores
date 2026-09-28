@@ -3,25 +3,14 @@
 
 import dbConnect from '../../../../lib/mongodb';
 import Pedido from '../../../../models/Pedido';
-import jwt from 'jsonwebtoken';
+import { requireAdmin } from '../../../../lib/auth';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
   try {
-    // Verificar autenticação e se é admin
-    const token = req.cookies['auth-token'];
-    if (!token) {
-      return res.status(401).json({ message: 'Token não fornecido' });
-    }
-
-    const decoded = jwt.verify(token, process.env.NEXTAUTH_SECRET);
-    if (decoded.tipo !== 'admin') {
-      return res.status(403).json({ message: 'Acesso negado - apenas admin' });
-    }
-
     await dbConnect();
 
     // Buscar TODOS os pedidos
@@ -55,3 +44,5 @@ export default async function handler(req, res) {
     });
   }
 }
+
+export default requireAdmin(handler);
