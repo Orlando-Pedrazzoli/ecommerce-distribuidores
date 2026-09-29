@@ -19,20 +19,14 @@ export default function ProdutosFornecedor() {
   // Estado para controlar accordion de grupos expandidos
   const [expandedGroups, setExpandedGroups] = useState({});
 
-  // Mapeamento das cores dos fornecedores - igual ao dashboard
-  const fornecedorCores = {
-    A: 'from-[#ff7e5f] to-[#feb47b]', // Vitor - Pandawa
-    B: 'from-[#43cea2] to-[#185a9d]', // Mauricio - Maos Acessórios
-    C: 'from-[#6a11cb] to-[#2575fc]', // Rodrigo - Godas
-  };
-
-  // Função para obter a cor do fornecedor
-  const obterCorFornecedor = codigo => {
-    return fornecedorCores[codigo] || 'from-gray-500 to-gray-600';
-  };
+  // Cor do fornecedor vem do cadastro (/admin/fornecedores). A classe
+  // `forn-grad` é definida no <style jsx global> no fim da página e
+  // sobrepõe o gradiente do Tailwind.
+  const obterCorFornecedor = () => 'forn-grad';
+  const corFornecedor = fornecedorInfo?.cor || '#374151';
 
   // Função para agrupar categorias
-  const agruparCategorias = (cats) => {
+  const agruparCategorias = cats => {
     const grupos = {};
     const individuais = [];
 
@@ -68,15 +62,15 @@ export default function ProdutosFornecedor() {
   };
 
   // Toggle para expandir/colapsar grupo
-  const toggleGroup = (groupName) => {
+  const toggleGroup = groupName => {
     setExpandedGroups(prev => ({
       ...prev,
-      [groupName]: !prev[groupName]
+      [groupName]: !prev[groupName],
     }));
   };
 
   // Verificar se uma categoria do grupo está selecionada
-  const isGroupActive = (groupCats) => {
+  const isGroupActive = groupCats => {
     return groupCats.some(cat => cat === categoriaFiltro);
   };
 
@@ -142,9 +136,7 @@ export default function ProdutosFornecedor() {
       <Layout>
         <div className='max-w-2xl mx-auto px-4 py-16 text-center'>
           <div className='text-6xl mb-4'>⚠️</div>
-          <h1 className='text-2xl font-bold text-gray-800 mb-4'>
-            Fornecedor não encontrado
-          </h1>
+          <h1 className='text-2xl font-bold text-gray-800 mb-4'>Fornecedor não encontrado</h1>
           <p className='text-gray-600 mb-6'>
             O fornecedor "{fornecedor}" não existe ou está inativo.
           </p>
@@ -264,10 +256,13 @@ export default function ProdutosFornecedor() {
 
           <div
             className={`bg-gradient-to-r ${obterCorFornecedor(
-              fornecedorInfo.codigo
+              fornecedorInfo.codigo,
             )} text-white p-6 rounded-lg shadow-lg`}
           >
             <h1 className='text-3xl font-bold mb-2'>{fornecedorInfo.nome}</h1>
+            {fornecedorInfo.especialidade && (
+              <p className='text-sm opacity-90 mb-1'>{fornecedorInfo.especialidade}</p>
+            )}
             <p className='opacity-90'>
               {produtos.length} produtos disponíveis
               {categoriaFiltro !== 'Todas' && ` em ${categoriaFiltro}`}
@@ -281,15 +276,10 @@ export default function ProdutosFornecedor() {
             <button
               onClick={() => setShowMobileFilters(true)}
               className={`w-full bg-gradient-to-r ${obterCorFornecedor(
-                fornecedorInfo.codigo
+                fornecedorInfo.codigo,
               )} text-white py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 shadow-md`}
             >
-              <svg
-                className='w-5 h-5'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'
-              >
+              <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
                 <path
                   strokeLinecap='round'
                   strokeLinejoin='round'
@@ -306,19 +296,12 @@ export default function ProdutosFornecedor() {
             <div className='lg:hidden fixed inset-0 bg-white z-50 flex flex-col'>
               {/* Header fixo */}
               <div className='bg-white border-b p-4 flex justify-between items-center'>
-                <h3 className='font-bold text-gray-800 text-lg'>
-                  Filtrar por Categoria
-                </h3>
+                <h3 className='font-bold text-gray-800 text-lg'>Filtrar por Categoria</h3>
                 <button
                   onClick={() => setShowMobileFilters(false)}
                   className='text-gray-500 hover:text-gray-700 p-2'
                 >
-                  <svg
-                    className='w-6 h-6'
-                    fill='none'
-                    stroke='currentColor'
-                    viewBox='0 0 24 24'
-                  >
+                  <svg className='w-6 h-6' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
                     <path
                       strokeLinecap='round'
                       strokeLinejoin='round'
@@ -340,7 +323,7 @@ export default function ProdutosFornecedor() {
                   className={`w-full text-left px-4 py-3 rounded-lg transition ${
                     categoriaFiltro === 'Todas'
                       ? `bg-gradient-to-r ${obterCorFornecedor(
-                          fornecedorInfo.codigo
+                          fornecedorInfo.codigo,
                         )} text-white shadow-md`
                       : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                   }`}
@@ -369,7 +352,7 @@ export default function ProdutosFornecedor() {
                     className={`w-full text-left px-4 py-3 rounded-lg transition ${
                       categoriaFiltro === categoria
                         ? `bg-gradient-to-r ${obterCorFornecedor(
-                            fornecedorInfo.codigo
+                            fornecedorInfo.codigo,
                           )} text-white shadow-md`
                         : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                     }`}
@@ -384,7 +367,7 @@ export default function ProdutosFornecedor() {
                 <button
                   onClick={() => setShowMobileFilters(false)}
                   className={`w-full bg-gradient-to-r ${obterCorFornecedor(
-                    fornecedorInfo.codigo
+                    fornecedorInfo.codigo,
                   )} text-white py-3 rounded-lg font-medium`}
                 >
                   Aplicar Filtro
@@ -404,7 +387,7 @@ export default function ProdutosFornecedor() {
                 className={`w-full text-left px-3 py-2 rounded transition ${
                   categoriaFiltro === 'Todas'
                     ? `bg-gradient-to-r ${obterCorFornecedor(
-                        fornecedorInfo.codigo
+                        fornecedorInfo.codigo,
                       )} text-white shadow-md`
                     : 'hover:bg-gray-100 text-gray-700'
                 }`}
@@ -430,7 +413,7 @@ export default function ProdutosFornecedor() {
                   className={`w-full text-left px-3 py-2 rounded transition ${
                     categoriaFiltro === categoria
                       ? `bg-gradient-to-r ${obterCorFornecedor(
-                          fornecedorInfo.codigo
+                          fornecedorInfo.codigo,
                         )} text-white shadow-md`
                       : 'hover:bg-gray-100 text-gray-700'
                   }`}
@@ -442,9 +425,7 @@ export default function ProdutosFornecedor() {
 
             {/* Info do fornecedor */}
             <div className='mt-8 p-4 bg-gray-50 rounded-lg'>
-              <h4 className='font-semibold text-gray-800 mb-2'>
-                📋 Informações
-              </h4>
+              <h4 className='font-semibold text-gray-800 mb-2'>📋 Informações</h4>
               <div className='space-y-1 text-sm text-gray-600'>
                 <p>
                   <strong>Código:</strong> {fornecedorInfo.codigo}
@@ -455,6 +436,17 @@ export default function ProdutosFornecedor() {
                 <p>
                   <strong>Categorias:</strong> {categorias.length}
                 </p>
+                {fornecedorInfo.prazoEntregaDias ? (
+                  <p>
+                    <strong>Prazo de entrega:</strong> {fornecedorInfo.prazoEntregaDias} dia(s)
+                  </p>
+                ) : null}
+                {fornecedorInfo.pedidoMinimo > 0 && (
+                  <p>
+                    <strong>Pedido mínimo:</strong> R${' '}
+                    {Number(fornecedorInfo.pedidoMinimo).toFixed(2)}
+                  </p>
+                )}
               </div>
             </div>
           </aside>
@@ -476,7 +468,7 @@ export default function ProdutosFornecedor() {
                   <button
                     onClick={() => setCategoriaFiltro('Todas')}
                     className={`bg-gradient-to-r ${obterCorFornecedor(
-                      fornecedorInfo?.codigo
+                      fornecedorInfo?.codigo,
                     )} text-white px-6 py-2 rounded-lg hover:opacity-90 transition shadow-md`}
                   >
                     Ver Todas as Categorias
@@ -493,6 +485,16 @@ export default function ProdutosFornecedor() {
           </div>
         </div>
       </div>
+
+      <style jsx global>{`
+        .forn-grad {
+          background-image: linear-gradient(
+            to right,
+            ${corFornecedor},
+            ${corFornecedor}cc
+          ) !important;
+        }
+      `}</style>
     </Layout>
   );
 }

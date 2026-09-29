@@ -16,6 +16,7 @@ export default function Dashboard() {
   const [resumo, setResumo] = useState(null);
   const [loadingResumo, setLoadingResumo] = useState(true);
   const [pedidosRecentes, setPedidosRecentes] = useState([]);
+  const [fornecedores, setFornecedores] = useState([]);
   const [erro, setErro] = useState(null);
 
   useEffect(() => {
@@ -26,18 +27,19 @@ export default function Dashboard() {
     try {
       setLoadingUser(true);
       setErro(null);
-      
+
       const response = await fetch('/api/auth/me');
-      
+
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
-        
+
         // Após buscar usuário, buscar dados financeiros
         if (data.user?.tipo === 'distribuidor') {
           await Promise.all([
             buscarResumoFinanceiro(),
-            buscarPedidosRecentes()
+            buscarPedidosRecentes(),
+            buscarFornecedores(),
           ]);
         }
       } else {
@@ -56,7 +58,7 @@ export default function Dashboard() {
     try {
       setLoadingResumo(true);
       const response = await fetch('/api/user/pagamentos');
-      
+
       if (response.ok) {
         const data = await response.json();
         setResumo(data.resumo);
@@ -70,10 +72,23 @@ export default function Dashboard() {
     }
   };
 
+  // Fornecedores ativos, configurados em /admin/fornecedores
+  const buscarFornecedores = async () => {
+    try {
+      const response = await fetch('/api/produtos/fornecedores-info');
+      if (response.ok) {
+        const data = await response.json();
+        setFornecedores(data.fornecedores || []);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar fornecedores:', error);
+    }
+  };
+
   const buscarPedidosRecentes = async () => {
     try {
       const response = await fetch('/api/user/pedidos?limit=5');
-      
+
       if (response.ok) {
         const data = await response.json();
         setPedidosRecentes(data.pedidos || []);
@@ -82,44 +97,6 @@ export default function Dashboard() {
       console.error('Erro ao buscar pedidos recentes:', error);
     }
   };
-
-  // ══════════════════════════════════════════════════════════════
-  // 🎯 FORNECEDORES - ADICIONE NOVOS AQUI
-  // ══════════════════════════════════════════════════════════════
-  const fornecedores = [
-    {
-      codigo: 'A',
-      nome: 'Vitor - Pandawa',
-      especialidade: 'Especialista em Decks',
-      descricao: 'Decks premium para todas as condições de surf',
-      cor: 'from-[#ff7e5f] to-[#feb47b]',
-      logo: '/vitor-logo.jpg',
-    },
-    {
-      codigo: 'B',
-      nome: 'Mauricio - Maos Acessórios',
-      especialidade: 'Especialista em Capas e Acessórios',
-      descricao: 'Capas e acessórios para proteção e transporte',
-      cor: 'from-[#43cea2] to-[#185a9d]',
-      logo: '/maos-logo.jpg',
-    },
-    {
-      codigo: 'C',
-      nome: 'Rodrigo - Godas',
-      especialidade: 'Especialista em Leashes',
-      descricao: 'Leashes superiores para máxima segurança',
-      cor: 'from-[#6a11cb] to-[#2575fc]',
-      logo: '/godas-logo.jpg',
-    },
-    {
-      codigo: 'D',
-      nome: 'Wakum - WKM',
-      especialidade: 'Especialista em Capas, Leashes e Decks',
-      descricao: 'Qualidade e preço',
-      cor: 'from-[#ef4444] to-[#dc2626]', // Vermelho
-      logo: '/wakum-logo.jpg',
-    },
-  ];
 
   // Calcular total pendente
   const totalPendente = resumo
@@ -208,7 +185,7 @@ export default function Dashboard() {
               Bem-vindo, {user?.nome || 'Usuário'}!
             </h1>
             <p className='text-xl text-gray-600 mb-2'>
-             Sistema exclusivo para distribuidores autorizados
+              Sistema exclusivo para distribuidores autorizados
             </p>
           </div>
 
@@ -231,7 +208,11 @@ export default function Dashboard() {
                   <div className='text-white text-right'>
                     <p className='text-xs text-red-100 sm:hidden'>Royalties</p>
                     <p className='text-lg sm:text-2xl font-bold whitespace-nowrap'>
-                      R$ {totalPendente.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      R${' '}
+                      {totalPendente.toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </p>
                   </div>
                   <Link
@@ -239,8 +220,18 @@ export default function Dashboard() {
                     className='bg-white text-red-600 p-2 sm:px-4 sm:py-2 rounded-lg font-medium hover:bg-red-50 transition shadow-md text-sm flex items-center gap-1'
                   >
                     <span className='hidden sm:inline'>Ver Detalhes</span>
-                    <svg className='w-4 h-4 sm:w-5 sm:h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 5l7 7-7 7' />
+                    <svg
+                      className='w-4 h-4 sm:w-5 sm:h-5'
+                      fill='none'
+                      stroke='currentColor'
+                      viewBox='0 0 24 24'
+                    >
+                      <path
+                        strokeLinecap='round'
+                        strokeLinejoin='round'
+                        strokeWidth={2}
+                        d='M9 5l7 7-7 7'
+                      />
                     </svg>
                   </Link>
                 </div>
@@ -299,37 +290,53 @@ export default function Dashboard() {
               <h2 className='text-lg font-bold text-gray-800 mb-4 flex items-center gap-2'>
                 📊 Resumo Financeiro
               </h2>
-              
+
               <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
                 {/* Royalties Pendentes */}
                 <div className='bg-yellow-50 rounded-lg p-4 text-center'>
                   <p className='text-xs text-gray-500 mb-1'>Royalties Pend.</p>
                   <p className='text-l font-bold text-yellow-600'>
-                    R$ {(resumo.royaltiesPendentes || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    R${' '}
+                    {(resumo.royaltiesPendentes || 0).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </p>
                 </div>
-                
+
                 {/* Etiquetas Pendentes */}
                 <div className='bg-orange-50 rounded-lg p-4 text-center'>
                   <p className='text-xs text-gray-500 mb-1'>Etiquetas Pend.</p>
                   <p className='text-l font-bold text-orange-600'>
-                    R$ {(resumo.etiquetasPendentes || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    R${' '}
+                    {(resumo.etiquetasPendentes || 0).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </p>
                 </div>
-                
+
                 {/* Embalagens Pendentes */}
                 <div className='bg-purple-50 rounded-lg p-4 text-center'>
                   <p className='text-xs text-gray-500 mb-1'>Embalagens Pend.</p>
                   <p className='text-l font-bold text-purple-600'>
-                    R$ {(resumo.embalagensPendentes || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    R${' '}
+                    {(resumo.embalagensPendentes || 0).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </p>
                 </div>
-                
+
                 {/* Total Pendente */}
                 <div className='bg-red-50 rounded-lg p-4 text-center border-2 border-red-200'>
                   <p className='text-xs text-gray-500 mb-1'>Total Pendente</p>
                   <p className='text-l font-bold text-red-600'>
-                    R$ {totalPendente.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    R${' '}
+                    {totalPendente.toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </p>
                 </div>
               </div>
@@ -361,7 +368,7 @@ export default function Dashboard() {
                   Ver todos →
                 </Link>
               </div>
-              
+
               <div className='space-y-3'>
                 {pedidosRecentes.slice(0, 3).map(pedido => (
                   <div
@@ -377,16 +384,23 @@ export default function Dashboard() {
                           Pedido #{pedido._id?.slice(-8).toUpperCase()}
                         </p>
                         <p className='text-xs text-gray-500'>
-                          {new Date(pedido.createdAt).toLocaleDateString('pt-BR')} • {pedido.fornecedorId?.nome || 'Fornecedor'}
+                          {new Date(pedido.createdAt).toLocaleDateString('pt-BR')} •{' '}
+                          {pedido.fornecedorId?.nome || 'Fornecedor'}
                         </p>
                       </div>
                     </div>
                     <div className='text-right'>
-                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pedido.status)}`}>
+                      <span
+                        className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pedido.status)}`}
+                      >
                         {pedido.status?.charAt(0).toUpperCase() + pedido.status?.slice(1)}
                       </span>
                       <p className='text-sm font-bold text-green-600 mt-1'>
-                        R$ {pedido.total?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        R${' '}
+                        {pedido.total?.toLocaleString('pt-BR', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </p>
                     </div>
                   </div>
@@ -399,10 +413,14 @@ export default function Dashboard() {
           {/* CARDS DOS FORNECEDORES */}
           {/* ══════════════════════════════════════════════════════════════ */}
           <div className='mb-6'>
-            <h2 className='text-xl font-bold text-gray-800 mb-4'>
-              Fornecedores Disponíveis
-            </h2>
+            <h2 className='text-xl font-bold text-gray-800 mb-4'>Fornecedores Disponíveis</h2>
           </div>
+
+          {fornecedores.length === 0 && (
+            <div className='bg-white rounded-xl border border-dashed border-gray-300 p-10 text-center text-gray-500 text-sm'>
+              Nenhum fornecedor disponível no momento.
+            </div>
+          )}
 
           <div className='grid md:grid-cols-2 lg:grid-cols-4 gap-6'>
             {fornecedores.map(fornecedor => (
@@ -412,27 +430,37 @@ export default function Dashboard() {
                 className='group block'
               >
                 <div className='bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform group-hover:-translate-y-2'>
-                  {/* Header colorido */}
+                  {/* Header colorido (cor e logo vêm do cadastro do fornecedor) */}
                   <div
-                    className={`bg-gradient-to-r ${fornecedor.cor} p-6 text-white text-center relative`}
+                    className='p-6 text-white text-center relative'
+                    style={{
+                      background: `linear-gradient(135deg, ${fornecedor.cor || '#374151'}, ${fornecedor.cor || '#374151'}cc)`,
+                    }}
                   >
                     {/* Logo */}
                     <div className='flex justify-center mb-3'>
-                      <div className='w-16 h-16 rounded-full overflow-hidden bg-white p-1 shadow-lg'>
-                        <Image
-                          src={fornecedor.logo}
-                          alt={`${fornecedor.nome} Logo`}
-                          width={64}
-                          height={64}
-                          className='w-full h-full object-cover rounded-full'
-                        />
+                      <div className='w-16 h-16 rounded-full overflow-hidden bg-white p-1 shadow-lg flex items-center justify-center'>
+                        {fornecedor.logo ? (
+                          <Image
+                            src={fornecedor.logo}
+                            alt={`${fornecedor.nome} Logo`}
+                            width={64}
+                            height={64}
+                            className='w-full h-full object-cover rounded-full'
+                          />
+                        ) : (
+                          <span
+                            className='text-xl font-bold'
+                            style={{ color: fornecedor.cor || '#374151' }}
+                          >
+                            {fornecedor.codigo}
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <h2 className='text-lg font-bold mb-1'>
-                      {fornecedor.nome}
-                    </h2>
+                    <h2 className='text-lg font-bold mb-1'>{fornecedor.nome}</h2>
                     <p className='text-xs opacity-90 font-medium'>
-                      {fornecedor.especialidade}
+                      {fornecedor.especialidade || `${fornecedor.totalProdutos} produto(s)`}
                     </p>
 
                     {/* Badge do código */}
@@ -445,7 +473,9 @@ export default function Dashboard() {
 
                   {/* Body */}
                   <div className='p-4 text-center'>
-                    <p className='text-gray-600 text-sm mb-4'>{fornecedor.descricao}</p>
+                    <p className='text-gray-600 text-sm mb-4'>
+                      {fornecedor.descricao || 'Veja o catálogo completo deste fornecedor'}
+                    </p>
 
                     <div className='bg-gray-100 text-gray-700 py-2 px-4 rounded-lg group-hover:bg-gray-200 transition-all duration-300 border border-gray-200 group-hover:border-gray-300 group-hover:shadow-md'>
                       <div className='flex items-center justify-center gap-2'>
@@ -486,29 +516,22 @@ export default function Dashboard() {
 
           {/* Instruções de uso */}
           <div className='mt-12 bg-gray-50 rounded-xl p-8'>
-            <h3 className='text-lg font-bold text-gray-800 mb-6 text-center'>
-              📖 Como Funciona
-            </h3>
+            <h3 className='text-lg font-bold text-gray-800 mb-6 text-center'>📖 Como Funciona</h3>
             <div className='grid md:grid-cols-3 gap-6 text-center'>
               <div>
                 <div className='flex items-center justify-center w-12 h-12 bg-gradient-to-r from-gray-500 to-gray-600 rounded-full mb-3 mx-auto text-white font-bold text-lg shadow-lg'>
                   1
                 </div>
-                <h4 className='font-medium text-gray-800 mb-2'>
-                  Escolha o Fornecedor
-                </h4>
+                <h4 className='font-medium text-gray-800 mb-2'>Escolha o Fornecedor</h4>
                 <p className='text-sm text-gray-600'>
-                  Clique no card do fornecedor para ver seus produtos
-                  específicos
+                  Clique no card do fornecedor para ver seus produtos específicos
                 </p>
               </div>
               <div>
                 <div className='flex items-center justify-center w-12 h-12 bg-gradient-to-r from-gray-500 to-gray-600 rounded-full mb-3 mx-auto text-white font-bold text-lg shadow-lg'>
                   2
                 </div>
-                <h4 className='font-medium text-gray-800 mb-2'>
-                  Filtre por Categoria
-                </h4>
+                <h4 className='font-medium text-gray-800 mb-2'>Filtre por Categoria</h4>
                 <p className='text-sm text-gray-600'>
                   Use a sidebar para filtrar produtos por categoria específica
                 </p>
@@ -517,9 +540,7 @@ export default function Dashboard() {
                 <div className='flex items-center justify-center w-12 h-12 bg-gradient-to-r from-gray-500 to-gray-600 rounded-full mb-3 mx-auto text-white font-bold text-lg shadow-lg'>
                   3
                 </div>
-                <h4 className='font-medium text-gray-800 mb-2'>
-                  Faça seu Pedido
-                </h4>
+                <h4 className='font-medium text-gray-800 mb-2'>Faça seu Pedido</h4>
                 <p className='text-sm text-gray-600'>
                   Adicione ao carrinho e finalize com pagamento na entrega
                 </p>
@@ -530,8 +551,7 @@ export default function Dashboard() {
           {/* Informações de contato */}
           <div className='mt-8 text-center text-gray-600'>
             <p className='text-sm'>
-              <strong>Dúvidas?</strong> Entre em contato com nosso suporte
-              através do WhatsApp.
+              <strong>Dúvidas?</strong> Entre em contato com nosso suporte através do WhatsApp.
             </p>
           </div>
         </div>

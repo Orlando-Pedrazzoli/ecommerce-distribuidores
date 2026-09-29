@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import Layout from '../../components/Layout';
+import AdminShell from '../../components/Admin/AdminShell';
 
 export default function FinanceiroAdmin() {
   const router = useRouter();
@@ -30,12 +30,14 @@ export default function FinanceiroAdmin() {
       if (response.ok) {
         const data = await response.json();
         setDados(data);
-        
+
         // ══════════════════════════════════════════════════════════════
         // EXTRAIR LISTA ÚNICA DE DISTRIBUIDORES DOS PEDIDOS
         // ══════════════════════════════════════════════════════════════
         if (data.pedidos) {
-          const distribuidoresUnicos = [...new Set(data.pedidos.map(p => p.userId))].filter(Boolean);
+          const distribuidoresUnicos = [...new Set(data.pedidos.map(p => p.userId))].filter(
+            Boolean,
+          );
           setDistribuidores(distribuidoresUnicos.sort());
         }
       } else if (response.status === 403) {
@@ -99,9 +101,7 @@ export default function FinanceiroAdmin() {
 
   const toggleSelectPedido = pedidoId => {
     setSelectedPedidos(prev =>
-      prev.includes(pedidoId)
-        ? prev.filter(id => id !== pedidoId)
-        : [...prev, pedidoId]
+      prev.includes(pedidoId) ? prev.filter(id => id !== pedidoId) : [...prev, pedidoId],
     );
   };
 
@@ -142,8 +142,7 @@ export default function FinanceiroAdmin() {
             pedido.controleFinanceiro?.etiquetas?.status === 'pendente' ||
             pedido.controleFinanceiro?.embalagens?.status === 'pendente';
         } else {
-          passaFiltroStatus =
-            pedido.controleFinanceiro?.[tipoFiltro]?.status === 'pendente';
+          passaFiltroStatus = pedido.controleFinanceiro?.[tipoFiltro]?.status === 'pendente';
         }
       } else if (filtro === 'pago') {
         if (tipoFiltro === 'todos') {
@@ -152,8 +151,7 @@ export default function FinanceiroAdmin() {
             pedido.controleFinanceiro?.etiquetas?.status === 'pago' &&
             pedido.controleFinanceiro?.embalagens?.status === 'pago';
         } else {
-          passaFiltroStatus =
-            pedido.controleFinanceiro?.[tipoFiltro]?.status === 'pago';
+          passaFiltroStatus = pedido.controleFinanceiro?.[tipoFiltro]?.status === 'pago';
         }
       }
 
@@ -191,15 +189,16 @@ export default function FinanceiroAdmin() {
   };
 
   const totaisFiltrados = calcularTotaisFiltrados();
-  const temFiltroAtivo = filtro !== 'pendente' || tipoFiltro !== 'todos' || filtroDistribuidor !== 'todos';
+  const temFiltroAtivo =
+    filtro !== 'pendente' || tipoFiltro !== 'todos' || filtroDistribuidor !== 'todos';
 
   if (loading) {
     return (
-      <Layout>
+      <AdminShell titulo='Controle financeiro'>
         <div className='flex justify-center items-center h-64'>
-          <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500'></div>
+          <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-gray-800'></div>
         </div>
-      </Layout>
+      </AdminShell>
     );
   }
 
@@ -210,18 +209,11 @@ export default function FinanceiroAdmin() {
       <Head>
         <title>Controle Financeiro - Admin</title>
       </Head>
-      <Layout>
-        <div className='max-w-7xl mx-auto px-4 py-4 sm:py-6'>
-          {/* Header */}
-          <div className='mb-4 sm:mb-6'>
-            <h1 className='text-xl sm:text-2xl font-bold text-gray-800 mb-2'>
-              💰 Controle Financeiro
-            </h1>
-            <p className='text-sm text-gray-600'>
-              Gerencie pagamentos de royalties, etiquetas e embalagens
-            </p>
-          </div>
-
+      <AdminShell
+        titulo='Controle financeiro'
+        subtitulo='Pagamentos de royalties, etiquetas e embalagens'
+      >
+        <div>
           {/* Cards de Resumo */}
           <div className='grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6'>
             {/* Total a Receber */}
@@ -285,9 +277,9 @@ export default function FinanceiroAdmin() {
                 </span>
               </div>
               <div className='text-xs sm:text-sm text-green-700'>
-                Royalties: R$ {(stats?.royalties?.pago || 0).toFixed(2)} |
-                Etiquetas: R$ {(stats?.etiquetas?.pago || 0).toFixed(2)} |
-                Embalagens: R$ {(stats?.embalagens?.pago || 0).toFixed(2)}
+                Royalties: R$ {(stats?.royalties?.pago || 0).toFixed(2)} | Etiquetas: R${' '}
+                {(stats?.etiquetas?.pago || 0).toFixed(2)} | Embalagens: R${' '}
+                {(stats?.embalagens?.pago || 0).toFixed(2)}
               </div>
             </div>
           </div>
@@ -305,13 +297,11 @@ export default function FinanceiroAdmin() {
                 </button>
               )}
             </div>
-            
+
             <div className='grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4'>
               {/* Período */}
               <div>
-                <label className='block text-xs font-medium text-gray-700 mb-1'>
-                  Período
-                </label>
+                <label className='block text-xs font-medium text-gray-700 mb-1'>Período</label>
                 <select
                   value={periodo}
                   onChange={e => setPeriodo(e.target.value)}
@@ -326,9 +316,7 @@ export default function FinanceiroAdmin() {
 
               {/* Status */}
               <div>
-                <label className='block text-xs font-medium text-gray-700 mb-1'>
-                  Status
-                </label>
+                <label className='block text-xs font-medium text-gray-700 mb-1'>Status</label>
                 <select
                   value={filtro}
                   onChange={e => setFiltro(e.target.value)}
@@ -342,9 +330,7 @@ export default function FinanceiroAdmin() {
 
               {/* Tipo */}
               <div>
-                <label className='block text-xs font-medium text-gray-700 mb-1'>
-                  Tipo
-                </label>
+                <label className='block text-xs font-medium text-gray-700 mb-1'>Tipo</label>
                 <select
                   value={tipoFiltro}
                   onChange={e => setTipoFiltro(e.target.value)}
@@ -361,9 +347,7 @@ export default function FinanceiroAdmin() {
               {/* NOVO: Filtro por Distribuidor */}
               {/* ══════════════════════════════════════════════════════════════ */}
               <div>
-                <label className='block text-xs font-medium text-gray-700 mb-1'>
-                  Distribuidor
-                </label>
+                <label className='block text-xs font-medium text-gray-700 mb-1'>Distribuidor</label>
                 <select
                   value={filtroDistribuidor}
                   onChange={e => setFiltroDistribuidor(e.target.value)}
@@ -388,7 +372,8 @@ export default function FinanceiroAdmin() {
                     <span className='font-bold'>{filtroDistribuidor}</span>
                   </p>
                   <div className='text-sm text-blue-700'>
-                    Pendente: <span className='font-bold'>R$ {totaisFiltrados.totalPendente.toFixed(2)}</span>
+                    Pendente:{' '}
+                    <span className='font-bold'>R$ {totaisFiltrados.totalPendente.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -474,9 +459,7 @@ export default function FinanceiroAdmin() {
                         />
                         <div className='flex-1 min-w-0'>
                           <div className='flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3'>
-                            <span className='font-bold text-gray-800'>
-                              #{numeroPedido}
-                            </span>
+                            <span className='font-bold text-gray-800'>#{numeroPedido}</span>
                             <span className='text-sm text-gray-600'>
                               {pedido.fornecedorId?.nome || 'Fornecedor'}
                             </span>
@@ -522,7 +505,7 @@ export default function FinanceiroAdmin() {
                                   'royalties',
                                   pedido.controleFinanceiro?.royalties?.status === 'pago'
                                     ? 'pendente'
-                                    : 'pago'
+                                    : 'pago',
                                 )
                               }
                               disabled={updating === `${pedido._id}-royalties`}
@@ -535,8 +518,8 @@ export default function FinanceiroAdmin() {
                               {updating === `${pedido._id}-royalties`
                                 ? '...'
                                 : pedido.controleFinanceiro?.royalties?.status === 'pago'
-                                ? '✅ Pago'
-                                : '⏳ Pendente'}
+                                  ? '✅ Pago'
+                                  : '⏳ Pendente'}
                             </button>
                           </div>
                         </div>
@@ -563,7 +546,7 @@ export default function FinanceiroAdmin() {
                                   'etiquetas',
                                   pedido.controleFinanceiro?.etiquetas?.status === 'pago'
                                     ? 'pendente'
-                                    : 'pago'
+                                    : 'pago',
                                 )
                               }
                               disabled={updating === `${pedido._id}-etiquetas`}
@@ -576,8 +559,8 @@ export default function FinanceiroAdmin() {
                               {updating === `${pedido._id}-etiquetas`
                                 ? '...'
                                 : pedido.controleFinanceiro?.etiquetas?.status === 'pago'
-                                ? '✅ Pago'
-                                : '⏳ Pendente'}
+                                  ? '✅ Pago'
+                                  : '⏳ Pendente'}
                             </button>
                           </div>
                         </div>
@@ -604,7 +587,7 @@ export default function FinanceiroAdmin() {
                                   'embalagens',
                                   pedido.controleFinanceiro?.embalagens?.status === 'pago'
                                     ? 'pendente'
-                                    : 'pago'
+                                    : 'pago',
                                 )
                               }
                               disabled={updating === `${pedido._id}-embalagens`}
@@ -617,8 +600,8 @@ export default function FinanceiroAdmin() {
                               {updating === `${pedido._id}-embalagens`
                                 ? '...'
                                 : pedido.controleFinanceiro?.embalagens?.status === 'pago'
-                                ? '✅ Pago'
-                                : '⏳ Pendente'}
+                                  ? '✅ Pago'
+                                  : '⏳ Pendente'}
                             </button>
                           </div>
                         </div>
@@ -630,7 +613,7 @@ export default function FinanceiroAdmin() {
             )}
           </div>
         </div>
-      </Layout>
+      </AdminShell>
     </>
   );
 }

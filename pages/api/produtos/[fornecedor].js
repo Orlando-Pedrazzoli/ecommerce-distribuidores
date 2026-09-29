@@ -5,6 +5,7 @@ import dbConnect from '../../../lib/mongodb';
 import Produto from '../../../models/Produto';
 import Fornecedor from '../../../models/Fornecedor';
 import { requireAuth } from '../../../lib/auth';
+import { fornecedorPublico } from '../../../lib/fornecedores';
 
 async function handler(req, res) {
   await dbConnect();
@@ -48,10 +49,7 @@ async function handler(req, res) {
 
       return res.status(200).json({
         produtos,
-        fornecedor: {
-          nome: fornecedorDoc.nome,
-          codigo: fornecedorDoc.codigo,
-        },
+        fornecedor: fornecedorPublico(fornecedorDoc),
         categorias,
         total: produtos.length,
       });

@@ -2,7 +2,7 @@
 // ===================================
 
 import { useState, useEffect } from 'react';
-import Layout from '../components/Layout';
+import AdminShell from '../components/Admin/AdminShell';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 
@@ -20,6 +20,11 @@ export default function AdminPedidos() {
   const [atualizandoStatus, setAtualizandoStatus] = useState({});
   const [atualizandoPagamento, setAtualizandoPagamento] = useState({});
   const router = useRouter();
+  // Filtro inicial vindo da dashboard (/admin-pedidos?status=pendente)
+  useEffect(() => {
+    if (router.isReady && router.query.status) setFiltroStatus(String(router.query.status));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady]);
 
   useEffect(() => {
     verificarAdmin();
@@ -65,7 +70,7 @@ export default function AdminPedidos() {
       if (response.ok) {
         const pedidosData = data.pedidos || [];
         setTodosPedidos(pedidosData);
-        
+
         // ══════════════════════════════════════════════════════════════
         // EXTRAIR LISTA ÚNICA DE DISTRIBUIDORES DOS PEDIDOS
         // ══════════════════════════════════════════════════════════════
@@ -89,18 +94,14 @@ export default function AdminPedidos() {
 
     // Filtro por fornecedor
     if (filtroFornecedor !== 'todos') {
-      pedidosFiltrados = pedidosFiltrados.filter(
-        p => p.fornecedorId?._id === filtroFornecedor
-      );
+      pedidosFiltrados = pedidosFiltrados.filter(p => p.fornecedorId?._id === filtroFornecedor);
     }
 
     // ══════════════════════════════════════════════════════════════
     // NOVO: Filtro por distribuidor
     // ══════════════════════════════════════════════════════════════
     if (filtroDistribuidor !== 'todos') {
-      pedidosFiltrados = pedidosFiltrados.filter(
-        p => p.userId === filtroDistribuidor
-      );
+      pedidosFiltrados = pedidosFiltrados.filter(p => p.userId === filtroDistribuidor);
     }
 
     // Filtro por status de pagamento
@@ -152,7 +153,7 @@ export default function AdminPedidos() {
 
       if (response.ok) {
         // Atualizar em ambos os estados
-        const atualizarPedido = p => p._id === pedidoId ? { ...p, status: novoStatus } : p;
+        const atualizarPedido = p => (p._id === pedidoId ? { ...p, status: novoStatus } : p);
         setTodosPedidos(prev => prev.map(atualizarPedido));
         setPedidos(prev => prev.map(atualizarPedido));
         alert('✅ Status atualizado com sucesso!');
@@ -236,7 +237,12 @@ export default function AdminPedidos() {
       return { status: 'parcial', label: 'Parcial', color: 'bg-blue-100 text-blue-800', icon: '◐' };
     }
 
-    return { status: 'pendente', label: 'Pendente', color: 'bg-yellow-100 text-yellow-800', icon: '⏳' };
+    return {
+      status: 'pendente',
+      label: 'Pendente',
+      color: 'bg-yellow-100 text-yellow-800',
+      icon: '⏳',
+    };
   };
 
   const organizarItensPorCategoria = itens => {
@@ -251,8 +257,7 @@ export default function AdminPedidos() {
         };
       }
       itensPorCategoria[categoria].itens.push(item);
-      itensPorCategoria[categoria].subtotal +=
-        (item.quantidade || 0) * (item.precoUnitario || 0);
+      itensPorCategoria[categoria].subtotal += (item.quantidade || 0) * (item.precoUnitario || 0);
     });
 
     return itensPorCategoria;
@@ -299,50 +304,28 @@ export default function AdminPedidos() {
       <Head>
         <title>Gerenciar Pedidos - Admin</title>
       </Head>
-      <Layout>
-        <div className='max-w-7xl mx-auto px-4 py-8'>
-          {/* Header */}
-          <div className='bg-gradient-to-r from-red-500 to-red-600 text-white p-6 rounded-lg mb-8 shadow-lg'>
-            <div className='flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4'>
-              <div>
-                <h1 className='text-3xl font-bold flex items-center gap-3'>
-                  <span>📦</span>
-                  Gerenciamento de Pedidos
-                </h1>
-                <p className='mt-2 opacity-90'>
-                  Visualize e atualize o status de todos os pedidos
-                </p>
-              </div>
-              <div className='flex gap-2'>
-                <button
-                  onClick={() => router.push('/admin/financeiro')}
-                  className='bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition font-medium'
-                >
-                  💰 Financeiro
-                </button>
-                <button
-                  onClick={() => router.push('/admin')}
-                  className='bg-white text-red-600 px-4 py-2 rounded-lg hover:bg-gray-100 transition font-medium'
-                >
-                  ← Voltar
-                </button>
-              </div>
-            </div>
-          </div>
-
+      <AdminShell
+        titulo='Pedidos'
+        subtitulo='Visualize e atualize o status de todos os pedidos'
+        acoes={
+          <button
+            onClick={() => router.push('/admin/financeiro')}
+            className='bg-white text-gray-700 border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition text-sm font-semibold'
+          >
+            💰 Financeiro
+          </button>
+        }
+      >
+        <div>
           {/* Estatísticas de Status */}
           <div className='grid grid-cols-2 md:grid-cols-4 gap-4 mb-6'>
             {['pendente', 'confirmado', 'enviado', 'entregue'].map(status => {
               const count = pedidos.filter(p => p.status === status).length;
               return (
-                <div
-                  key={status}
-                  className={`p-4 rounded-lg border-2 ${getStatusColor(status)}`}
-                >
+                <div key={status} className={`p-4 rounded-lg border-2 ${getStatusColor(status)}`}>
                   <div className='text-2xl font-bold'>{count}</div>
                   <div className='text-sm flex items-center gap-1'>
-                    {getStatusIcon(status)}{' '}
-                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                    {getStatusIcon(status)} {status.charAt(0).toUpperCase() + status.slice(1)}
                   </div>
                 </div>
               );
@@ -375,7 +358,8 @@ export default function AdminPedidos() {
             <div className='mt-3 pt-3 border-t border-yellow-200 text-center'>
               <p className='text-sm text-gray-600'>Total Pendente:</p>
               <p className='text-2xl font-bold text-red-600'>
-                R$ {(
+                R${' '}
+                {(
                   totaisPagamentos.royaltiesPendentes +
                   totaisPagamentos.etiquetasPendentes +
                   totaisPagamentos.embalagensPendentes
@@ -388,7 +372,10 @@ export default function AdminPedidos() {
           <div className='bg-white rounded-lg shadow-md p-6 mb-6'>
             <div className='flex items-center justify-between mb-4'>
               <h3 className='text-lg font-semibold text-gray-800'>Filtros</h3>
-              {(filtroStatus !== 'todos' || filtroFornecedor !== 'todos' || filtroDistribuidor !== 'todos' || filtroPagamento !== 'todos') && (
+              {(filtroStatus !== 'todos' ||
+                filtroFornecedor !== 'todos' ||
+                filtroDistribuidor !== 'todos' ||
+                filtroPagamento !== 'todos') && (
                 <button
                   onClick={limparFiltros}
                   className='text-sm text-blue-600 hover:text-blue-800 underline'
@@ -419,9 +406,7 @@ export default function AdminPedidos() {
 
               {/* Filtro por Fornecedor */}
               <div>
-                <label className='block text-sm font-medium text-gray-700 mb-2'>
-                  Fornecedor
-                </label>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>Fornecedor</label>
                 <select
                   value={filtroFornecedor}
                   onChange={e => setFiltroFornecedor(e.target.value)}
@@ -440,9 +425,7 @@ export default function AdminPedidos() {
               {/* NOVO: Filtro por Distribuidor */}
               {/* ══════════════════════════════════════════════════════════════ */}
               <div>
-                <label className='block text-sm font-medium text-gray-700 mb-2'>
-                  Distribuidor
-                </label>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>Distribuidor</label>
                 <select
                   value={filtroDistribuidor}
                   onChange={e => setFiltroDistribuidor(e.target.value)}
@@ -475,7 +458,10 @@ export default function AdminPedidos() {
             </div>
 
             {/* Indicador de filtros ativos */}
-            {(filtroStatus !== 'todos' || filtroFornecedor !== 'todos' || filtroDistribuidor !== 'todos' || filtroPagamento !== 'todos') && (
+            {(filtroStatus !== 'todos' ||
+              filtroFornecedor !== 'todos' ||
+              filtroDistribuidor !== 'todos' ||
+              filtroPagamento !== 'todos') && (
               <div className='mt-4 pt-4 border-t'>
                 <p className='text-sm text-gray-600'>
                   Exibindo <span className='font-bold text-blue-600'>{pedidos.length}</span> de{' '}
@@ -494,11 +480,12 @@ export default function AdminPedidos() {
           ) : pedidos.length === 0 ? (
             <div className='text-center py-12 bg-white rounded-lg shadow-md'>
               <div className='text-6xl mb-4'>📦</div>
-              <h3 className='text-xl font-medium text-gray-900 mb-2'>
-                Nenhum pedido encontrado
-              </h3>
+              <h3 className='text-xl font-medium text-gray-900 mb-2'>Nenhum pedido encontrado</h3>
               <p className='text-gray-600'>
-                {filtroStatus !== 'todos' || filtroFornecedor !== 'todos' || filtroDistribuidor !== 'todos' || filtroPagamento !== 'todos'
+                {filtroStatus !== 'todos' ||
+                filtroFornecedor !== 'todos' ||
+                filtroDistribuidor !== 'todos' ||
+                filtroPagamento !== 'todos'
                   ? 'Tente ajustar os filtros'
                   : 'Ainda não há pedidos no sistema'}
               </p>
@@ -547,7 +534,9 @@ export default function AdminPedidos() {
                             onChange={e => atualizarStatus(pedido._id, e.target.value)}
                             disabled={atualizandoStatus[pedido._id]}
                             className={`px-3 py-1 rounded-full text-sm font-medium border-2 cursor-pointer ${getStatusColor(pedido.status)} ${
-                              atualizandoStatus[pedido._id] ? 'opacity-50 cursor-wait' : 'hover:opacity-80'
+                              atualizandoStatus[pedido._id]
+                                ? 'opacity-50 cursor-wait'
+                                : 'hover:opacity-80'
                             }`}
                           >
                             <option value='pendente'>⏳ Pendente</option>
@@ -558,7 +547,9 @@ export default function AdminPedidos() {
                         </div>
 
                         {/* Status de Pagamento */}
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusPagamento.color}`}>
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-medium ${statusPagamento.color}`}
+                        >
                           {statusPagamento.icon} Pgto: {statusPagamento.label}
                         </span>
 
@@ -570,12 +561,15 @@ export default function AdminPedidos() {
 
                     {/* Endereço de Entrega */}
                     <div className='bg-gray-50 rounded-lg p-3 mb-4'>
-                      <h4 className='font-medium text-gray-800 mb-2 text-sm'>📍 Endereço de Entrega</h4>
+                      <h4 className='font-medium text-gray-800 mb-2 text-sm'>
+                        📍 Endereço de Entrega
+                      </h4>
                       <p className='text-sm text-gray-600'>
                         {pedido.endereco.rua}, {pedido.endereco.numero}
                         {pedido.endereco.complemento && `, ${pedido.endereco.complemento}`}
                         <br />
-                        {pedido.endereco.bairro} - {pedido.endereco.cidade} - {pedido.endereco.estado}
+                        {pedido.endereco.bairro} - {pedido.endereco.cidade} -{' '}
+                        {pedido.endereco.estado}
                         <br />
                         CEP: {pedido.endereco.cep}
                       </p>
@@ -588,27 +582,38 @@ export default function AdminPedidos() {
                       </h4>
 
                       {Object.entries(itensPorCategoria).map(([categoria, catData]) => (
-                        <div key={categoria} className='mb-3 border border-gray-200 rounded-lg overflow-hidden'>
+                        <div
+                          key={categoria}
+                          className='mb-3 border border-gray-200 rounded-lg overflow-hidden'
+                        >
                           <div className='bg-gray-100 px-3 py-2'>
                             <div className='flex justify-between items-center'>
-                              <h5 className='font-semibold text-gray-700 text-sm'>📂 {categoria}</h5>
+                              <h5 className='font-semibold text-gray-700 text-sm'>
+                                📂 {categoria}
+                              </h5>
                               <span className='text-xs text-gray-600'>
-                                {catData.itens.length} {catData.itens.length === 1 ? 'item' : 'itens'}
+                                {catData.itens.length}{' '}
+                                {catData.itens.length === 1 ? 'item' : 'itens'}
                               </span>
                             </div>
                           </div>
 
                           <div className='p-3 space-y-2'>
                             {catData.itens.map((item, index) => (
-                              <div key={index} className='flex justify-between items-center text-sm'>
+                              <div
+                                key={index}
+                                className='flex justify-between items-center text-sm'
+                              >
                                 <div className='flex-1'>
                                   <p className='font-medium text-gray-900'>{item.nome}</p>
                                   <p className='text-xs text-gray-500'>
-                                    Cód: {item.codigo} | Qtd: {item.quantidade} × R$ {item.precoUnitario?.toFixed(2)}
+                                    Cód: {item.codigo} | Qtd: {item.quantidade} × R${' '}
+                                    {item.precoUnitario?.toFixed(2)}
                                   </p>
                                 </div>
                                 <p className='font-medium text-gray-700'>
-                                  R$ {((item.quantidade || 0) * (item.precoUnitario || 0)).toFixed(2)}
+                                  R${' '}
+                                  {((item.quantidade || 0) * (item.precoUnitario || 0)).toFixed(2)}
                                 </p>
                               </div>
                             ))}
@@ -617,7 +622,9 @@ export default function AdminPedidos() {
                           <div className='bg-gray-50 px-3 py-2'>
                             <div className='flex justify-between text-sm font-semibold'>
                               <span className='text-gray-700'>Subtotal:</span>
-                              <span className='text-green-600'>R$ {catData.subtotal.toFixed(2)}</span>
+                              <span className='text-green-600'>
+                                R$ {catData.subtotal.toFixed(2)}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -628,7 +635,9 @@ export default function AdminPedidos() {
                     <div className='border-t pt-4 mt-4 grid md:grid-cols-2 gap-4'>
                       {/* Coluna Esquerda - Valores */}
                       <div>
-                        <h4 className='font-medium text-gray-700 mb-2 text-sm'>💰 Resumo Financeiro</h4>
+                        <h4 className='font-medium text-gray-700 mb-2 text-sm'>
+                          💰 Resumo Financeiro
+                        </h4>
                         <div className='space-y-1 text-sm'>
                           <div className='flex justify-between'>
                             <span>Subtotal (Fornecedor):</span>
@@ -659,17 +668,23 @@ export default function AdminPedidos() {
 
                       {/* Coluna Direita - Controle de Pagamentos */}
                       <div className='bg-gray-50 rounded-lg p-3'>
-                        <h4 className='font-medium text-gray-700 mb-3 text-sm'>💳 Controle de Pagamentos</h4>
+                        <h4 className='font-medium text-gray-700 mb-3 text-sm'>
+                          💳 Controle de Pagamentos
+                        </h4>
                         <div className='space-y-2'>
                           {/* Royalties */}
                           <div className='flex items-center justify-between'>
-                            <span className='text-sm'>Royalties (R$ {pedido.royalties?.toFixed(2)}):</span>
+                            <span className='text-sm'>
+                              Royalties (R$ {pedido.royalties?.toFixed(2)}):
+                            </span>
                             <button
-                              onClick={() => atualizarPagamento(
-                                pedido._id,
-                                'royalties',
-                                cf.royalties?.status === 'pago' ? 'pendente' : 'pago'
-                              )}
+                              onClick={() =>
+                                atualizarPagamento(
+                                  pedido._id,
+                                  'royalties',
+                                  cf.royalties?.status === 'pago' ? 'pendente' : 'pago',
+                                )
+                              }
                               disabled={atualizandoPagamento[`${pedido._id}-royalties`]}
                               className={`px-3 py-1 rounded text-xs font-medium transition ${
                                 cf.royalties?.status === 'pago'
@@ -684,13 +699,17 @@ export default function AdminPedidos() {
                           {/* Etiquetas */}
                           {(pedido.totalEtiquetas || 0) > 0 && (
                             <div className='flex items-center justify-between'>
-                              <span className='text-sm'>Etiquetas (R$ {pedido.totalEtiquetas?.toFixed(2)}):</span>
+                              <span className='text-sm'>
+                                Etiquetas (R$ {pedido.totalEtiquetas?.toFixed(2)}):
+                              </span>
                               <button
-                                onClick={() => atualizarPagamento(
-                                  pedido._id,
-                                  'etiquetas',
-                                  cf.etiquetas?.status === 'pago' ? 'pendente' : 'pago'
-                                )}
+                                onClick={() =>
+                                  atualizarPagamento(
+                                    pedido._id,
+                                    'etiquetas',
+                                    cf.etiquetas?.status === 'pago' ? 'pendente' : 'pago',
+                                  )
+                                }
                                 disabled={atualizandoPagamento[`${pedido._id}-etiquetas`]}
                                 className={`px-3 py-1 rounded text-xs font-medium transition ${
                                   cf.etiquetas?.status === 'pago'
@@ -706,13 +725,17 @@ export default function AdminPedidos() {
                           {/* Embalagens */}
                           {(pedido.totalEmbalagens || 0) > 0 && (
                             <div className='flex items-center justify-between'>
-                              <span className='text-sm'>Embalagens (R$ {pedido.totalEmbalagens?.toFixed(2)}):</span>
+                              <span className='text-sm'>
+                                Embalagens (R$ {pedido.totalEmbalagens?.toFixed(2)}):
+                              </span>
                               <button
-                                onClick={() => atualizarPagamento(
-                                  pedido._id,
-                                  'embalagens',
-                                  cf.embalagens?.status === 'pago' ? 'pendente' : 'pago'
-                                )}
+                                onClick={() =>
+                                  atualizarPagamento(
+                                    pedido._id,
+                                    'embalagens',
+                                    cf.embalagens?.status === 'pago' ? 'pendente' : 'pago',
+                                  )
+                                }
                                 disabled={atualizandoPagamento[`${pedido._id}-embalagens`]}
                                 className={`px-3 py-1 rounded text-xs font-medium transition ${
                                   cf.embalagens?.status === 'pago'
@@ -752,7 +775,7 @@ export default function AdminPedidos() {
             </div>
           )}
         </div>
-      </Layout>
+      </AdminShell>
     </>
   );
 }
