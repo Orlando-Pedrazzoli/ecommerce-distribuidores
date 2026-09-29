@@ -228,11 +228,15 @@ export default function AdminFornecedores() {
     const f = apagando;
     setAcaoEmCurso(f._id);
     try {
-      const r = await fetch(`/api/admin/fornecedores/${f._id}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmar }),
-      });
+      // `confirmar` vai no body E na query: alguns proxies descartam o body de DELETE
+      const r = await fetch(
+        `/api/admin/fornecedores/${f._id}?confirmar=${encodeURIComponent(confirmar)}`,
+        {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmar }),
+        },
+      );
       const data = await r.json();
       if (!r.ok) throw new Error(data.message || 'Erro');
       notificar('success', data.message);
