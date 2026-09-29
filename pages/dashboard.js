@@ -1,561 +1,478 @@
-// PAGES/DASHBOARD.JS - PAINEL PRINCIPAL DO DISTRIBUIDOR
-// =====================================================
-// Visão geral: fornecedores, pedidos, pagamentos pendentes
+// pages/dashboard.js - PAINEL PRINCIPAL DO DISTRIBUIDOR (MOBILE-FIRST)
+// ===================================
+// O distribuidor faz pedidos sobretudo pelo telemóvel: fornecedores em
+// destaque com alvos grandes, atenção a pagamentos/entregas, pedidos
+// recentes e resumo. Tudo vem de /api/user/dashboard numa chamada.
 
 import Layout from '../components/Layout';
 import Link from 'next/link';
-import Image from 'next/image';
 import Head from 'next/head';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
+
+const moeda = v =>
+  `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const relativo = d => {
+  if (!d) return '—';
+  const min = Math.round((Date.now() - new Date(d).getTime()) / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h} h`;
+  const dias = Math.round(h / 24);
+  if (dias < 30) return `há ${dias} d`;
+  return new Date(d).toLocaleDateString('pt-BR');
+};
+
+const STATUS = {
+  pendente: { label: 'Pendente', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
+  confirmado: { label: 'Confirmado', cls: 'bg-blue-50 text-blue-700 ring-blue-200' },
+  enviado: { label: 'Enviado', cls: 'bg-purple-50 text-purple-700 ring-purple-200' },
+  entregue: { label: 'Entregue', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+};
+
+const saudacao = () => {
+  const h = new Date().getHours();
+  if (h < 12) return 'Bom dia';
+  if (h < 19) return 'Boa tarde';
+  return 'Boa noite';
+};
 
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [loadingUser, setLoadingUser] = useState(true);
-  const [resumo, setResumo] = useState(null);
-  const [loadingResumo, setLoadingResumo] = useState(true);
-  const [pedidosRecentes, setPedidosRecentes] = useState([]);
-  const [fornecedores, setFornecedores] = useState([]);
-  const [erro, setErro] = useState(null);
+  const [dados, setDados] = useState(null);
+  const [erro, setErro] = useState('');
+
+  const carregar = useCallback(async () => {
+    try {
+      const me = await fetch('/api/auth/me');
+      if (!me.ok) return router.replace('/');
+      const { user: u } = await me.json();
+      if (u?.tipo === 'admin') return router.replace('/admin');
+      setUser(u);
+
+      const r = await fetch('/api/user/dashboard');
+      if (!r.ok) throw new Error('Não foi possível carregar os seus dados');
+      setDados(await r.json());
+    } catch (e) {
+      setErro(e.message);
+    }
+  }, [router]);
 
   useEffect(() => {
-    buscarDadosUsuario();
-  }, []);
+    carregar();
+  }, [carregar]);
 
-  const buscarDadosUsuario = async () => {
-    try {
-      setLoadingUser(true);
-      setErro(null);
-
-      const response = await fetch('/api/auth/me');
-
-      if (response.ok) {
-        const data = await response.json();
-        setUser(data.user);
-
-        // Após buscar usuário, buscar dados financeiros
-        if (data.user?.tipo === 'distribuidor') {
-          await Promise.all([
-            buscarResumoFinanceiro(),
-            buscarPedidosRecentes(),
-            buscarFornecedores(),
-          ]);
-        }
-      } else {
-        // Se não autorizado, redirecionar para login
-        router.push('/');
-      }
-    } catch (error) {
-      console.error('Erro ao buscar dados do usuário:', error);
-      setErro('Erro ao carregar dados. Tente novamente.');
-    } finally {
-      setLoadingUser(false);
-    }
-  };
-
-  const buscarResumoFinanceiro = async () => {
-    try {
-      setLoadingResumo(true);
-      const response = await fetch('/api/user/pagamentos');
-
-      if (response.ok) {
-        const data = await response.json();
-        setResumo(data.resumo);
-      } else {
-        console.error('Erro ao buscar resumo:', response.status);
-      }
-    } catch (error) {
-      console.error('Erro ao buscar resumo:', error);
-    } finally {
-      setLoadingResumo(false);
-    }
-  };
-
-  // Fornecedores ativos, configurados em /admin/fornecedores
-  const buscarFornecedores = async () => {
-    try {
-      const response = await fetch('/api/produtos/fornecedores-info');
-      if (response.ok) {
-        const data = await response.json();
-        setFornecedores(data.fornecedores || []);
-      }
-    } catch (error) {
-      console.error('Erro ao buscar fornecedores:', error);
-    }
-  };
-
-  const buscarPedidosRecentes = async () => {
-    try {
-      const response = await fetch('/api/user/pedidos?limit=5');
-
-      if (response.ok) {
-        const data = await response.json();
-        setPedidosRecentes(data.pedidos || []);
-      }
-    } catch (error) {
-      console.error('Erro ao buscar pedidos recentes:', error);
-    }
-  };
-
-  // Calcular total pendente
-  const totalPendente = resumo
-    ? (resumo.royaltiesPendentes || 0) +
-      (resumo.etiquetasPendentes || 0) +
-      (resumo.embalagensPendentes || 0)
-    : 0;
-
-  // Status do pedido formatado
-  const getStatusColor = status => {
-    const colors = {
-      pendente: 'bg-yellow-100 text-yellow-800',
-      confirmado: 'bg-blue-100 text-blue-800',
-      enviado: 'bg-orange-100 text-orange-800',
-      entregue: 'bg-green-100 text-green-800',
-    };
-    return colors[status] || 'bg-gray-100 text-gray-800';
-  };
-
-  // Se ainda está carregando, mostra loading
-  if (loadingUser) {
-    return (
-      <>
-        <Head>
-          <title>Dashboard - Elite Surfing</title>
-          <meta
-            name='description'
-            content='Painel principal dos distribuidores - Escolha o fornecedor e navegue pelos produtos'
-          />
-        </Head>
-
-        <Layout>
-          <div className='max-w-6xl mx-auto px-4 py-8'>
-            <div className='text-center mb-12'>
-              <div className='animate-pulse'>
-                <div className='h-10 bg-gray-300 rounded w-64 mx-auto mb-4'></div>
-                <div className='h-6 bg-gray-200 rounded w-96 mx-auto mb-2'></div>
-                <div className='h-4 bg-gray-200 rounded w-80 mx-auto'></div>
-              </div>
-            </div>
-          </div>
-        </Layout>
-      </>
-    );
-  }
-
-  // Se houve erro
-  if (erro) {
-    return (
-      <>
-        <Head>
-          <title>Dashboard - Elite Surfing</title>
-        </Head>
-        <Layout>
-          <div className='max-w-6xl mx-auto px-4 py-8'>
-            <div className='bg-red-50 border border-red-200 rounded-xl p-6 text-center'>
-              <p className='text-red-600 mb-4'>{erro}</p>
-              <button
-                onClick={buscarDadosUsuario}
-                className='bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600'
-              >
-                Tentar Novamente
-              </button>
-            </div>
-          </div>
-        </Layout>
-      </>
-    );
-  }
+  const primeiroNome = (user?.nome || '').split(' ')[0];
 
   return (
     <>
       <Head>
-        <title>Dashboard - Elite Surfing</title>
+        <title>Início - Elite Surfing Portal</title>
         <meta
           name='description'
-          content='Painel principal dos distribuidores - Escolha o fornecedor e navegue pelos produtos'
+          content='Painel do distribuidor: fornecedores, pedidos e pagamentos'
         />
       </Head>
 
       <Layout>
-        <div className='max-w-6xl mx-auto px-4 py-8'>
-          {/* Hero Section */}
-          <div className='text-center mb-8'>
-            <h1 className='text-4xl font-bold text-gray-800 mb-4'>
-              Bem-vindo, {user?.nome || 'Usuário'}!
+        <div className='max-w-6xl mx-auto px-4 py-4 sm:py-6'>
+          {/* ── Cabeçalho ── */}
+          <header className='mb-4 sm:mb-6'>
+            <p className='text-sm text-gray-500'>{saudacao()},</p>
+            <h1 className='text-2xl sm:text-3xl font-bold text-gray-900 leading-tight'>
+              {primeiroNome || 'distribuidor'} 👋
             </h1>
-            <p className='text-xl text-gray-600 mb-2'>
-              Sistema exclusivo para distribuidores autorizados
-            </p>
-          </div>
+          </header>
 
-          {/* ══════════════════════════════════════════════════════════════ */}
-          {/* ALERTA DE PAGAMENTOS PENDENTES - COMPACTO NO MOBILE */}
-          {/* ══════════════════════════════════════════════════════════════ */}
-          {!loadingResumo && totalPendente > 0 && (
-            <div className='mb-8 bg-gradient-to-r from-red-500 to-orange-500 rounded-xl p-3 sm:p-4 shadow-lg'>
-              <div className='flex items-center justify-between gap-3 sm:gap-4'>
-                {/* Texto */}
-                <div className='text-white'>
-                  <p className='font-bold text-sm sm:text-lg'>Pagamentos Pendentes</p>
-                  <p className='text-red-100 text-xs sm:text-sm hidden sm:block'>
-                    Você tem valores a pagar referentes aos Royalties
-                  </p>
-                </div>
+          {erro && (
+            <div className='bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm mb-4'>
+              {erro}{' '}
+              <button onClick={carregar} className='underline font-medium'>
+                Tentar novamente
+              </button>
+            </div>
+          )}
 
-                {/* Valor e botão */}
-                <div className='flex items-center gap-2 sm:gap-3'>
-                  <div className='text-white text-right'>
-                    <p className='text-xs text-red-100 sm:hidden'>Royalties</p>
-                    <p className='text-lg sm:text-2xl font-bold whitespace-nowrap'>
-                      R${' '}
-                      {totalPendente.toLocaleString('pt-BR', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
+          {!dados && !erro ? (
+            <Esqueleto />
+          ) : dados ? (
+            <>
+              {/* ── Requer atenção ── */}
+              <Atencao dados={dados} />
+
+              {/* ── Fornecedores (o principal: fazer pedido) ── */}
+              <section className='mb-6'>
+                <div className='flex items-end justify-between mb-3'>
+                  <div>
+                    <h2 className='text-lg font-bold text-gray-900'>Fazer pedido</h2>
+                    <p className='text-xs text-gray-500'>
+                      Escolha o fornecedor para ver o catálogo
                     </p>
                   </div>
-                  <Link
-                    href='/pagamentos'
-                    className='bg-white text-red-600 p-2 sm:px-4 sm:py-2 rounded-lg font-medium hover:bg-red-50 transition shadow-md text-sm flex items-center gap-1'
-                  >
-                    <span className='hidden sm:inline'>Ver Detalhes</span>
-                    <svg
-                      className='w-4 h-4 sm:w-5 sm:h-5'
-                      fill='none'
-                      stroke='currentColor'
-                      viewBox='0 0 24 24'
-                    >
-                      <path
-                        strokeLinecap='round'
-                        strokeLinejoin='round'
-                        strokeWidth={2}
-                        d='M9 5l7 7-7 7'
-                      />
-                    </svg>
-                  </Link>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ══════════════════════════════════════════════════════════════ */}
-          {/* CARDS DE ACESSO RÁPIDO - APENAS PEDIDOS E PAGAMENTOS */}
-          {/* ══════════════════════════════════════════════════════════════ */}
-          <div className='grid grid-cols-2 gap-4 mb-8 max-w-md mx-auto sm:max-w-lg'>
-            {/* Meus Pedidos */}
-            <Link
-              href='/meus-pedidos'
-              className='bg-white rounded-xl shadow-md p-4 hover:shadow-lg transition group'
-            >
-              <div className='flex items-center gap-3'>
-                <div className='w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center group-hover:bg-blue-200 transition'>
-                  <span className='text-2xl'>📋</span>
-                </div>
-                <div>
-                  <p className='font-medium text-gray-800'>Meus Pedidos</p>
-                  <p className='text-xs text-gray-500'>Ver histórico</p>
-                </div>
-              </div>
-            </Link>
-
-            {/* Pagamentos */}
-            <Link
-              href='/pagamentos'
-              className='bg-white rounded-xl shadow-md p-4 hover:shadow-lg transition group relative'
-            >
-              <div className='flex items-center gap-3'>
-                <div className='w-12 h-12 bg-green-100 rounded-full flex items-center justify-center group-hover:bg-green-200 transition'>
-                  <span className='text-2xl'>💳</span>
-                </div>
-                <div>
-                  <p className='font-medium text-gray-800'>Pagamentos</p>
-                  <p className='text-xs text-gray-500'>Ver status</p>
-                </div>
-              </div>
-              {/* Badge de pendente */}
-              {!loadingResumo && totalPendente > 0 && (
-                <div className='absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold animate-pulse'>
-                  !
-                </div>
-              )}
-            </Link>
-          </div>
-
-          {/* ══════════════════════════════════════════════════════════════ */}
-          {/* RESUMO FINANCEIRO COMPLETO */}
-          {/* ══════════════════════════════════════════════════════════════ */}
-          {!loadingResumo && resumo && (
-            <div className='bg-white rounded-xl shadow-md p-6 mb-8'>
-              <h2 className='text-lg font-bold text-gray-800 mb-4 flex items-center gap-2'>
-                📊 Resumo Financeiro
-              </h2>
-
-              <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
-                {/* Royalties Pendentes */}
-                <div className='bg-yellow-50 rounded-lg p-4 text-center'>
-                  <p className='text-xs text-gray-500 mb-1'>Royalties Pend.</p>
-                  <p className='text-l font-bold text-yellow-600'>
-                    R${' '}
-                    {(resumo.royaltiesPendentes || 0).toLocaleString('pt-BR', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </p>
+                  <span className='text-xs text-gray-400'>
+                    {dados.fornecedores.length} fornecedor(es)
+                  </span>
                 </div>
 
-                {/* Etiquetas Pendentes */}
-                <div className='bg-orange-50 rounded-lg p-4 text-center'>
-                  <p className='text-xs text-gray-500 mb-1'>Etiquetas Pend.</p>
-                  <p className='text-l font-bold text-orange-600'>
-                    R${' '}
-                    {(resumo.etiquetasPendentes || 0).toLocaleString('pt-BR', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </p>
-                </div>
+                {dados.fornecedores.length === 0 ? (
+                  <div className='bg-white rounded-2xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500'>
+                    Nenhum fornecedor disponível no momento.
+                  </div>
+                ) : (
+                  <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4'>
+                    {dados.fornecedores.map(f => (
+                      <CartaoFornecedor key={f._id} f={f} />
+                    ))}
+                  </div>
+                )}
+              </section>
 
-                {/* Embalagens Pendentes */}
-                <div className='bg-purple-50 rounded-lg p-4 text-center'>
-                  <p className='text-xs text-gray-500 mb-1'>Embalagens Pend.</p>
-                  <p className='text-l font-bold text-purple-600'>
-                    R${' '}
-                    {(resumo.embalagensPendentes || 0).toLocaleString('pt-BR', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </p>
-                </div>
-
-                {/* Total Pendente */}
-                <div className='bg-red-50 rounded-lg p-4 text-center border-2 border-red-200'>
-                  <p className='text-xs text-gray-500 mb-1'>Total Pendente</p>
-                  <p className='text-l font-bold text-red-600'>
-                    R${' '}
-                    {totalPendente.toLocaleString('pt-BR', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </p>
-                </div>
-              </div>
-
-              <div className='mt-4 pt-4 border-t flex justify-end'>
-                <Link
-                  href='/pagamentos'
-                  className='text-blue-600 hover:text-blue-800 text-sm font-medium'
-                >
-                  Ver detalhes completos →
-                </Link>
-              </div>
-            </div>
-          )}
-
-          {/* ══════════════════════════════════════════════════════════════ */}
-          {/* PEDIDOS RECENTES - OCULTO NO MOBILE */}
-          {/* ══════════════════════════════════════════════════════════════ */}
-          {pedidosRecentes.length > 0 && (
-            <div className='hidden sm:block bg-white rounded-xl shadow-md p-6 mb-8'>
-              <div className='flex items-center justify-between mb-4'>
-                <h2 className='text-lg font-bold text-gray-800 flex items-center gap-2'>
-                  📦 Pedidos Recentes
-                </h2>
-                <Link
-                  href='/meus-pedidos'
-                  className='text-blue-600 hover:text-blue-800 text-sm font-medium'
-                >
-                  Ver todos →
-                </Link>
-              </div>
-
-              <div className='space-y-3'>
-                {pedidosRecentes.slice(0, 3).map(pedido => (
-                  <div
-                    key={pedido._id}
-                    className='flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition'
-                  >
-                    <div className='flex items-center gap-3'>
-                      <div className='w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center'>
-                        <span className='text-lg'>📦</span>
-                      </div>
-                      <div>
-                        <p className='font-medium text-gray-800'>
-                          Pedido #{pedido._id?.slice(-8).toUpperCase()}
-                        </p>
-                        <p className='text-xs text-gray-500'>
-                          {new Date(pedido.createdAt).toLocaleDateString('pt-BR')} •{' '}
-                          {pedido.fornecedorId?.nome || 'Fornecedor'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className='text-right'>
-                      <span
-                        className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pedido.status)}`}
-                      >
-                        {pedido.status?.charAt(0).toUpperCase() + pedido.status?.slice(1)}
-                      </span>
-                      <p className='text-sm font-bold text-green-600 mt-1'>
-                        R${' '}
-                        {pedido.total?.toLocaleString('pt-BR', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
+              <div className='grid lg:grid-cols-3 gap-4 sm:gap-6'>
+                {/* ── Pedidos recentes ── */}
+                <section className='lg:col-span-2 self-start bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden'>
+                  <div className='flex items-center justify-between px-4 py-3 border-b border-gray-100'>
+                    <h2 className='text-sm font-bold text-gray-900'>Pedidos recentes</h2>
+                    <Link href='/meus-pedidos' className='text-xs font-semibold text-blue-600'>
+                      Ver todos →
+                    </Link>
+                  </div>
+                  {dados.recentes.length === 0 ? (
+                    <div className='p-8 text-center'>
+                      <p className='text-sm font-medium text-gray-700'>
+                        Ainda não fez nenhum pedido
+                      </p>
+                      <p className='text-xs text-gray-500 mt-1'>
+                        Escolha um fornecedor acima para começar.
                       </p>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ══════════════════════════════════════════════════════════════ */}
-          {/* CARDS DOS FORNECEDORES */}
-          {/* ══════════════════════════════════════════════════════════════ */}
-          <div className='mb-6'>
-            <h2 className='text-xl font-bold text-gray-800 mb-4'>Fornecedores Disponíveis</h2>
-          </div>
-
-          {fornecedores.length === 0 && (
-            <div className='bg-white rounded-xl border border-dashed border-gray-300 p-10 text-center text-gray-500 text-sm'>
-              Nenhum fornecedor disponível no momento.
-            </div>
-          )}
-
-          <div className='grid md:grid-cols-2 lg:grid-cols-4 gap-6'>
-            {fornecedores.map(fornecedor => (
-              <Link
-                key={fornecedor.codigo}
-                href={`/produtos/${fornecedor.codigo}`}
-                className='group block'
-              >
-                <div className='bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform group-hover:-translate-y-2'>
-                  {/* Header colorido (cor e logo vêm do cadastro do fornecedor) */}
-                  <div
-                    className='p-6 text-white text-center relative'
-                    style={{
-                      background: `linear-gradient(135deg, ${fornecedor.cor || '#374151'}, ${fornecedor.cor || '#374151'}cc)`,
-                    }}
-                  >
-                    {/* Logo */}
-                    <div className='flex justify-center mb-3'>
-                      <div className='w-16 h-16 rounded-full overflow-hidden bg-white p-1 shadow-lg flex items-center justify-center'>
-                        {fornecedor.logo ? (
-                          <Image
-                            src={fornecedor.logo}
-                            alt={`${fornecedor.nome} Logo`}
-                            width={64}
-                            height={64}
-                            className='w-full h-full object-cover rounded-full'
-                          />
-                        ) : (
-                          <span
-                            className='text-xl font-bold'
-                            style={{ color: fornecedor.cor || '#374151' }}
+                  ) : (
+                    <ul className='divide-y divide-gray-100'>
+                      {dados.recentes.map(p => (
+                        <li key={p._id}>
+                          <Link
+                            href='/meus-pedidos'
+                            className='flex items-center gap-3 px-4 py-3 active:bg-gray-50 hover:bg-gray-50'
                           >
-                            {fornecedor.codigo}
-                          </span>
-                        )}
-                      </div>
+                            <Avatar fornecedor={p.fornecedor} tamanho={40} />
+                            <div className='min-w-0 flex-1'>
+                              <p className='text-sm font-semibold text-gray-900 truncate'>
+                                {p.fornecedor?.nome || 'Fornecedor'}
+                              </p>
+                              <p className='text-xs text-gray-500 truncate'>
+                                #{p.numero} · {p.itens} item(ns) · {relativo(p.createdAt)}
+                              </p>
+                            </div>
+                            <div className='text-right shrink-0'>
+                              <p className='text-sm font-bold text-gray-900 tabular-nums'>
+                                {moeda(p.total)}
+                              </p>
+                              <BadgeStatus status={p.status} />
+                            </div>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+
+                {/* ── Resumo ── */}
+                <aside className='space-y-4'>
+                  <section className='bg-white rounded-2xl border border-gray-200 shadow-sm p-4'>
+                    <h2 className='text-sm font-bold text-gray-900 mb-3'>Este mês</h2>
+                    <div className='grid grid-cols-2 gap-3'>
+                      <Stat rotulo='Pedidos' valor={dados.pedidos.mes.total} />
+                      <Stat rotulo='Total' valor={moeda(dados.pedidos.mes.valor)} pequeno />
                     </div>
-                    <h2 className='text-lg font-bold mb-1'>{fornecedor.nome}</h2>
-                    <p className='text-xs opacity-90 font-medium'>
-                      {fornecedor.especialidade || `${fornecedor.totalProdutos} produto(s)`}
-                    </p>
-
-                    {/* Badge do código */}
-                    <div className='absolute top-3 right-3'>
-                      <span className='bg-white bg-opacity-20 text-white px-2 py-1 rounded-full text-sm font-bold'>
-                        {fornecedor.codigo}
-                      </span>
+                    <div className='mt-4 pt-3 border-t border-gray-100 space-y-2 text-sm'>
+                      <Linha
+                        rotulo='Em andamento'
+                        valor={dados.pedidos.emAndamento}
+                        tom='text-blue-600'
+                      />
+                      <Linha
+                        rotulo='Entregues'
+                        valor={dados.pedidos.status.entregue}
+                        tom='text-emerald-600'
+                      />
+                      <Linha rotulo='Total de pedidos' valor={dados.pedidos.total} />
                     </div>
-                  </div>
+                  </section>
 
-                  {/* Body */}
-                  <div className='p-4 text-center'>
-                    <p className='text-gray-600 text-sm mb-4'>
-                      {fornecedor.descricao || 'Veja o catálogo completo deste fornecedor'}
-                    </p>
-
-                    <div className='bg-gray-100 text-gray-700 py-2 px-4 rounded-lg group-hover:bg-gray-200 transition-all duration-300 border border-gray-200 group-hover:border-gray-300 group-hover:shadow-md'>
-                      <div className='flex items-center justify-center gap-2'>
-                        <svg
-                          className='w-4 h-4'
-                          fill='none'
-                          stroke='currentColor'
-                          viewBox='0 0 24 24'
-                        >
-                          <path
-                            strokeLinecap='round'
-                            strokeLinejoin='round'
-                            strokeWidth={2}
-                            d='M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'
+                  <section
+                    className={`rounded-2xl border shadow-sm p-4 ${
+                      dados.financeiro.totalPendente > 0
+                        ? 'bg-red-50 border-red-200'
+                        : 'bg-white border-gray-200'
+                    }`}
+                  >
+                    <div className='flex items-center justify-between mb-2'>
+                      <h2 className='text-sm font-bold text-gray-900'>Pagamentos</h2>
+                      <Link href='/pagamentos' className='text-xs font-semibold text-blue-600'>
+                        Detalhes →
+                      </Link>
+                    </div>
+                    {dados.financeiro.totalPendente > 0 ? (
+                      <>
+                        <p className='text-2xl font-bold text-red-600 tabular-nums'>
+                          {moeda(dados.financeiro.totalPendente)}
+                        </p>
+                        <p className='text-xs text-red-700 mt-0.5'>
+                          em aberto em {dados.financeiro.pedidosComPendencia} pedido(s)
+                        </p>
+                        <ul className='mt-3 space-y-1 text-xs text-gray-700'>
+                          <Linha
+                            rotulo='Royalties'
+                            valor={moeda(dados.financeiro.royaltiesPendentes)}
                           />
-                        </svg>
-                        <span className='font-semibold text-sm'>Ver Produtos</span>
-                        <svg
-                          className='w-4 h-4 group-hover:translate-x-1 transition-transform duration-300'
-                          fill='none'
-                          stroke='currentColor'
-                          viewBox='0 0 24 24'
-                        >
-                          <path
-                            strokeLinecap='round'
-                            strokeLinejoin='round'
-                            strokeWidth={2}
-                            d='M9 5l7 7-7 7'
+                          <Linha
+                            rotulo='Etiquetas'
+                            valor={moeda(dados.financeiro.etiquetasPendentes)}
                           />
-                        </svg>
-                      </div>
+                          <Linha
+                            rotulo='Embalagens'
+                            valor={moeda(dados.financeiro.embalagensPendentes)}
+                          />
+                        </ul>
+                      </>
+                    ) : (
+                      <p className='text-sm text-emerald-700 flex items-center gap-2'>
+                        <span className='w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-xs'>
+                          ✓
+                        </span>
+                        Sem pagamentos pendentes
+                      </p>
+                    )}
+                  </section>
+
+                  <section className='bg-white rounded-2xl border border-gray-200 shadow-sm p-4'>
+                    <h2 className='text-sm font-bold text-gray-900 mb-3'>Atalhos</h2>
+                    <div className='grid grid-cols-2 gap-2'>
+                      <Atalho href='/meus-pedidos' rotulo='Meus pedidos' />
+                      <Atalho href='/tabela-precos' rotulo='Tabela de preços' />
+                      <Atalho href='/pagamentos' rotulo='Pagamentos' />
+                      <Atalho href='/alterar-senha' rotulo='Alterar senha' />
                     </div>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
+                  </section>
+                </aside>
+              </div>
 
-          {/* Instruções de uso */}
-          <div className='mt-12 bg-gray-50 rounded-xl p-8'>
-            <h3 className='text-lg font-bold text-gray-800 mb-6 text-center'>📖 Como Funciona</h3>
-            <div className='grid md:grid-cols-3 gap-6 text-center'>
-              <div>
-                <div className='flex items-center justify-center w-12 h-12 bg-gradient-to-r from-gray-500 to-gray-600 rounded-full mb-3 mx-auto text-white font-bold text-lg shadow-lg'>
-                  1
-                </div>
-                <h4 className='font-medium text-gray-800 mb-2'>Escolha o Fornecedor</h4>
-                <p className='text-sm text-gray-600'>
-                  Clique no card do fornecedor para ver seus produtos específicos
-                </p>
-              </div>
-              <div>
-                <div className='flex items-center justify-center w-12 h-12 bg-gradient-to-r from-gray-500 to-gray-600 rounded-full mb-3 mx-auto text-white font-bold text-lg shadow-lg'>
-                  2
-                </div>
-                <h4 className='font-medium text-gray-800 mb-2'>Filtre por Categoria</h4>
-                <p className='text-sm text-gray-600'>
-                  Use a sidebar para filtrar produtos por categoria específica
-                </p>
-              </div>
-              <div>
-                <div className='flex items-center justify-center w-12 h-12 bg-gradient-to-r from-gray-500 to-gray-600 rounded-full mb-3 mx-auto text-white font-bold text-lg shadow-lg'>
-                  3
-                </div>
-                <h4 className='font-medium text-gray-800 mb-2'>Faça seu Pedido</h4>
-                <p className='text-sm text-gray-600'>
-                  Adicione ao carrinho e finalize com pagamento na entrega
-                </p>
-              </div>
-            </div>
-          </div>
+              {/* ── Como funciona (compacto) ── */}
+              <details className='mt-6 bg-white rounded-2xl border border-gray-200 shadow-sm group'>
+                <summary className='px-4 py-3 text-sm font-semibold text-gray-800 cursor-pointer select-none flex items-center justify-between'>
+                  Como funciona
+                  <span className='text-gray-400 group-open:rotate-180 transition'>▾</span>
+                </summary>
+                <ol className='px-4 pb-4 space-y-2 text-sm text-gray-600'>
+                  <li className='flex gap-3'>
+                    <Num n={1} /> Escolha o fornecedor e navegue pelo catálogo por categoria.
+                  </li>
+                  <li className='flex gap-3'>
+                    <Num n={2} /> Adicione ao carrinho e finalize o pedido com o endereço de
+                    entrega.
+                  </li>
+                  <li className='flex gap-3'>
+                    <Num n={3} /> O fornecedor recebe o pedido por email; acompanhe o estado em
+                    "Pedidos".
+                  </li>
+                </ol>
+              </details>
 
-          {/* Informações de contato */}
-          <div className='mt-8 text-center text-gray-600'>
-            <p className='text-sm'>
-              <strong>Dúvidas?</strong> Entre em contato com nosso suporte através do WhatsApp.
-            </p>
-          </div>
+              <p className='mt-6 text-center text-xs text-gray-400'>
+                Dúvidas? Fale connosco pelo WhatsApp (botão no canto).
+              </p>
+            </>
+          ) : null}
         </div>
       </Layout>
     </>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// SUBCOMPONENTES
+// ══════════════════════════════════════════════════════════════
+function Atencao({ dados }) {
+  const itens = [];
+  if (dados.financeiro.totalPendente > 0) {
+    itens.push({
+      cor: 'bg-red-500',
+      titulo: `${moeda(dados.financeiro.totalPendente)} em pagamentos pendentes`,
+      desc: `${dados.financeiro.pedidosComPendencia} pedido(s) com royalties, etiquetas ou embalagens em aberto`,
+      href: '/pagamentos',
+    });
+  }
+  if (dados.pedidos.status.enviado > 0) {
+    itens.push({
+      cor: 'bg-purple-500',
+      titulo: `${dados.pedidos.status.enviado} pedido(s) a caminho`,
+      desc: 'Veja o código de rastreamento em "Pedidos"',
+      href: '/meus-pedidos?status=enviado',
+    });
+  }
+  if (dados.pedidos.status.pendente > 0) {
+    itens.push({
+      cor: 'bg-amber-500',
+      titulo: `${dados.pedidos.status.pendente} pedido(s) aguardando confirmação do fornecedor`,
+      desc: 'Normalmente confirmado em 1-2 dias úteis',
+      href: '/meus-pedidos?status=pendente',
+    });
+  }
+  if (itens.length === 0) return null;
+  return (
+    <section className='mb-5 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden'>
+      <ul className='divide-y divide-gray-100'>
+        {itens.map((a, i) => (
+          <li key={i}>
+            <Link
+              href={a.href}
+              className='flex items-center gap-3 px-4 py-3 active:bg-gray-50 hover:bg-gray-50'
+            >
+              <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${a.cor}`} />
+              <div className='min-w-0 flex-1'>
+                <p className='text-sm font-semibold text-gray-900'>{a.titulo}</p>
+                <p className='text-xs text-gray-500'>{a.desc}</p>
+              </div>
+              <span className='text-gray-300'>›</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function CartaoFornecedor({ f }) {
+  const cor = f.cor || '#374151';
+  return (
+    <Link
+      href={`/produtos/${f.codigo}`}
+      className='group block bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden active:scale-[0.99] transition hover:shadow-md'
+    >
+      {/* Mobile: linha horizontal; desktop: cartão vertical */}
+      <div className='flex sm:flex-col items-center sm:items-stretch'>
+        <div
+          className='w-24 sm:w-auto self-stretch sm:h-28 flex items-center justify-center shrink-0'
+          style={{ background: `linear-gradient(135deg, ${cor}, ${cor}cc)` }}
+        >
+          <div className='bg-white rounded-full p-1 shadow'>
+            <Avatar fornecedor={f} tamanho={52} />
+          </div>
+        </div>
+        <div className='flex-1 min-w-0 p-3 sm:p-4 flex items-center sm:block gap-3'>
+          <div className='min-w-0 flex-1'>
+            <p className='font-bold text-gray-900 truncate'>{f.nome}</p>
+            <p className='text-xs text-gray-500 truncate'>
+              {f.especialidade || f.descricao || 'Ver catálogo'}
+            </p>
+            <p className='text-[11px] text-gray-400 mt-1'>
+              {f.totalProdutos} produto(s)
+              {f.meusPedidos > 0 && ` · ${f.meusPedidos} pedido(s) seus`}
+              {f.prazoEntregaDias ? ` · ${f.prazoEntregaDias} d` : ''}
+            </p>
+          </div>
+          <span
+            className='shrink-0 sm:mt-3 sm:w-full inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 text-sm font-semibold text-white'
+            style={{ background: cor }}
+          >
+            Pedir
+            <svg
+              className='w-4 h-4 group-hover:translate-x-0.5 transition'
+              fill='none'
+              stroke='currentColor'
+              strokeWidth={2}
+              viewBox='0 0 24 24'
+            >
+              <path strokeLinecap='round' strokeLinejoin='round' d='M9 5l7 7-7 7' />
+            </svg>
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function Avatar({ fornecedor, tamanho }) {
+  const cor = fornecedor?.cor || '#374151';
+  const iniciais = (fornecedor?.nome || '?')
+    .split(/[\s-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(p => p[0])
+    .join('')
+    .toUpperCase();
+  return fornecedor?.logo ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={fornecedor.logo}
+      alt={fornecedor.nome}
+      className='rounded-full object-cover bg-white shrink-0'
+      style={{ width: tamanho, height: tamanho }}
+    />
+  ) : (
+    <div
+      className='rounded-full flex items-center justify-center text-white font-bold shrink-0'
+      style={{ width: tamanho, height: tamanho, background: cor, fontSize: tamanho * 0.36 }}
+    >
+      {iniciais}
+    </div>
+  );
+}
+
+const BadgeStatus = ({ status }) => {
+  const s = STATUS[status] || { label: status, cls: 'bg-gray-100 text-gray-700 ring-gray-200' };
+  return (
+    <span
+      className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ring-1 ${s.cls}`}
+    >
+      {s.label}
+    </span>
+  );
+};
+
+const Stat = ({ rotulo, valor, pequeno }) => (
+  <div className='bg-gray-50 rounded-xl p-3'>
+    <p className={`font-bold text-gray-900 tabular-nums ${pequeno ? 'text-base' : 'text-2xl'}`}>
+      {valor}
+    </p>
+    <p className='text-[11px] uppercase tracking-wide text-gray-500'>{rotulo}</p>
+  </div>
+);
+
+const Linha = ({ rotulo, valor, tom = 'text-gray-900' }) => (
+  <li className='flex justify-between list-none'>
+    <span className='text-gray-600'>{rotulo}</span>
+    <span className={`font-semibold tabular-nums ${tom}`}>{valor}</span>
+  </li>
+);
+
+const Atalho = ({ href, rotulo }) => (
+  <Link
+    href={href}
+    className='px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 text-center active:bg-gray-100 hover:bg-gray-50'
+  >
+    {rotulo}
+  </Link>
+);
+
+const Num = ({ n }) => (
+  <span className='w-6 h-6 rounded-full bg-gray-900 text-white text-xs font-bold flex items-center justify-center shrink-0'>
+    {n}
+  </span>
+);
+
+function Esqueleto() {
+  return (
+    <div className='animate-pulse space-y-4'>
+      <div className='h-16 bg-white rounded-2xl border border-gray-200' />
+      <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'>
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} className='h-24 sm:h-52 bg-white rounded-2xl border border-gray-200' />
+        ))}
+      </div>
+      <div className='h-48 bg-white rounded-2xl border border-gray-200' />
+    </div>
   );
 }

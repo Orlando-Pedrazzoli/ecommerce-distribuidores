@@ -16,17 +16,16 @@ export default function Layout({ children }) {
   return (
     <div className='min-h-screen bg-gray-50 flex flex-col'>
       <Navbar />
-      <main className='flex-grow'>{children}</main>
+      {/* pb-24 no mobile: espaço para a tab bar fixa (Navbar) */}
+      <main className='flex-grow pb-24 md:pb-0'>{children}</main>
 
       {/* Footer com ID para navegação */}
       <footer
         id='footer'
-        className='bg-gray-800 text-white text-center py-6 mt-auto'
+        className='hidden md:block bg-gray-800 text-white text-center py-6 mt-auto'
       >
         <div className='max-w-6xl mx-auto px-4'>
-          <p className='mb-2'>
-            &copy; 2025 Elite Surfing Portal. Todos os direitos reservados.
-          </p>
+          <p className='mb-2'>&copy; 2025 Elite Surfing Portal. Todos os direitos reservados.</p>
           <p>
             <a
               href='https://orlandopedrazzoli.com'

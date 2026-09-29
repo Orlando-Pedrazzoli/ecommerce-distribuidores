@@ -1,25 +1,49 @@
-// components/Navbar.js
+// components/Navbar.js - NAVEGAÇÃO DO PORTAL (DISTRIBUIDOR + ADMIN)
 // ===================================
-// ATUALIZADO: Link para Tabela de Preços
+// Desktop: barra superior com links, carrinho e menu do utilizador.
+// Mobile: barra superior compacta (logo + carrinho) e TAB BAR fixa em baixo
+// com Início · Pedidos · Carrinho · Pagamentos · Mais. Os distribuidores
+// fazem pedidos sobretudo pelo telemóvel, por isso o polegar manda.
 
 import Link from 'next/link';
 import Image from 'next/image';
 import { useCart } from '../pages/_app';
 import { useRouter } from 'next/router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Cart from './Cart';
 
 export default function Navbar() {
   const { cartCount } = useCart();
   const router = useRouter();
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [menuMaisAberto, setMenuMaisAberto] = useState(false);
+  const [menuUserAberto, setMenuUserAberto] = useState(false);
   const [user, setUser] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [pendencias, setPendencias] = useState(0);
+  const menuUserRef = useRef(null);
 
   useEffect(() => {
     buscarDadosUsuario();
+  }, []);
+
+  // Fecha menus ao navegar
+  useEffect(() => {
+    const fechar = () => {
+      setMenuMaisAberto(false);
+      setMenuUserAberto(false);
+    };
+    router.events.on('routeChangeStart', fechar);
+    return () => router.events.off('routeChangeStart', fechar);
+  }, [router.events]);
+
+  // Fecha o menu do utilizador ao clicar fora
+  useEffect(() => {
+    const handler = e => {
+      if (menuUserRef.current && !menuUserRef.current.contains(e.target)) setMenuUserAberto(false);
+    };
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
   }, []);
 
   const buscarDadosUsuario = async () => {
@@ -29,10 +53,7 @@ export default function Navbar() {
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
-        
-        if (data.user?.tipo === 'distribuidor') {
-          buscarPendencias();
-        }
+        if (data.user?.tipo === 'distribuidor') buscarPendencias();
       } else {
         setUser(null);
       }
@@ -49,8 +70,7 @@ export default function Navbar() {
       const response = await fetch('/api/user/pagamentos');
       if (response.ok) {
         const data = await response.json();
-        const total = data.resumo?.totalPendente || 0;
-        setPendencias(total);
+        setPendencias(data.resumo?.totalPendente || 0);
       }
     } catch (error) {
       console.error('Erro ao buscar pendências:', error);
@@ -60,7 +80,6 @@ export default function Navbar() {
   const handleLogout = async () => {
     if (!confirm('Deseja realmente sair?')) return;
     try {
-      // O cookie de sessão é HttpOnly: só o servidor consegue apagá-lo
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch (error) {
       console.error('Erro ao encerrar sessão:', error);
@@ -70,393 +89,359 @@ export default function Navbar() {
     }
   };
 
-  const toggleCart = () => {
-    setIsCartOpen(!isCartOpen);
-  };
-
-  const isActive = path => {
-    return router.pathname === path;
-  };
+  const isActive = path =>
+    path === '/dashboard' ? router.pathname === path : router.pathname.startsWith(path);
 
   if (loadingUser) {
-    return (
-      <nav className='bg-gray-800 text-white shadow-lg'>
-        <div className='max-w-7xl mx-auto px-4'>
-          <div className='flex justify-center items-center py-4'>
-            <div className='animate-pulse text-gray-400'>Carregando...</div>
-          </div>
-        </div>
-      </nav>
-    );
+    return <div className='h-14 bg-gray-900' />;
   }
+  if (!user) return null;
 
-  if (!user) {
-    return null;
-  }
+  const ehDistribuidor = user.tipo === 'distribuidor';
+
+  const linksDesktop = ehDistribuidor
+    ? [
+        { href: '/dashboard', label: 'Início', Icone: IconeInicio },
+        { href: '/meus-pedidos', label: 'Pedidos', Icone: IconePedidos },
+        {
+          href: '/pagamentos',
+          label: 'Pagamentos',
+          Icone: IconePagamentos,
+          alerta: pendencias > 0,
+        },
+        { href: '/tabela-precos', label: 'Tabela de preços', Icone: IconeTabela },
+      ]
+    : [{ href: '/admin', label: 'Painel admin', Icone: IconeInicio }];
 
   return (
     <>
-      <nav className='sticky top-0 bg-gray-800 text-white shadow-lg z-40'>
+      {/* ═══════════ BARRA SUPERIOR ═══════════ */}
+      <nav className='sticky top-0 z-40 bg-gray-900 text-white shadow-md'>
         <div className='max-w-7xl mx-auto px-4'>
-          <div className='flex justify-between items-center py-4'>
+          <div className='h-14 flex items-center justify-between gap-3'>
             {/* Logo */}
             <Link
-              href='/dashboard'
-              className='flex items-center hover:opacity-80 transition'
+              href={ehDistribuidor ? '/dashboard' : '/admin'}
+              className='flex items-center shrink-0 hover:opacity-80 transition'
             >
-              <div className='relative'>
-                <Image
-                  src='/logo.png'
-                  alt='Elite Surfing Logo'
-                  width={180}
-                  height={40}
-                  className='hidden md:block h-8 w-auto object-contain'
-                  priority
-                />
-                <Image
-                  src='/logo.png'
-                  alt='Elite Surfing Logo'
-                  width={120}
-                  height={28}
-                  className='block md:hidden h-6 w-auto object-contain'
-                  priority
-                />
-              </div>
+              <Image
+                src='/logo.png'
+                alt='Elite Surfing'
+                width={150}
+                height={34}
+                className='h-7 md:h-8 w-auto object-contain'
+                priority
+              />
             </Link>
 
-            {/* Desktop Menu */}
-            <div className='hidden md:flex items-center space-x-4'>
-              {user?.tipo === 'distribuidor' && (
-                <>
-                  {/* Dashboard */}
-                  <Link
-                    href='/dashboard'
-                    className={`px-3 py-2 rounded transition flex items-center gap-1 ${
-                      isActive('/dashboard')
-                        ? 'bg-blue-600 text-white'
-                        : 'hover:bg-gray-700'
-                    }`}
-                  >
-                    <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' />
-                    </svg>
-                    Início
-                  </Link>
-
-                  {/* Meus Pedidos */}
-                  <Link
-                    href='/meus-pedidos'
-                    className={`px-3 py-2 rounded transition flex items-center gap-1 ${
-                      isActive('/meus-pedidos')
-                        ? 'bg-green-600 text-white'
-                        : 'hover:bg-gray-700'
-                    }`}
-                  >
-                    <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' />
-                    </svg>
-                    Pedidos
-                  </Link>
-
-                  {/* Pagamentos */}
-                  <Link
-                    href='/pagamentos'
-                    className={`relative px-3 py-2 rounded transition flex items-center gap-1 ${
-                      isActive('/pagamentos')
-                        ? 'bg-yellow-600 text-white'
-                        : 'hover:bg-gray-700'
-                    }`}
-                  >
-                    <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' />
-                    </svg>
-                    Pagamentos
-                    {pendencias > 0 && (
-                      <span className='absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold animate-pulse'>
-                        !
-                      </span>
-                    )}
-                  </Link>
-
-                  {/* Tabela de Preços */}
-                  <Link
-                    href='/tabela-precos'
-                    className={`px-3 py-2 rounded transition flex items-center gap-1 ${
-                      isActive('/tabela-precos')
-                        ? 'bg-purple-600 text-white'
-                        : 'hover:bg-gray-700'
-                    }`}
-                  >
-                    <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z' />
-                    </svg>
-                    Tabela de Preços
-                  </Link>
-                </>
-              )}
-
-              {/* Link Admin */}
-              {user?.tipo === 'admin' && (
+            {/* Links desktop */}
+            <div className='hidden md:flex items-center gap-1 flex-1 justify-center'>
+              {linksDesktop.map(({ href, label, Icone, alerta }) => (
                 <Link
-                  href='/admin'
-                  className={`px-3 py-2 rounded transition ${
-                    isActive('/admin')
-                      ? 'bg-red-600 text-white'
-                      : 'bg-red-500 hover:bg-red-600'
+                  key={href}
+                  href={href}
+                  className={`relative px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${
+                    isActive(href)
+                      ? 'bg-white text-gray-900'
+                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                   }`}
                 >
-                  Admin
+                  <Icone className='w-4 h-4' />
+                  {label}
+                  {alerta && (
+                    <span className='absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-gray-900' />
+                  )}
                 </Link>
-              )}
+              ))}
+            </div>
 
-              {/* Cart Button */}
-              {user?.tipo === 'distribuidor' && (
+            {/* Direita: carrinho + utilizador */}
+            <div className='flex items-center gap-1'>
+              {ehDistribuidor && (
                 <button
-                  onClick={toggleCart}
-                  className='relative p-2 hover:bg-gray-700 rounded transition'
+                  onClick={() => setIsCartOpen(true)}
+                  className='relative p-2.5 rounded-lg hover:bg-gray-800 transition'
                   title='Abrir carrinho'
+                  aria-label='Carrinho'
                 >
-                  <svg className='w-6 h-6' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z' />
-                  </svg>
+                  <IconeCarrinho className='w-6 h-6' />
                   {cartCount > 0 && (
-                    <span className='absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold animate-pulse'>
+                    <span className='absolute -top-0.5 -right-0.5 bg-blue-500 text-white rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center text-[11px] font-bold ring-2 ring-gray-900'>
                       {cartCount > 99 ? '99+' : cartCount}
                     </span>
                   )}
                 </button>
               )}
 
-              {/* User Info */}
-              <div className='text-sm border-l border-gray-600 pl-4 ml-2'>
-                <span className='text-gray-300'>Olá, </span>
-                <span className='font-medium'>{user.nome}</span>
-                <div className='text-xs text-gray-400'>
-                  <span className='capitalize'>{user.tipo}</span>
-                  <span className='mx-1'>·</span>
-                  <Link href='/alterar-senha' className='hover:text-white hover:underline'>
-                    Alterar senha
-                  </Link>
-                </div>
-              </div>
-
-              {/* Logout Button */}
-              <button
-                onClick={handleLogout}
-                className='bg-gray-600 px-4 py-2 rounded hover:bg-gray-700 transition flex items-center gap-2'
-              >
-                <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                  <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1' />
-                </svg>
-                Sair
-              </button>
-            </div>
-
-            {/* Mobile Menu Button */}
-            <div className='md:hidden flex items-center space-x-2'>
-              {user?.tipo === 'distribuidor' && (
+              {/* Menu do utilizador (desktop) */}
+              <div className='relative hidden md:block' ref={menuUserRef}>
                 <button
-                  onClick={toggleCart}
-                  className='relative p-2 hover:bg-gray-700 rounded transition'
+                  onClick={() => setMenuUserAberto(v => !v)}
+                  className='flex items-center gap-2 pl-2 pr-1 py-1 rounded-lg hover:bg-gray-800 transition'
                 >
-                  <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z' />
+                  <span className='w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-sm font-bold'>
+                    {(user.nome || '?').charAt(0).toUpperCase()}
+                  </span>
+                  <span className='text-sm font-medium max-w-[140px] truncate'>{user.nome}</span>
+                  <svg
+                    className='w-4 h-4 text-gray-400'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth={2}
+                    viewBox='0 0 24 24'
+                  >
+                    <path strokeLinecap='round' strokeLinejoin='round' d='M19 9l-7 7-7-7' />
                   </svg>
-                  {cartCount > 0 && (
-                    <span className='absolute -top-1 -right-1 bg-red-500 text-white rounded-full min-w-5 h-5 px-1 flex items-center justify-center text-xs font-bold'>
-                      {cartCount > 99 ? '99+' : cartCount}
-                    </span>
-                  )}
                 </button>
-              )}
-
-              {/* Hamburger Menu */}
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className='p-2 hover:bg-gray-700 rounded transition'
-              >
-                <div className='space-y-1'>
-                  <span
-                    className={`block w-5 h-0.5 bg-white transition-transform ${
-                      isMobileMenuOpen ? 'rotate-45 translate-y-1.5' : ''
-                    }`}
-                  ></span>
-                  <span
-                    className={`block w-5 h-0.5 bg-white transition-opacity ${
-                      isMobileMenuOpen ? 'opacity-0' : ''
-                    }`}
-                  ></span>
-                  <span
-                    className={`block w-5 h-0.5 bg-white transition-transform ${
-                      isMobileMenuOpen ? '-rotate-45 -translate-y-1.5' : ''
-                    }`}
-                  ></span>
-                </div>
-              </button>
-            </div>
-          </div>
-
-          {/* Mobile Menu */}
-          <div
-            className={`md:hidden transition-all duration-200 ${
-              isMobileMenuOpen ? 'max-h-[36rem] pb-4' : 'max-h-0 overflow-hidden'
-            }`}
-          >
-            <div className='space-y-2 border-t border-gray-700 pt-4'>
-              {/* User Info Mobile */}
-              <div className='px-3 py-2 text-sm text-gray-300 border-b border-gray-700 pb-2 mb-2'>
-                Olá, <span className='font-medium text-white'>{user.nome}</span>
-                <div className='text-xs text-gray-400 capitalize'>
-                  {user.tipo}
-                </div>
+                {menuUserAberto && (
+                  <div className='absolute right-0 mt-1 w-56 bg-white text-gray-800 rounded-lg shadow-xl border border-gray-200 overflow-hidden'>
+                    <div className='px-4 py-3 border-b border-gray-100'>
+                      <p className='text-sm font-semibold truncate'>{user.nome}</p>
+                      <p className='text-xs text-gray-500 truncate'>{user.email}</p>
+                    </div>
+                    {ehDistribuidor && (
+                      <Link
+                        href='/tabela-precos'
+                        className='block px-4 py-2.5 text-sm hover:bg-gray-50'
+                      >
+                        Tabela de preços
+                      </Link>
+                    )}
+                    <Link
+                      href='/alterar-senha'
+                      className='block px-4 py-2.5 text-sm hover:bg-gray-50'
+                    >
+                      Alterar senha
+                    </Link>
+                    {user.tipo === 'admin' && (
+                      <Link href='/admin' className='block px-4 py-2.5 text-sm hover:bg-gray-50'>
+                        Painel admin
+                      </Link>
+                    )}
+                    <button
+                      onClick={handleLogout}
+                      className='w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 border-t border-gray-100'
+                    >
+                      Sair
+                    </button>
+                  </div>
+                )}
               </div>
-
-              {/* Links para Distribuidores */}
-              {user?.tipo === 'distribuidor' && (
-                <>
-                  <Link
-                    href='/dashboard'
-                    className={`block px-3 py-2 rounded transition ${
-                      isActive('/dashboard')
-                        ? 'bg-blue-600 text-white'
-                        : 'hover:bg-gray-700'
-                    }`}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    <span className='flex items-center gap-2'>
-                      <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' />
-                      </svg>
-                      Dashboard
-                    </span>
-                  </Link>
-
-                  <Link
-                    href='/meus-pedidos'
-                    className={`block px-3 py-2 rounded transition ${
-                      isActive('/meus-pedidos')
-                        ? 'bg-green-600 text-white'
-                        : 'hover:bg-gray-700'
-                    }`}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    <span className='flex items-center gap-2'>
-                      <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' />
-                      </svg>
-                      Meus Pedidos
-                    </span>
-                  </Link>
-
-                  <Link
-                    href='/pagamentos'
-                    className={`block px-3 py-2 rounded transition ${
-                      isActive('/pagamentos')
-                        ? 'bg-yellow-600 text-white'
-                        : 'hover:bg-gray-700'
-                    }`}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    <span className='flex items-center justify-between'>
-                      <span className='flex items-center gap-2'>
-                        <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' />
-                        </svg>
-                        Pagamentos
-                      </span>
-                      {pendencias > 0 && (
-                        <span className='bg-red-500 text-white rounded-full px-2 py-0.5 text-xs font-bold'>
-                          Pendente
-                        </span>
-                      )}
-                    </span>
-                  </Link>
-
-                  {/* Tabela de Preços - Mobile */}
-                  <Link
-                    href='/tabela-precos'
-                    className={`block px-3 py-2 rounded transition ${
-                      isActive('/tabela-precos')
-                        ? 'bg-purple-600 text-white'
-                        : 'hover:bg-gray-700'
-                    }`}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    <span className='flex items-center gap-2'>
-                      <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z' />
-                      </svg>
-                      Tabela de Preços
-                    </span>
-                  </Link>
-
-                  <Link
-                    href='/checkout'
-                    className={`block px-3 py-2 rounded transition ${
-                      isActive('/checkout')
-                        ? 'bg-orange-600 text-white'
-                        : 'hover:bg-gray-700'
-                    }`}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    <span className='flex items-center gap-2'>
-                      <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z' />
-                      </svg>
-                      Carrinho {cartCount > 0 && `(${cartCount})`}
-                    </span>
-                  </Link>
-                </>
-              )}
-
-              {/* Link Admin */}
-              {user?.tipo === 'admin' && (
-                <Link
-                  href='/admin'
-                  className={`block px-3 py-2 rounded transition ${
-                    isActive('/admin')
-                      ? 'bg-red-600 text-white'
-                      : 'bg-red-500 hover:bg-red-600'
-                  }`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  Admin
-                </Link>
-              )}
-
-              {/* Alterar senha - Mobile */}
-              <Link
-                href='/alterar-senha'
-                className='block px-3 py-2 rounded transition hover:bg-gray-700'
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                🔐 Alterar senha
-              </Link>
-
-              {/* Logout */}
-              <button
-                onClick={() => {
-                  handleLogout();
-                  setIsMobileMenuOpen(false);
-                }}
-                className='block w-full text-left px-3 py-2 bg-gray-600 rounded hover:bg-gray-700 transition'
-              >
-                <span className='flex items-center gap-2'>
-                  <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1' />
-                  </svg>
-                  Sair
-                </span>
-              </button>
             </div>
           </div>
         </div>
       </nav>
 
-      {/* Cart Sidebar */}
-      {user?.tipo === 'distribuidor' && (
-        <Cart isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+      {/* ═══════════ TAB BAR MOBILE (só distribuidor) ═══════════ */}
+      {ehDistribuidor && (
+        <>
+          <nav
+            className='md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]'
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+          >
+            <div className='grid grid-cols-5 h-16'>
+              <TabItem
+                href='/dashboard'
+                label='Início'
+                Icone={IconeInicio}
+                ativo={isActive('/dashboard')}
+              />
+              <TabItem
+                href='/meus-pedidos'
+                label='Pedidos'
+                Icone={IconePedidos}
+                ativo={isActive('/meus-pedidos')}
+              />
+              <button
+                onClick={() => setIsCartOpen(true)}
+                className='relative flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-gray-500 active:bg-gray-100'
+              >
+                <span className='relative -mt-5 w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg ring-4 ring-white'>
+                  <IconeCarrinho className='w-6 h-6' />
+                  {cartCount > 0 && (
+                    <span className='absolute -top-1 -right-1 bg-red-500 text-white rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center text-[11px] font-bold ring-2 ring-white'>
+                      {cartCount > 99 ? '99+' : cartCount}
+                    </span>
+                  )}
+                </span>
+                Carrinho
+              </button>
+              <TabItem
+                href='/pagamentos'
+                label='Pagamentos'
+                Icone={IconePagamentos}
+                ativo={isActive('/pagamentos')}
+                alerta={pendencias > 0}
+              />
+              <button
+                onClick={() => setMenuMaisAberto(true)}
+                className={`flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium active:bg-gray-100 ${
+                  menuMaisAberto || isActive('/tabela-precos') || isActive('/alterar-senha')
+                    ? 'text-blue-600'
+                    : 'text-gray-500'
+                }`}
+              >
+                <IconeMais className='w-6 h-6' />
+                Mais
+              </button>
+            </div>
+          </nav>
+
+          {/* Folha "Mais" */}
+          {menuMaisAberto && (
+            <div className='md:hidden fixed inset-0 z-50' onClick={() => setMenuMaisAberto(false)}>
+              <div className='absolute inset-0 bg-black/40' />
+              <div
+                className='absolute bottom-0 inset-x-0 bg-white rounded-t-2xl shadow-2xl p-4'
+                style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+                onClick={e => e.stopPropagation()}
+              >
+                <div className='mx-auto w-10 h-1 rounded-full bg-gray-300 mb-4' />
+                <div className='flex items-center gap-3 px-1 pb-3 mb-2 border-b border-gray-100'>
+                  <span className='w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold'>
+                    {(user.nome || '?').charAt(0).toUpperCase()}
+                  </span>
+                  <div className='min-w-0'>
+                    <p className='text-sm font-semibold text-gray-900 truncate'>{user.nome}</p>
+                    <p className='text-xs text-gray-500 truncate'>{user.email}</p>
+                  </div>
+                </div>
+                <ItemFolha
+                  href='/tabela-precos'
+                  Icone={IconeTabela}
+                  titulo='Tabela de preços'
+                  desc='Monte e partilhe a sua tabela de revenda'
+                />
+                <ItemFolha
+                  href='/alterar-senha'
+                  Icone={IconeCadeado}
+                  titulo='Alterar senha'
+                  desc='Segurança da sua conta'
+                />
+                <button
+                  onClick={handleLogout}
+                  className='w-full mt-2 flex items-center gap-3 px-3 py-3 rounded-xl text-red-600 active:bg-red-50'
+                >
+                  <IconeSair className='w-5 h-5' />
+                  <span className='text-sm font-semibold'>Sair</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
+
+      {/* Carrinho */}
+      {ehDistribuidor && <Cart isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />}
     </>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// SUBCOMPONENTES
+// ══════════════════════════════════════════════════════════════
+const TabItem = ({ href, label, Icone, ativo, alerta }) => (
+  <Link
+    href={href}
+    className={`relative flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium active:bg-gray-100 ${
+      ativo ? 'text-blue-600' : 'text-gray-500'
+    }`}
+  >
+    <Icone className='w-6 h-6' />
+    {label}
+    {alerta && (
+      <span className='absolute top-2 right-1/2 translate-x-4 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white' />
+    )}
+  </Link>
+);
+
+const ItemFolha = ({ href, Icone, titulo, desc }) => (
+  <Link href={href} className='flex items-center gap-3 px-3 py-3 rounded-xl active:bg-gray-100'>
+    <span className='w-10 h-10 rounded-lg bg-gray-100 text-gray-700 flex items-center justify-center'>
+      <Icone className='w-5 h-5' />
+    </span>
+    <span className='min-w-0'>
+      <span className='block text-sm font-semibold text-gray-900'>{titulo}</span>
+      <span className='block text-xs text-gray-500'>{desc}</span>
+    </span>
+  </Link>
+);
+
+// ── Ícones ──
+const p = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.8,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+  viewBox: '0 0 24 24',
+};
+function IconeInicio({ className }) {
+  return (
+    <svg className={className} {...p}>
+      <path d='M3 11 12 3l9 8' />
+      <path d='M5 10v10h5v-6h4v6h5V10' />
+    </svg>
+  );
+}
+function IconePedidos({ className }) {
+  return (
+    <svg className={className} {...p}>
+      <path d='M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z' />
+      <path d='M3 6h18' />
+      <path d='M16 10a4 4 0 0 1-8 0' />
+    </svg>
+  );
+}
+function IconePagamentos({ className }) {
+  return (
+    <svg className={className} {...p}>
+      <rect x='2' y='6' width='20' height='12' rx='2' />
+      <path d='M2 10h20' />
+      <path d='M6 15h4' />
+    </svg>
+  );
+}
+function IconeTabela({ className }) {
+  return (
+    <svg className={className} {...p}>
+      <rect x='4' y='3' width='16' height='18' rx='2' />
+      <path d='M8 7h8M8 11h8M8 15h5' />
+    </svg>
+  );
+}
+function IconeCarrinho({ className }) {
+  return (
+    <svg className={className} {...p}>
+      <circle cx='9' cy='20' r='1.5' />
+      <circle cx='18' cy='20' r='1.5' />
+      <path d='M2 3h3l2.6 11.4a1 1 0 0 0 1 .8h9.6a1 1 0 0 0 1-.8L21 7H6' />
+    </svg>
+  );
+}
+function IconeMais({ className }) {
+  return (
+    <svg className={className} {...p}>
+      <circle cx='5' cy='12' r='1.5' fill='currentColor' stroke='none' />
+      <circle cx='12' cy='12' r='1.5' fill='currentColor' stroke='none' />
+      <circle cx='19' cy='12' r='1.5' fill='currentColor' stroke='none' />
+    </svg>
+  );
+}
+function IconeCadeado({ className }) {
+  return (
+    <svg className={className} {...p}>
+      <rect x='5' y='11' width='14' height='10' rx='2' />
+      <path d='M8 11V7a4 4 0 0 1 8 0v4' />
+    </svg>
+  );
+}
+function IconeSair({ className }) {
+  return (
+    <svg className={className} {...p}>
+      <path d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4' />
+      <path d='M16 17l5-5-5-5' />
+      <path d='M21 12H9' />
+    </svg>
   );
 }
