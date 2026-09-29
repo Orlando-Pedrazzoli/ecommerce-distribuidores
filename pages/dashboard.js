@@ -83,7 +83,7 @@ export default function Dashboard() {
           <header className='mb-4 sm:mb-6'>
             <p className='text-sm text-gray-500'>{saudacao()},</p>
             <h1 className='text-2xl sm:text-3xl font-bold text-gray-900 leading-tight'>
-              {primeiroNome || 'distribuidor'} 👋
+              {primeiroNome || 'distribuidor'}
             </h1>
           </header>
 
@@ -122,7 +122,7 @@ export default function Dashboard() {
                     Nenhum fornecedor disponível no momento.
                   </div>
                 ) : (
-                  <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4'>
+                  <div className='flex flex-wrap justify-center gap-3 sm:gap-4'>
                     {dados.fornecedores.map(f => (
                       <CartaoFornecedor key={f._id} f={f} />
                     ))}
@@ -349,7 +349,7 @@ function CartaoFornecedor({ f }) {
   return (
     <Link
       href={`/produtos/${f.codigo}`}
-      className='group block bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden active:scale-[0.99] transition hover:shadow-md'
+      className='group block w-full sm:w-[calc(50%-0.5rem)] lg:w-[calc(25%-0.75rem)] max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden active:scale-[0.99] transition hover:shadow-md'
     >
       {/* Mobile: linha horizontal; desktop: cartão vertical */}
       <div className='flex sm:flex-col items-center sm:items-stretch'>
