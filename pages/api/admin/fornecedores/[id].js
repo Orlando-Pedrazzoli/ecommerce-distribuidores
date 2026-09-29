@@ -3,8 +3,8 @@
 // GET    -> detalhe + contagens
 // PUT    -> editar todos os campos (o código só muda se não houver produtos/pedidos)
 // PATCH  { acao: 'ativar' | 'desativar' }
-// DELETE -> apaga DEFINITIVAMENTE, só se não tiver produtos nem pedidos.
-//           Com histórico devolve 409 e o admin deve desativar em vez de apagar.
+// DELETE { confirmar: <código> } -> apaga DEFINITIVAMENTE o fornecedor,
+//           os seus produtos e os pedidos feitos a ele (cascata, sem recuperação).
 
 import mongoose from 'mongoose';
 import dbConnect from '../../../../lib/mongodb';
@@ -105,18 +105,37 @@ async function handler(req, res) {
     });
   }
 
-  // ── DELETE ──
+  // ── DELETE: exclusão DEFINITIVA (em cascata) ──
+  // Body: { confirmar: <código do fornecedor> }. Apaga o fornecedor, todos os
+  // seus produtos e todos os pedidos feitos a ele. Não há recuperação.
   if (req.method === 'DELETE') {
+    const confirmar = String(req.body?.confirmar || req.query.confirmar || '')
+      .trim()
+      .toUpperCase();
     const { produtos, pedidos } = await contar();
-    if (produtos > 0 || pedidos > 0) {
-      return res.status(409).json({
-        message: `Não é possível apagar: o fornecedor tem ${produtos} produto(s) e ${pedidos} pedido(s) associados. Desative-o em vez de apagar.`,
+
+    if (confirmar !== fornecedor.codigo) {
+      return res.status(400).json({
+        message: `Para apagar definitivamente escreva o código "${fornecedor.codigo}" na confirmação.`,
         stats: { produtos, pedidos },
       });
     }
+
+    const [rProdutos, rPedidos] = await Promise.all([
+      Produto.deleteMany({ fornecedorId: fornecedor._id }),
+      Pedido.deleteMany({ fornecedorId: fornecedor._id }),
+    ]);
     await fornecedor.deleteOne();
-    console.log(`🗑️ Fornecedor ${fornecedor.codigo} apagado por ${req.user.usuario}`);
-    return res.status(200).json({ success: true, message: 'Fornecedor apagado' });
+
+    console.log(
+      `🗑️ Fornecedor ${fornecedor.codigo} APAGADO por ${req.user.usuario} ` +
+        `(${rProdutos.deletedCount} produtos, ${rPedidos.deletedCount} pedidos)`,
+    );
+    return res.status(200).json({
+      success: true,
+      message: `Fornecedor "${fornecedor.nome}" apagado definitivamente (${rProdutos.deletedCount} produto(s) e ${rPedidos.deletedCount} pedido(s) removidos).`,
+      apagados: { produtos: rProdutos.deletedCount, pedidos: rPedidos.deletedCount },
+    });
   }
 
   return res.status(405).json({ message: 'Method not allowed' });

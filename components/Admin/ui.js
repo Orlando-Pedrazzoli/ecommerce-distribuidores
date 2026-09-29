@@ -3,7 +3,7 @@
 // Cartões, KPIs, badges, modal, campos de formulário, tabela e formatadores.
 // Tudo o que as páginas admin repetem vive aqui para o visual ser consistente.
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 // ══════════════════════════════════════════════════════════════
 // FORMATADORES
@@ -245,6 +245,51 @@ export const Modal = ({
         )}
       </div>
     </div>
+  );
+};
+
+// Modal de exclusão definitiva: obriga a escrever a palavra de confirmação
+export const ModalApagar = ({ titulo, palavra, loading, onFechar, onConfirmar, children }) => {
+  const [texto, setTexto] = useState('');
+  const ok = texto.trim().toLowerCase() === String(palavra).toLowerCase();
+  return (
+    <Modal
+      titulo={titulo}
+      onFechar={onFechar}
+      bloqueado={loading}
+      largura='max-w-md'
+      rodape={
+        <>
+          <Botao variante='secundario' onClick={onFechar} disabled={loading}>
+            Cancelar
+          </Botao>
+          <Botao
+            variante='perigo'
+            onClick={() => onConfirmar(texto.trim())}
+            loading={loading}
+            disabled={!ok}
+          >
+            Apagar definitivamente
+          </Botao>
+        </>
+      }
+    >
+      <div className='space-y-4'>
+        <Alerta tipo='erro'>
+          <strong>Esta ação não pode ser desfeita.</strong> {children}
+        </Alerta>
+        <Campo label={`Para confirmar, escreva ${palavra}`}>
+          <Input
+            value={texto}
+            onChange={e => setTexto(e.target.value)}
+            placeholder={String(palavra)}
+            className='font-mono'
+            autoFocus
+            onKeyDown={e => e.key === 'Enter' && ok && !loading && onConfirmar(texto.trim())}
+          />
+        </Campo>
+      </div>
+    </Modal>
   );
 };
 

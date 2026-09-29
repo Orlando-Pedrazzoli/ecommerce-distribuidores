@@ -17,6 +17,7 @@ import {
   Textarea,
   Alerta,
   Modal,
+  ModalApagar,
   Vazio,
   Carregando,
   LogoFornecedor,
@@ -220,21 +221,29 @@ export default function AdminFornecedores() {
     }
   };
 
-  const apagar = f => {
-    const temHistorico = (f.stats?.produtos || 0) > 0 || (f.stats?.pedidos || 0) > 0;
-    if (temHistorico) {
-      notificar(
-        'warning',
-        `"${f.nome}" tem ${f.stats.produtos} produto(s) e ${f.stats.pedidos} pedido(s). Só é possível desativar.`,
-      );
-      return;
+  // Exclusão definitiva: abre o modal de confirmação (escrever o código)
+  const [apagando, setApagando] = useState(null); // fornecedor
+  const apagar = f => setApagando(f);
+  const confirmarApagar = async confirmar => {
+    const f = apagando;
+    setAcaoEmCurso(f._id);
+    try {
+      const r = await fetch(`/api/admin/fornecedores/${f._id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmar }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.message || 'Erro');
+      notificar('success', data.message);
+      setApagando(null);
+      setModal(null);
+      carregar();
+    } catch (error) {
+      notificar('error', error.message);
+    } finally {
+      setAcaoEmCurso(null);
     }
-    executar(
-      f,
-      'DELETE',
-      null,
-      `Apagar definitivamente "${f.nome}" (${f.codigo})? Esta ação não pode ser desfeita.`,
-    );
   };
 
   // ── Render ──
@@ -748,6 +757,22 @@ export default function AdminFornecedores() {
           </form>
         </Modal>
       )}
+
+      {/* ═══════════ MODAL APAGAR DEFINITIVAMENTE ═══════════ */}
+      {apagando && (
+        <ModalApagar
+          titulo={`Apagar ${apagando.nome}`}
+          palavra={apagando.codigo}
+          loading={acaoEmCurso === apagando._id}
+          onFechar={() => setApagando(null)}
+          onConfirmar={confirmarApagar}
+        >
+          Serão apagados o fornecedor <strong>{apagando.nome}</strong>,{' '}
+          <strong>{apagando.stats?.produtos || 0} produto(s)</strong> e{' '}
+          <strong>{apagando.stats?.pedidos || 0} pedido(s)</strong> (incluindo o histórico
+          financeiro desses pedidos). Se só quer escondê-lo do portal, use <em>Desativar</em>.
+        </ModalApagar>
+      )}
     </AdminShell>
   );
 }
@@ -848,17 +873,15 @@ function CartaoFornecedor({ f, ocupado, onEditar, onToggleAtivo, onApagar, onVer
           >
             {f.ativo ? 'Desativar' : 'Ativar'}
           </Botao>
-          {(s.produtos || 0) === 0 && (s.pedidos || 0) === 0 && (
-            <Botao
-              variante='fantasma'
-              tamanho='sm'
-              onClick={onApagar}
-              className='text-red-600'
-              title='Apagar definitivamente'
-            >
-              Apagar
-            </Botao>
-          )}
+          <Botao
+            variante='fantasma'
+            tamanho='sm'
+            onClick={onApagar}
+            className='text-red-600'
+            title='Apagar definitivamente'
+          >
+            Apagar
+          </Botao>
         </div>
       </div>
     </div>

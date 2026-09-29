@@ -21,6 +21,7 @@ import {
   Textarea,
   Alerta,
   Modal,
+  ModalApagar,
   Tabela,
   Carregando,
   MenuAcoes,
@@ -241,6 +242,38 @@ export default function AdminDistribuidores() {
       const data = await r.json();
       if (!r.ok) throw new Error(data.message || 'Erro');
       notificar('success', data.message);
+      carregar();
+    } catch (error) {
+      notificar('error', error.message);
+    } finally {
+      setAcaoEmCurso(null);
+    }
+  };
+
+  // ── Exclusão definitiva ──
+  const [apagando, setApagando] = useState(null); // { ...u, pedidos }
+  const abrirApagar = async u => {
+    setMenuAberto(null);
+    let pedidos = null;
+    try {
+      const r = await fetch(`/api/admin/distribuidores/${u._id}`);
+      if (r.ok) pedidos = (await r.json()).stats?.pedidos ?? null;
+    } catch {}
+    setApagando({ ...u, pedidos });
+  };
+  const confirmarApagar = async confirmar => {
+    const u = apagando;
+    setAcaoEmCurso(`${u._id}:apagar`);
+    try {
+      const r = await fetch(`/api/admin/distribuidores/${u._id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmar }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.message || 'Erro');
+      notificar('success', data.message);
+      setApagando(null);
       carregar();
     } catch (error) {
       notificar('error', error.message);
@@ -496,6 +529,15 @@ export default function AdminDistribuidores() {
                                 perigo={u.ativo}
                               >
                                 {u.ativo ? '🚫 Desativar conta' : '✅ Ativar conta'}
+                              </ItemMenu>
+                            )}
+                            {u.tipo !== 'admin' && (
+                              <ItemMenu
+                                onClick={() => abrirApagar(u)}
+                                desc='Remove a conta e TODOS os seus pedidos'
+                                perigo
+                              >
+                                🗑️ Apagar definitivamente
                               </ItemMenu>
                             )}
                           </MenuAcoes>
@@ -788,6 +830,23 @@ export default function AdminDistribuidores() {
             <button type='submit' className='hidden' />
           </form>
         </Modal>
+      )}
+
+      {/* ═══════════ MODAL APAGAR DEFINITIVAMENTE ═══════════ */}
+      {apagando && (
+        <ModalApagar
+          titulo={`Apagar ${apagando.usuario}`}
+          palavra={apagando.usuario}
+          loading={acaoEmCurso === `${apagando._id}:apagar`}
+          onFechar={() => setApagando(null)}
+          onConfirmar={confirmarApagar}
+        >
+          Serão apagados a conta <strong>{apagando.nome}</strong> ({apagando.email}), os convites e
+          tokens associados e{' '}
+          <strong>{apagando.pedidos === null ? 'todos os' : apagando.pedidos} pedido(s)</strong>{' '}
+          desse distribuidor, incluindo o histórico financeiro. Se só quer bloquear o acesso, use{' '}
+          <em>Desativar conta</em>.
+        </ModalApagar>
       )}
     </AdminShell>
   );

@@ -2,7 +2,7 @@
 // ===================================
 // GET    -> detalhe
 // PUT    -> editar nome, email, telefone, endereco, ativo
-// DELETE -> desativar (soft delete; nunca apaga, os pedidos referenciam o usuário)
+// DELETE { confirmar: <usuario> } -> apaga DEFINITIVAMENTE a conta e os seus pedidos (cascata)
 // PATCH  { acao } -> 'reenviar-convite' | 'resetar-senha' | 'desbloquear'
 //                    | 'revogar-dispositivos' | 'ativar' | 'desativar'
 
@@ -10,6 +10,8 @@ import mongoose from 'mongoose';
 import dbConnect from '../../../../lib/mongodb';
 import User from '../../../../models/User';
 import AuthToken from '../../../../models/AuthToken';
+import Pedido from '../../../../models/Pedido';
+import Convite from '../../../../models/Convite';
 import { requireAdmin, criarTokenUsoUnico, TIPOS_TOKEN } from '../../../../lib/auth';
 import { enviarConviteDefinirSenha, enviarResetSenha } from '../../../../lib/authEmails';
 import { serializarDistribuidor } from '../../../../lib/usuarios';
@@ -32,7 +34,10 @@ async function handler(req, res) {
 
   // ── GET ──
   if (req.method === 'GET') {
-    return res.status(200).json({ success: true, distribuidor: serializarDistribuidor(user) });
+    const pedidos = await Pedido.countDocuments({ userId: user.usuario });
+    return res
+      .status(200)
+      .json({ success: true, distribuidor: serializarDistribuidor(user), stats: { pedidos } });
   }
 
   // ── PUT: editar dados ──
@@ -46,9 +51,11 @@ async function handler(req, res) {
       }
       if (email !== undefined) {
         const novoEmail = String(email).trim().toLowerCase();
-        if (!EMAIL_REGEX.test(novoEmail)) return res.status(400).json({ message: 'Email inválido' });
+        if (!EMAIL_REGEX.test(novoEmail))
+          return res.status(400).json({ message: 'Email inválido' });
         const duplicado = await User.findOne({ email: novoEmail, _id: { $ne: user._id } });
-        if (duplicado) return res.status(409).json({ message: 'Já existe uma conta com este email' });
+        if (duplicado)
+          return res.status(409).json({ message: 'Já existe uma conta com este email' });
         user.email = novoEmail;
       }
       if (telefone !== undefined) user.telefone = String(telefone).trim();
@@ -74,20 +81,46 @@ async function handler(req, res) {
     }
   }
 
-  // ── DELETE: desativar ──
+  // ── DELETE: exclusão DEFINITIVA (em cascata) ──
+  // Body: { confirmar: <usuario> }. Apaga a conta, os tokens, os convites com
+  // o mesmo email e TODOS os pedidos do distribuidor. Não há recuperação.
+  // Para manter o histórico use PATCH { acao: 'desativar' }.
   if (req.method === 'DELETE') {
     if (ehProprioAdmin) {
-      return res.status(400).json({ message: 'Você não pode desativar a sua própria conta' });
+      return res.status(400).json({ message: 'Você não pode apagar a sua própria conta' });
     }
-    user.ativo = false;
-    user.dispositivosConfiaveis = [];
-    await user.save();
-    await AuthToken.deleteMany({ userId: user._id, usadoEm: null });
-    console.log(`🚫 ${user.usuario} desativado por ${req.user.usuario}`);
+    if (user.tipo === 'admin') {
+      return res
+        .status(400)
+        .json({ message: 'Contas de administrador não podem ser apagadas por aqui' });
+    }
+
+    const confirmar = String(req.body?.confirmar || req.query.confirmar || '')
+      .trim()
+      .toLowerCase();
+    const totalPedidos = await Pedido.countDocuments({ userId: user.usuario });
+
+    if (confirmar !== user.usuario) {
+      return res.status(400).json({
+        message: `Para apagar definitivamente escreva o usuário "${user.usuario}" na confirmação.`,
+        stats: { pedidos: totalPedidos },
+      });
+    }
+
+    const [rPedidos] = await Promise.all([
+      Pedido.deleteMany({ userId: user.usuario }),
+      AuthToken.deleteMany({ userId: user._id }),
+      Convite.deleteMany({ email: user.email }),
+    ]);
+    await user.deleteOne();
+
+    console.log(
+      `🗑️ Distribuidor ${user.usuario} APAGADO por ${req.user.usuario} (${rPedidos.deletedCount} pedidos)`,
+    );
     return res.status(200).json({
       success: true,
-      message: 'Conta desativada. As sessões ativas deixam de funcionar.',
-      distribuidor: serializarDistribuidor(user),
+      message: `Conta "${user.usuario}" apagada definitivamente (${rPedidos.deletedCount} pedido(s) removidos).`,
+      apagados: { pedidos: rPedidos.deletedCount },
     });
   }
 
@@ -100,7 +133,9 @@ async function handler(req, res) {
           if (!user.email) return res.status(400).json({ message: 'Usuário sem email' });
           const { valor } = await criarTokenUsoUnico(user, TIPOS_TOKEN.CONVITE, req);
           await enviarConviteDefinirSenha({ user, token: valor, reenvio: user.senhaDefinida });
-          return res.status(200).json({ success: true, message: `Convite enviado para ${user.email}` });
+          return res
+            .status(200)
+            .json({ success: true, message: `Convite enviado para ${user.email}` });
         }
 
         case 'resetar-senha': {
@@ -128,7 +163,9 @@ async function handler(req, res) {
           if (!user.email) return res.status(400).json({ message: 'Usuário sem email' });
           const { valor } = await criarTokenUsoUnico(user, TIPOS_TOKEN.RESET_SENHA, req);
           await enviarResetSenha({ user, token: valor });
-          return res.status(200).json({ success: true, message: `Link de redefinição enviado para ${user.email}` });
+          return res
+            .status(200)
+            .json({ success: true, message: `Link de redefinição enviado para ${user.email}` });
         }
 
         case 'desbloquear': {
