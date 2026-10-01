@@ -29,6 +29,9 @@ const PedidoSchema = new mongoose.Schema(
         codigo: String,
         nome: String,
         categoria: String,
+        // Foto principal do produto no momento do pedido (vai nos emails,
+        // para o fornecedor produzir exatamente o que foi pedido)
+        imagem: String,
         quantidade: {
           type: Number,
           required: true,
