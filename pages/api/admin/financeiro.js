@@ -1,13 +1,21 @@
-// PAGES/API/ADMIN/FINANCEIRO.JS - CONTROLE DE PAGAMENTOS
+// PAGES/API/ADMIN/FINANCEIRO.JS - CONTROLE DOS ROYALTIES (ADMIN)
 // ===================================
-// Permite ao admin marcar royalties, etiquetas e embalagens como pagos.
-// Os royalties contam as baixas parciais feitas por Pix pelos distribuidores
-// (controleFinanceiro.royalties.valorPago) - ver lib/financeiro.js.
+// GET   ?periodo=7dias|30dias|90dias|todos -> pedidos + estatísticas de royalties
+// PUT   { pedidoId, status, observacao? }   -> marca os royalties de um pedido
+// PATCH { pedidoIds, status }               -> marca vários pedidos de uma vez
+// "Pendente" é o que falta pagar, já com as baixas parciais feitas por Pix
+// pelos distribuidores (controleFinanceiro.royalties.valorPago).
 
 import dbConnect from '../../../lib/mongodb';
 import Pedido from '../../../models/Pedido';
 import { requireAdmin } from '../../../lib/auth';
 import { arred, royaltiesEmAberto } from '../../../lib/financeiro';
+
+const STATUS_VALIDOS = ['pendente', 'pago'];
+
+// O único pagamento controlado são os royalties (o campo `tipo` é aceito por
+// compatibilidade com chamadas antigas, mas só pode ser 'royalties')
+const tipoInvalido = tipo => tipo !== undefined && tipo !== 'royalties';
 
 async function handler(req, res) {
   // Autenticação admin garantida por requireAdmin
@@ -19,101 +27,41 @@ async function handler(req, res) {
   // ══════════════════════════════════════════════════════════════
   if (req.method === 'GET') {
     try {
-      const { status, tipo, periodo } = req.query;
+      const { periodo } = req.query;
 
-      // Filtro base
-      let filtro = {};
-
-      // Filtrar por status de pagamento
-      if (status && tipo) {
-        filtro[`controleFinanceiro.${tipo}.status`] = status;
-      }
+      const filtro = {};
 
       // Filtrar por período
-      if (periodo) {
-        const hoje = new Date();
-        let dataInicio;
-
-        switch (periodo) {
-          case '7dias':
-            dataInicio = new Date(hoje.setDate(hoje.getDate() - 7));
-            break;
-          case '30dias':
-            dataInicio = new Date(hoje.setDate(hoje.getDate() - 30));
-            break;
-          case '90dias':
-            dataInicio = new Date(hoje.setDate(hoje.getDate() - 90));
-            break;
-        }
-
-        if (dataInicio) {
-          filtro.createdAt = { $gte: dataInicio };
-        }
+      const dias = { '7dias': 7, '30dias': 30, '90dias': 90 }[periodo];
+      if (dias) {
+        filtro.createdAt = { $gte: new Date(Date.now() - dias * 24 * 60 * 60 * 1000) };
       }
 
-      // Buscar pedidos
       const pedidos = await Pedido.find(filtro)
         .populate('fornecedorId', 'nome codigo')
         .sort({ createdAt: -1 });
 
-      // Calcular estatísticas
+      const pendente = arred(pedidos.reduce((acc, p) => acc + royaltiesEmAberto(p), 0));
+      const pago = arred(
+        pedidos.reduce(
+          (acc, p) => acc + Math.max(0, (p.royalties || 0) - royaltiesEmAberto(p)),
+          0,
+        ),
+      );
+
       const stats = {
-        // Totais gerais
         totalPedidos: pedidos.length,
         totalGeral: pedidos.reduce((acc, p) => acc + (p.total || 0), 0),
-
-        // Royalties (pendente = o que falta pagar, já com as baixas parciais por Pix)
         royalties: {
-          total: pedidos.reduce((acc, p) => acc + (p.royalties || 0), 0),
-          pendente: arred(pedidos.reduce((acc, p) => acc + royaltiesEmAberto(p), 0)),
-          pago: arred(
-            pedidos.reduce(
-              (acc, p) => acc + Math.max(0, (p.royalties || 0) - royaltiesEmAberto(p)),
-              0,
-            ),
-          ),
+          total: arred(pedidos.reduce((acc, p) => acc + (p.royalties || 0), 0)),
+          pendente,
+          pago,
           qtdPendente: pedidos.filter(p => royaltiesEmAberto(p) > 0).length,
           qtdPago: pedidos.filter(p => royaltiesEmAberto(p) <= 0).length,
         },
-
-        // Etiquetas
-        etiquetas: {
-          total: pedidos.reduce((acc, p) => acc + (p.totalEtiquetas || 0), 0),
-          pendente: pedidos
-            .filter(p => p.controleFinanceiro?.etiquetas?.status === 'pendente')
-            .reduce((acc, p) => acc + (p.totalEtiquetas || 0), 0),
-          pago: pedidos
-            .filter(p => p.controleFinanceiro?.etiquetas?.status === 'pago')
-            .reduce((acc, p) => acc + (p.totalEtiquetas || 0), 0),
-          qtdPendente: pedidos.filter(
-            p => p.controleFinanceiro?.etiquetas?.status === 'pendente'
-          ).length,
-          qtdPago: pedidos.filter(p => p.controleFinanceiro?.etiquetas?.status === 'pago')
-            .length,
-        },
-
-        // Embalagens
-        embalagens: {
-          total: pedidos.reduce((acc, p) => acc + (p.totalEmbalagens || 0), 0),
-          pendente: pedidos
-            .filter(p => p.controleFinanceiro?.embalagens?.status === 'pendente')
-            .reduce((acc, p) => acc + (p.totalEmbalagens || 0), 0),
-          pago: pedidos
-            .filter(p => p.controleFinanceiro?.embalagens?.status === 'pago')
-            .reduce((acc, p) => acc + (p.totalEmbalagens || 0), 0),
-          qtdPendente: pedidos.filter(
-            p => p.controleFinanceiro?.embalagens?.status === 'pendente'
-          ).length,
-          qtdPago: pedidos.filter(p => p.controleFinanceiro?.embalagens?.status === 'pago')
-            .length,
-        },
+        totalAReceber: pendente,
+        totalRecebido: pago,
       };
-
-      // Total a receber (admin)
-      stats.totalAReceber =
-        stats.royalties.pendente + stats.etiquetas.pendente + stats.embalagens.pendente;
-      stats.totalRecebido =
-        stats.royalties.pago + stats.etiquetas.pago + stats.embalagens.pago;
 
       return res.status(200).json({
         success: true,
@@ -122,70 +70,48 @@ async function handler(req, res) {
       });
     } catch (error) {
       console.error('Erro ao buscar financeiro:', error);
-      return res.status(500).json({ message: 'Erro interno', error: error.message });
+      return res.status(500).json({ message: 'Erro interno' });
     }
   }
 
   // ══════════════════════════════════════════════════════════════
-  // PUT - Atualizar status de pagamento
+  // PUT - Marcar os royalties de um pedido como pagos / pendentes
   // ══════════════════════════════════════════════════════════════
   if (req.method === 'PUT') {
     try {
-      const { pedidoId, tipo, status, observacao } = req.body;
+      const { pedidoId, tipo, status, observacao } = req.body || {};
 
-      // Validações
-      if (!pedidoId || !tipo || !status) {
-        return res.status(400).json({
-          message: 'Dados obrigatórios: pedidoId, tipo, status',
-        });
+      if (!pedidoId || !status) {
+        return res.status(400).json({ message: 'Dados obrigatórios: pedidoId, status' });
+      }
+      if (tipoInvalido(tipo)) {
+        return res.status(400).json({ message: 'Tipo inválido. Use: royalties' });
+      }
+      if (!STATUS_VALIDOS.includes(status)) {
+        return res.status(400).json({ message: 'Status inválido. Use: pendente ou pago' });
       }
 
-      const tiposValidos = ['royalties', 'etiquetas', 'embalagens'];
-      if (!tiposValidos.includes(tipo)) {
-        return res.status(400).json({
-          message: 'Tipo inválido. Use: royalties, etiquetas ou embalagens',
-        });
-      }
-
-      const statusValidos = ['pendente', 'pago'];
-      if (!statusValidos.includes(status)) {
-        return res.status(400).json({
-          message: 'Status inválido. Use: pendente ou pago',
-        });
-      }
-
-      // Buscar pedido
-      const pedido = await Pedido.findById(pedidoId);
+      // Só muda status/data/observação: o valorPago dos Pix nunca é apagado
+      const pedido = await Pedido.findByIdAndUpdate(
+        pedidoId,
+        {
+          $set: {
+            'controleFinanceiro.royalties.status': status,
+            'controleFinanceiro.royalties.dataPagamento': status === 'pago' ? new Date() : null,
+            ...(observacao ? { 'controleFinanceiro.royalties.observacao': observacao } : {}),
+          },
+        },
+        { new: true },
+      );
       if (!pedido) {
         return res.status(404).json({ message: 'Pedido não encontrado' });
       }
 
-      // Inicializar controleFinanceiro se não existir
-      if (!pedido.controleFinanceiro) {
-        pedido.controleFinanceiro = {
-          royalties: { status: 'pendente' },
-          etiquetas: { status: 'pendente' },
-          embalagens: { status: 'pendente' },
-        };
-      }
-
-      // Atualizar status
-      pedido.controleFinanceiro[tipo].status = status;
-      pedido.controleFinanceiro[tipo].dataPagamento =
-        status === 'pago' ? new Date() : null;
-      if (observacao) {
-        pedido.controleFinanceiro[tipo].observacao = observacao;
-      }
-
-      await pedido.save();
-
-      console.log(
-        `✅ Status de ${tipo} do pedido ${pedidoId} atualizado para: ${status}`
-      );
+      console.log(`✅ Royalties do pedido ${pedidoId} marcados como: ${status}`);
 
       return res.status(200).json({
         success: true,
-        message: `Status de ${tipo} atualizado para ${status}`,
+        message: `Royalties marcados como ${status}`,
         pedido: {
           _id: pedido._id,
           controleFinanceiro: pedido.controleFinanceiro,
@@ -193,32 +119,35 @@ async function handler(req, res) {
       });
     } catch (error) {
       console.error('Erro ao atualizar status:', error);
-      return res.status(500).json({ message: 'Erro interno', error: error.message });
+      return res.status(500).json({ message: 'Erro interno' });
     }
   }
 
   // ══════════════════════════════════════════════════════════════
-  // PATCH - Atualizar múltiplos pagamentos de uma vez
+  // PATCH - Marcar os royalties de vários pedidos de uma vez
   // ══════════════════════════════════════════════════════════════
   if (req.method === 'PATCH') {
     try {
-      const { pedidoIds, tipo, status } = req.body;
+      const { pedidoIds, tipo, status } = req.body || {};
 
-      if (!pedidoIds || !Array.isArray(pedidoIds) || !tipo || !status) {
-        return res.status(400).json({
-          message: 'Dados obrigatórios: pedidoIds (array), tipo, status',
-        });
+      if (!Array.isArray(pedidoIds) || pedidoIds.length === 0 || !status) {
+        return res.status(400).json({ message: 'Dados obrigatórios: pedidoIds (array), status' });
+      }
+      if (tipoInvalido(tipo)) {
+        return res.status(400).json({ message: 'Tipo inválido. Use: royalties' });
+      }
+      if (!STATUS_VALIDOS.includes(status)) {
+        return res.status(400).json({ message: 'Status inválido. Use: pendente ou pago' });
       }
 
       const resultado = await Pedido.updateMany(
         { _id: { $in: pedidoIds } },
         {
           $set: {
-            [`controleFinanceiro.${tipo}.status`]: status,
-            [`controleFinanceiro.${tipo}.dataPagamento`]:
-              status === 'pago' ? new Date() : null,
+            'controleFinanceiro.royalties.status': status,
+            'controleFinanceiro.royalties.dataPagamento': status === 'pago' ? new Date() : null,
           },
-        }
+        },
       );
 
       console.log(`✅ ${resultado.modifiedCount} pedidos atualizados`);
@@ -230,7 +159,7 @@ async function handler(req, res) {
       });
     } catch (error) {
       console.error('Erro ao atualizar múltiplos:', error);
-      return res.status(500).json({ message: 'Erro interno', error: error.message });
+      return res.status(500).json({ message: 'Erro interno' });
     }
   }
 

@@ -411,10 +411,7 @@ export default function AdminProdutos() {
                                   {produtosCategoria.map(produto => {
                                     const images = getProductImages(produto);
                                     const mainImage = getMainImage(produto);
-                                    const precoTotal =
-                                      (produto.preco || 0) +
-                                      (produto.precoEtiqueta || 0) +
-                                      (produto.precoEmbalagem || 0);
+                                    const precoTotal = produto.preco || 0;
 
                                     return (
                                       <div
@@ -472,27 +469,11 @@ export default function AdminProdutos() {
                                                   )}
                                                 </div>
 
-                                                {/* 🆕 Preços detalhados */}
+                                                {/* Preço */}
                                                 <div className='text-right ml-4'>
                                                   <p className='font-bold text-green-600'>
                                                     R$ {precoTotal.toFixed(2)}
                                                   </p>
-                                                  {(produto.precoEtiqueta > 0 ||
-                                                    produto.precoEmbalagem > 0) && (
-                                                    <div className='text-xs text-gray-500 mt-1'>
-                                                      <p>Base: R$ {produto.preco?.toFixed(2)}</p>
-                                                      {produto.precoEtiqueta > 0 && (
-                                                        <p>
-                                                          🏷️ +R$ {produto.precoEtiqueta.toFixed(2)}
-                                                        </p>
-                                                      )}
-                                                      {produto.precoEmbalagem > 0 && (
-                                                        <p>
-                                                          📦 +R$ {produto.precoEmbalagem.toFixed(2)}
-                                                        </p>
-                                                      )}
-                                                    </div>
-                                                  )}
                                                 </div>
                                               </div>
                                             </div>
@@ -558,10 +539,7 @@ export default function AdminProdutos() {
                         produtosArr.map(produto => {
                           const images = getProductImages(produto);
                           const mainImage = getMainImage(produto);
-                          const precoTotal =
-                            (produto.preco || 0) +
-                            (produto.precoEtiqueta || 0) +
-                            (produto.precoEmbalagem || 0);
+                          const precoTotal = produto.preco || 0;
 
                           return (
                             <tr key={produto._id} className='hover:bg-gray-50'>
@@ -604,11 +582,6 @@ export default function AdminProdutos() {
                                 <div className='text-sm font-semibold text-green-600'>
                                   R$ {precoTotal.toFixed(2)}
                                 </div>
-                                {(produto.precoEtiqueta > 0 || produto.precoEmbalagem > 0) && (
-                                  <div className='text-xs text-gray-500'>
-                                    Base: R$ {produto.preco?.toFixed(2)}
-                                  </div>
-                                )}
                               </td>
                               <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-medium'>
                                 <button

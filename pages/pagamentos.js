@@ -4,7 +4,6 @@
 // quita tudo ou escolhe um valor, anexa o comprovante e a baixa é feita na
 // hora (pedidos mais antigos primeiro). O pagamento fica "em conferência"
 // até o admin confirmar; se for rejeitado, o valor volta a ficar em aberto.
-// Etiquetas e embalagens continuam a ser atualizadas pelo admin.
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
@@ -123,11 +122,7 @@ export default function Pagamentos() {
   const pedidosFiltrados = pedidos.filter(pedido => {
     if (filtro === 'todos') return true;
 
-    const cf = pedido.controleFinanceiro || {};
-    const temPendente =
-      royaltiesPendentesDe(pedido) > 0 ||
-      ((pedido.totalEtiquetas || 0) > 0 && cf?.etiquetas?.status !== 'pago') ||
-      ((pedido.totalEmbalagens || 0) > 0 && cf?.embalagens?.status !== 'pago');
+    const temPendente = royaltiesPendentesDe(pedido) > 0;
 
     if (filtro === 'pendente') return temPendente;
     if (filtro === 'pago') return !temPendente;
@@ -281,25 +276,18 @@ export default function Pagamentos() {
 
             {/* Resumo Geral */}
             {resumo && (
-              <div className='grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6'>
-                <div className='bg-white rounded-xl shadow-sm p-5 border-l-4 border-blue-500'>
-                  <p className='text-sm text-gray-600 mb-1'>Total em Pedidos</p>
-                  <p className='text-2xl font-bold text-blue-600'>
+              <div className='grid grid-cols-2 gap-3 sm:gap-4 mb-6'>
+                <div className='bg-white rounded-xl shadow-sm p-4 sm:p-5 border-l-4 border-blue-500'>
+                  <p className='text-xs sm:text-sm text-gray-600 mb-1'>Total em Pedidos</p>
+                  <p className='text-lg sm:text-2xl font-bold text-blue-600'>
                     {formatarMoeda(resumo.totalPedidos)}
                   </p>
                 </div>
 
-                <div className='bg-white rounded-xl shadow-sm p-5 border-l-4 border-orange-500'>
-                  <p className='text-sm text-gray-600 mb-1'>Etiquetas Pendentes</p>
-                  <p className='text-2xl font-bold text-orange-600'>
-                    {formatarMoeda(resumo.etiquetasPendentes)}
-                  </p>
-                </div>
-
-                <div className='bg-white rounded-xl shadow-sm p-5 border-l-4 border-purple-500'>
-                  <p className='text-sm text-gray-600 mb-1'>Embalagens Pendentes</p>
-                  <p className='text-2xl font-bold text-purple-600'>
-                    {formatarMoeda(resumo.embalagensPendentes)}
+                <div className='bg-white rounded-xl shadow-sm p-4 sm:p-5 border-l-4 border-green-500'>
+                  <p className='text-xs sm:text-sm text-gray-600 mb-1'>Royalties já pagos</p>
+                  <p className='text-lg sm:text-2xl font-bold text-green-600'>
+                    {formatarMoeda(resumo.royaltiesPagos)}
                   </p>
                 </div>
               </div>
@@ -428,118 +416,51 @@ export default function Pagamentos() {
                         </div>
                       </div>
 
-                      {/* Detalhes de Pagamento */}
+                      {/* Royalties do pedido */}
                       <div className='p-5'>
-                        <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-                          {/* Royalties */}
-                          <div
-                            className={`p-4 rounded-lg border-2 ${
-                              statusRoyalties === 'pago'
-                                ? 'bg-green-50 border-green-200'
-                                : statusRoyalties === 'parcial'
-                                  ? 'bg-blue-50 border-blue-200'
-                                  : 'bg-yellow-50 border-yellow-200'
-                            }`}
-                          >
-                            <div className='flex items-center justify-between mb-2'>
+                        <div
+                          className={`p-4 rounded-lg border-2 ${
+                            statusRoyalties === 'pago'
+                              ? 'bg-green-50 border-green-200'
+                              : statusRoyalties === 'parcial'
+                                ? 'bg-blue-50 border-blue-200'
+                                : 'bg-yellow-50 border-yellow-200'
+                          }`}
+                        >
+                          <div className='flex items-center justify-between gap-3'>
+                            <div>
                               <span className='text-sm font-medium text-gray-700'>
                                 Royalties (5%)
                               </span>
-                              {getStatusBadge(statusRoyalties)}
+                              <p className='text-xl font-bold text-gray-900'>
+                                {formatarMoeda(pedido.royalties)}
+                              </p>
                             </div>
-                            <p className='text-xl font-bold text-gray-900'>
-                              {formatarMoeda(pedido.royalties)}
-                            </p>
-                            {statusRoyalties === 'parcial' && (
-                              <p className='text-xs text-blue-800 mt-1'>
-                                Pago {formatarMoeda(abatido)} · falta{' '}
-                                <strong>{formatarMoeda(falta)}</strong>
-                              </p>
-                            )}
-                            {statusRoyalties === 'pago' && cf.royalties?.dataPagamento && (
-                              <p className='text-xs text-gray-500 mt-1'>
-                                Pago em: {formatarData(cf.royalties.dataPagamento)}
-                              </p>
-                            )}
+                            {getStatusBadge(statusRoyalties)}
                           </div>
-
-                          {/* Etiquetas */}
-                          <div
-                            className={`p-4 rounded-lg border-2 ${
-                              (pedido.totalEtiquetas || 0) === 0
-                                ? 'bg-gray-50 border-gray-200'
-                                : cf.etiquetas?.status === 'pago'
-                                  ? 'bg-green-50 border-green-200'
-                                  : 'bg-yellow-50 border-yellow-200'
-                            }`}
-                          >
-                            <div className='flex items-center justify-between mb-2'>
-                              <span className='text-sm font-medium text-gray-700'>Etiquetas</span>
-                              {(pedido.totalEtiquetas || 0) > 0 ? (
-                                getStatusBadge(cf.etiquetas?.status)
-                              ) : (
-                                <span className='text-xs text-gray-400'>N/A</span>
-                              )}
-                            </div>
-                            <p className='text-xl font-bold text-gray-900'>
-                              {formatarMoeda(pedido.totalEtiquetas)}
+                          {statusRoyalties === 'parcial' && (
+                            <p className='text-xs text-blue-800 mt-1'>
+                              Pago {formatarMoeda(abatido)} · falta{' '}
+                              <strong>{formatarMoeda(falta)}</strong>
                             </p>
-                            {cf.etiquetas?.dataPagamento && (
-                              <p className='text-xs text-gray-500 mt-1'>
-                                Pago em: {formatarData(cf.etiquetas.dataPagamento)}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Embalagens */}
-                          <div
-                            className={`p-4 rounded-lg border-2 ${
-                              (pedido.totalEmbalagens || 0) === 0
-                                ? 'bg-gray-50 border-gray-200'
-                                : cf.embalagens?.status === 'pago'
-                                  ? 'bg-green-50 border-green-200'
-                                  : 'bg-yellow-50 border-yellow-200'
-                            }`}
-                          >
-                            <div className='flex items-center justify-between mb-2'>
-                              <span className='text-sm font-medium text-gray-700'>Embalagens</span>
-                              {(pedido.totalEmbalagens || 0) > 0 ? (
-                                getStatusBadge(cf.embalagens?.status)
-                              ) : (
-                                <span className='text-xs text-gray-400'>N/A</span>
-                              )}
-                            </div>
-                            <p className='text-xl font-bold text-gray-900'>
-                              {formatarMoeda(pedido.totalEmbalagens)}
+                          )}
+                          {statusRoyalties === 'pago' && cf.royalties?.dataPagamento && (
+                            <p className='text-xs text-gray-500 mt-1'>
+                              Pago em: {formatarData(cf.royalties.dataPagamento)}
                             </p>
-                            {cf.embalagens?.dataPagamento && (
-                              <p className='text-xs text-gray-500 mt-1'>
-                                Pago em: {formatarData(cf.embalagens.dataPagamento)}
-                              </p>
-                            )}
-                          </div>
+                          )}
                         </div>
 
                         {/* Resumo do Pedido */}
                         <div className='mt-4 pt-4 border-t'>
-                          <div className='grid grid-cols-2 md:grid-cols-4 gap-4 text-sm'>
+                          <div className='grid grid-cols-2 gap-4 text-sm'>
                             <div>
-                              <p className='text-gray-500'>Subtotal Produtos</p>
+                              <p className='text-gray-500'>Produtos (fornecedor)</p>
                               <p className='font-medium'>{formatarMoeda(pedido.subtotal)}</p>
                             </div>
                             <div>
                               <p className='text-gray-500'>+ Royalties</p>
                               <p className='font-medium'>{formatarMoeda(pedido.royalties)}</p>
-                            </div>
-                            <div>
-                              <p className='text-gray-500'>+ Etiquetas</p>
-                              <p className='font-medium'>{formatarMoeda(pedido.totalEtiquetas)}</p>
-                            </div>
-                            <div>
-                              <p className='text-gray-500'>+ Embalagens</p>
-                              <p className='font-medium'>
-                                {formatarMoeda(pedido.totalEmbalagens)}
-                              </p>
                             </div>
                           </div>
                         </div>
@@ -564,8 +485,8 @@ export default function Pagamentos() {
                   fica definitiva depois de o administrador conferir o Pix.
                 </li>
                 <li>
-                  • <strong>Etiquetas e Embalagens:</strong> custos dos produtos, atualizados pelo
-                  administrador após confirmação do pagamento.
+                  • <strong>Produtos:</strong> o valor dos produtos é pago diretamente ao
+                  fornecedor (sinal por Pix no pedido e o saldo combinado com ele).
                 </li>
               </ul>
             </div>

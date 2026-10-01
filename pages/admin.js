@@ -115,7 +115,7 @@ export default function Admin() {
     alertas.push({
       tom: 'red',
       titulo: `${moeda(financeiro.totalAReceber)} a receber`,
-      desc: `${financeiro.pedidosComPendencia} pedido(s) com royalties, etiquetas ou embalagens em aberto.`,
+      desc: `${financeiro.pedidosComPendencia} pedido(s) com royalties em aberto.`,
       href: '/admin/financeiro',
       cta: 'Controle financeiro',
     });
@@ -192,7 +192,7 @@ export default function Admin() {
         <Kpi
           rotulo='A receber'
           valor={moeda(financeiro.totalAReceber)}
-          detalhe='royalties + etiquetas + embalagens'
+          detalhe='royalties em aberto'
           tom={financeiro.totalAReceber > 0 ? 'perigo' : 'positivo'}
           onClick={() => router.push('/admin/financeiro')}
         />
@@ -368,9 +368,7 @@ export default function Admin() {
             <ul className='mt-4 space-y-2 text-sm'>
               {[
                 ['pendente', 'Pendentes', 'bg-amber-400'],
-                ['confirmado', 'Confirmados', 'bg-blue-500'],
-                ['enviado', 'Enviados', 'bg-purple-500'],
-                ['entregue', 'Entregues', 'bg-emerald-500'],
+                ['confirmado', 'Confirmados', 'bg-emerald-500'],
               ].map(([k, label, cor]) => (
                 <li key={k} className='flex items-center justify-between'>
                   <span className='flex items-center gap-2 text-gray-600'>
@@ -419,11 +417,9 @@ export default function Admin() {
           </Card>
 
           {/* A receber detalhado */}
-          <Card titulo='A receber' descricao='Valores em aberto para o admin'>
+          <Card titulo='A receber' descricao='Royalties em aberto'>
             <ul className='space-y-2 text-sm'>
               <Linha rotulo='Royalties (5%)' valor={financeiro.royalties} />
-              <Linha rotulo='Etiquetas' valor={financeiro.etiquetas} />
-              <Linha rotulo='Embalagens' valor={financeiro.embalagens} />
               <li className='flex justify-between pt-2 border-t border-gray-100 font-bold text-gray-900'>
                 <span>Total</span>
                 <span className='tabular-nums'>{moeda(financeiro.totalAReceber)}</span>
@@ -497,9 +493,7 @@ const BarraStatus = ({ status, total }) => {
   if (!total) return <div className='h-2.5 rounded-full bg-gray-100' />;
   const seg = [
     ['pendente', 'bg-amber-400'],
-    ['confirmado', 'bg-blue-500'],
-    ['enviado', 'bg-purple-500'],
-    ['entregue', 'bg-emerald-500'],
+    ['confirmado', 'bg-emerald-500'],
   ];
   return (
     <div className='h-2.5 rounded-full bg-gray-100 overflow-hidden flex'>

@@ -13,6 +13,7 @@ import Convite from '../../../models/Convite';
 import Pagamento from '../../../models/Pagamento';
 import { requireAdmin } from '../../../lib/auth';
 import { EXPR_ROYALTIES_EM_ABERTO } from '../../../lib/financeiro';
+import { normalizarStatus } from '../../../lib/statusPedido';
 
 const inicioDoDia = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const inicioDoMes = d => new Date(d.getFullYear(), d.getMonth(), 1);
@@ -66,38 +67,8 @@ async function handler(req, res) {
             _id: null,
             // já desconta as baixas parciais feitas por Pix
             royalties: { $sum: EXPR_ROYALTIES_EM_ABERTO },
-            etiquetas: {
-              $sum: {
-                $cond: [
-                  { $ne: ['$controleFinanceiro.etiquetas.status', 'pago'] },
-                  '$totalEtiquetas',
-                  0,
-                ],
-              },
-            },
-            embalagens: {
-              $sum: {
-                $cond: [
-                  { $ne: ['$controleFinanceiro.embalagens.status', 'pago'] },
-                  '$totalEmbalagens',
-                  0,
-                ],
-              },
-            },
             pedidosComPendencia: {
-              $sum: {
-                $cond: [
-                  {
-                    $or: [
-                      { $ne: ['$controleFinanceiro.royalties.status', 'pago'] },
-                      { $ne: ['$controleFinanceiro.etiquetas.status', 'pago'] },
-                      { $ne: ['$controleFinanceiro.embalagens.status', 'pago'] },
-                    ],
-                  },
-                  1,
-                  0,
-                ],
-              },
+              $sum: { $cond: [{ $gt: [EXPR_ROYALTIES_EM_ABERTO, 0] }, 1, 0] },
             },
           },
         },
@@ -206,22 +177,22 @@ async function handler(req, res) {
       ]),
     ]);
 
-    const status = { pendente: 0, confirmado: 0, enviado: 0, entregue: 0 };
+    // Só dois status; pedidos antigos "enviado"/"entregue" contam como confirmados
+    const status = { pendente: 0, confirmado: 0 };
     let totalPedidos = 0;
     let valorTotal = 0;
     porStatus.forEach(s => {
-      status[s._id] = s.total;
+      const chave = normalizarStatus(s._id);
+      status[chave] = (status[chave] || 0) + s.total;
       totalPedidos += s.total;
       valorTotal += s.valor;
     });
 
     const fin = aReceber[0] || {
       royalties: 0,
-      etiquetas: 0,
-      embalagens: 0,
       pedidosComPendencia: 0,
     };
-    const totalAReceber = (fin.royalties || 0) + (fin.etiquetas || 0) + (fin.embalagens || 0);
+    const totalAReceber = fin.royalties || 0;
 
     const mapaPed = Object.fromEntries(porFornecedor.map(p => [String(p._id), p]));
     const mapaProd = Object.fromEntries(produtosAgg.map(p => [String(p._id), p]));
@@ -281,8 +252,6 @@ async function handler(req, res) {
       },
       financeiro: {
         royalties: fin.royalties || 0,
-        etiquetas: fin.etiquetas || 0,
-        embalagens: fin.embalagens || 0,
         totalAReceber,
         pedidosComPendencia: fin.pedidosComPendencia || 0,
       },
@@ -298,7 +267,7 @@ async function handler(req, res) {
               logo: p.fornecedorId.logo,
             }
           : null,
-        status: p.status,
+        status: normalizarStatus(p.status),
         total: p.total,
         itens: (p.itens || []).reduce((s, i) => s + (i.quantidade || 0), 0),
         createdAt: p.createdAt,

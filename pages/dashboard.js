@@ -27,9 +27,7 @@ const relativo = d => {
 
 const STATUS = {
   pendente: { label: 'Pendente', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
-  confirmado: { label: 'Confirmado', cls: 'bg-blue-50 text-blue-700 ring-blue-200' },
-  enviado: { label: 'Enviado', cls: 'bg-purple-50 text-purple-700 ring-purple-200' },
-  entregue: { label: 'Entregue', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  confirmado: { label: 'Confirmado', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
 };
 
 const saudacao = () => {
@@ -188,13 +186,13 @@ export default function Dashboard() {
                     </div>
                     <div className='mt-4 pt-3 border-t border-gray-100 space-y-2 text-sm'>
                       <Linha
-                        rotulo='Em andamento'
-                        valor={dados.pedidos.emAndamento}
-                        tom='text-blue-600'
+                        rotulo='Pendentes'
+                        valor={dados.pedidos.status.pendente}
+                        tom='text-amber-600'
                       />
                       <Linha
-                        rotulo='Entregues'
-                        valor={dados.pedidos.status.entregue}
+                        rotulo='Confirmados'
+                        valor={dados.pedidos.status.confirmado}
                         tom='text-emerald-600'
                       />
                       <Linha rotulo='Total de pedidos' valor={dados.pedidos.total} />
@@ -226,14 +224,6 @@ export default function Dashboard() {
                           <Linha
                             rotulo='Royalties'
                             valor={moeda(dados.financeiro.royaltiesPendentes)}
-                          />
-                          <Linha
-                            rotulo='Etiquetas'
-                            valor={moeda(dados.financeiro.etiquetasPendentes)}
-                          />
-                          <Linha
-                            rotulo='Embalagens'
-                            valor={moeda(dados.financeiro.embalagensPendentes)}
                           />
                         </ul>
                       </>
@@ -299,17 +289,9 @@ function Atencao({ dados }) {
   if (dados.financeiro.totalPendente > 0) {
     itens.push({
       cor: 'bg-red-500',
-      titulo: `${moeda(dados.financeiro.totalPendente)} em pagamentos pendentes`,
-      desc: `${dados.financeiro.pedidosComPendencia} pedido(s) com royalties, etiquetas ou embalagens em aberto`,
+      titulo: `${moeda(dados.financeiro.totalPendente)} em royalties a pagar`,
+      desc: `${dados.financeiro.pedidosComPendencia} pedido(s) com royalties em aberto · pague por Pix`,
       href: '/pagamentos',
-    });
-  }
-  if (dados.pedidos.status.enviado > 0) {
-    itens.push({
-      cor: 'bg-purple-500',
-      titulo: `${dados.pedidos.status.enviado} pedido(s) a caminho`,
-      desc: 'Veja o código de rastreamento em "Pedidos"',
-      href: '/meus-pedidos?status=enviado',
     });
   }
   if (dados.pedidos.status.pendente > 0) {

@@ -34,8 +34,6 @@ const respostaPedido = (pedido, extra = {}) => ({
   numeroPedido: pedido._id.toString().slice(-8).toUpperCase(),
   resumo: {
     subtotal: pedido.subtotal,
-    totalEtiquetas: pedido.totalEtiquetas,
-    totalEmbalagens: pedido.totalEmbalagens,
     royalties: pedido.royalties,
     total: pedido.total,
     sinal: pedido.sinal?.valor || 0,
@@ -166,8 +164,6 @@ async function handler(req, res) {
       fornecedorId: fornecedor._id,
       itens: calculo.itens,
       subtotal: valores.subtotal,
-      totalEtiquetas: valores.totalEtiquetas,
-      totalEmbalagens: valores.totalEmbalagens,
       royalties: valores.royalties,
       totalFornecedor: valores.totalFornecedor,
       total: valores.total,
@@ -185,8 +181,6 @@ async function handler(req, res) {
       // Controle financeiro iniciado como pendente
       controleFinanceiro: {
         royalties: { status: 'pendente' },
-        etiquetas: { status: 'pendente' },
-        embalagens: { status: 'pendente' },
       },
     });
 

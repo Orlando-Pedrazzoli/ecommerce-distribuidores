@@ -29,24 +29,10 @@ const ProdutoSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    // Preço base do produto (vai para o fornecedor)
+    // Preço do produto (vai para o fornecedor)
     preco: {
       type: Number,
       required: true,
-      min: 0,
-    },
-    // Valor da etiqueta (vai para o admin)
-    precoEtiqueta: {
-      type: Number,
-      required: true,
-      default: 0,
-      min: 0,
-    },
-    // Valor da embalagem (vai para o admin)
-    precoEmbalagem: {
-      type: Number,
-      required: true,
-      default: 0,
       min: 0,
     },
     // 🆕 ALTERADO: Array de imagens ao invés de única
@@ -69,9 +55,9 @@ const ProdutoSchema = new mongoose.Schema(
   }
 );
 
-// Virtual para preço total (base + etiqueta + embalagem)
+// Mantido por compatibilidade: o preço total é o próprio preço do produto
 ProdutoSchema.virtual('precoTotal').get(function () {
-  return this.preco + (this.precoEtiqueta || 0) + (this.precoEmbalagem || 0);
+  return this.preco;
 });
 
 // 🆕 Virtual para obter todas as imagens (compatível com formato antigo e novo)

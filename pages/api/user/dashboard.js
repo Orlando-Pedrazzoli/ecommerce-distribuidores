@@ -11,6 +11,7 @@ import Produto from '../../../models/Produto';
 import { requireDistribuidor } from '../../../lib/auth';
 import { fornecedorPublico } from '../../../lib/fornecedores';
 import { EXPR_ROYALTIES_EM_ABERTO } from '../../../lib/financeiro';
+import { normalizarStatus } from '../../../lib/statusPedido';
 
 async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method not allowed' });
@@ -38,38 +39,8 @@ async function handler(req, res) {
               _id: null,
               // já desconta as baixas parciais feitas por Pix
               royaltiesPendentes: { $sum: EXPR_ROYALTIES_EM_ABERTO },
-              etiquetasPendentes: {
-                $sum: {
-                  $cond: [
-                    { $ne: ['$controleFinanceiro.etiquetas.status', 'pago'] },
-                    '$totalEtiquetas',
-                    0,
-                  ],
-                },
-              },
-              embalagensPendentes: {
-                $sum: {
-                  $cond: [
-                    { $ne: ['$controleFinanceiro.embalagens.status', 'pago'] },
-                    '$totalEmbalagens',
-                    0,
-                  ],
-                },
-              },
               pedidosComPendencia: {
-                $sum: {
-                  $cond: [
-                    {
-                      $or: [
-                        { $ne: ['$controleFinanceiro.royalties.status', 'pago'] },
-                        { $ne: ['$controleFinanceiro.etiquetas.status', 'pago'] },
-                        { $ne: ['$controleFinanceiro.embalagens.status', 'pago'] },
-                      ],
-                    },
-                    1,
-                    0,
-                  ],
-                },
+                $sum: { $cond: [{ $gt: [EXPR_ROYALTIES_EM_ABERTO, 0] }, 1, 0] },
               },
             },
           },
@@ -90,25 +61,22 @@ async function handler(req, res) {
         ]),
       ]);
 
-    const status = { pendente: 0, confirmado: 0, enviado: 0, entregue: 0 };
+    // Só dois status; pedidos antigos "enviado"/"entregue" contam como confirmados
+    const status = { pendente: 0, confirmado: 0 };
     let totalPedidos = 0;
     let valorTotal = 0;
     porStatus.forEach(s => {
-      status[s._id] = s.total;
+      const chave = normalizarStatus(s._id);
+      status[chave] = (status[chave] || 0) + s.total;
       totalPedidos += s.total;
       valorTotal += s.valor;
     });
 
     const fin = financeiro[0] || {
       royaltiesPendentes: 0,
-      etiquetasPendentes: 0,
-      embalagensPendentes: 0,
       pedidosComPendencia: 0,
     };
-    const totalPendente =
-      (fin.royaltiesPendentes || 0) +
-      (fin.etiquetasPendentes || 0) +
-      (fin.embalagensPendentes || 0);
+    const totalPendente = fin.royaltiesPendentes || 0;
 
     const mapaProd = Object.fromEntries(contagemProdutos.map(c => [String(c._id), c.total]));
     const mapaPed = Object.fromEntries(porFornecedor.map(p => [String(p._id), p]));
@@ -121,13 +89,11 @@ async function handler(req, res) {
         total: totalPedidos,
         valorTotal,
         status,
-        emAndamento: status.pendente + status.confirmado + status.enviado,
+        emAndamento: status.pendente,
         mes: mesAgg[0] || { total: 0, valor: 0 },
       },
       financeiro: {
         royaltiesPendentes: fin.royaltiesPendentes || 0,
-        etiquetasPendentes: fin.etiquetasPendentes || 0,
-        embalagensPendentes: fin.embalagensPendentes || 0,
         totalPendente,
         pedidosComPendencia: fin.pedidosComPendencia || 0,
       },
@@ -142,10 +108,9 @@ async function handler(req, res) {
               logo: p.fornecedorId.logo,
             }
           : null,
-        status: p.status,
+        status: normalizarStatus(p.status),
         total: p.total,
         itens: (p.itens || []).reduce((s, i) => s + (i.quantidade || 0), 0),
-        codigoRastreamento: p.codigoRastreamento || '',
         createdAt: p.createdAt,
       })),
       fornecedores: fornecedores.map(f => ({

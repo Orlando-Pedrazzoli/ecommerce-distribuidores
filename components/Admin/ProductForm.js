@@ -14,8 +14,6 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
     descricao: editingProduct?.descricao || '',
     categoria: editingProduct?.categoria || '',
     preco: editingProduct?.preco || '',
-    precoEtiqueta: editingProduct?.precoEtiqueta || 0,
-    precoEmbalagem: editingProduct?.precoEmbalagem || 0,
   });
 
   // 🆕 MÚLTIPLAS IMAGENS
@@ -53,8 +51,6 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         descricao: editingProduct.descricao || '',
         categoria: editingProduct.categoria || '',
         preco: editingProduct.preco || '',
-        precoEtiqueta: editingProduct.precoEtiqueta || 0,
-        precoEmbalagem: editingProduct.precoEmbalagem || 0,
       });
 
       // 🆕 Carregar imagens existentes (compatível com formato antigo e novo)
@@ -272,16 +268,9 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
 
     // Validações
     const precoBase = parseFloat(formData.preco);
-    const precoEtiqueta = parseFloat(formData.precoEtiqueta) || 0;
-    const precoEmbalagem = parseFloat(formData.precoEmbalagem) || 0;
 
     if (isNaN(precoBase) || precoBase <= 0) {
-      alert('❌ O preço base deve ser maior que zero!');
-      return;
-    }
-
-    if (precoEtiqueta < 0 || precoEmbalagem < 0) {
-      alert('❌ Os valores de etiqueta e embalagem não podem ser negativos!');
+      alert('❌ O preço deve ser maior que zero!');
       return;
     }
 
@@ -317,12 +306,6 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         if (precoBase !== editingProduct.preco) {
           productData.preco = precoBase;
         }
-        if (precoEtiqueta !== (editingProduct.precoEtiqueta || 0)) {
-          productData.precoEtiqueta = precoEtiqueta;
-        }
-        if (precoEmbalagem !== (editingProduct.precoEmbalagem || 0)) {
-          productData.precoEmbalagem = precoEmbalagem;
-        }
 
         // 🆕 Verificar se imagens foram modificadas
         if (modifiedFields.has('imagens')) {
@@ -339,8 +322,6 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         productData = {
           ...formData,
           preco: precoBase,
-          precoEtiqueta: precoEtiqueta,
-          precoEmbalagem: precoEmbalagem,
           imagens: imageUrls, // 🆕 Array de imagens
         };
       }
@@ -378,8 +359,6 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             descricao: '',
             categoria: '',
             preco: '',
-            precoEtiqueta: 0,
-            precoEmbalagem: 0,
           });
           setCurrentImages([]);
           setSelectedFiles([]);
@@ -408,11 +387,8 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
     }
   };
 
-  // Calcular preço total para preview
+  // Preço para o preview dos royalties
   const precoBase = parseFloat(formData.preco) || 0;
-  const precoEtiqueta = parseFloat(formData.precoEtiqueta) || 0;
-  const precoEmbalagem = parseFloat(formData.precoEmbalagem) || 0;
-  const precoTotal = precoBase + precoEtiqueta + precoEmbalagem;
 
   // 🆕 Contagem de imagens
   const totalImagesCount = currentImages.length - imagesToRemove.length + selectedFiles.length;
@@ -572,16 +548,16 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
         <div className='bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg p-4'>
           <h3 className='text-base sm:text-lg font-semibold text-blue-800 mb-2 flex items-center gap-2'>
             <span>💰</span>
-            Definição de Preços
+            Preço
           </h3>
           <p className='text-xs sm:text-sm text-blue-700 mb-4'>
-            Configure o preço base e os valores adicionais de etiqueta e embalagem.
+            Preço do produto pago ao fornecedor. Os royalties são calculados sobre este valor.
           </p>
 
           {/* Preço Base */}
           <div className='mb-4'>
             <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
-              💵 Preço Base (R$) *
+              💵 Preço (R$) *
               {editingProduct && modifiedFields.has('preco') && (
                 <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
               )}
@@ -606,95 +582,11 @@ export default function ProductForm({ onSuccess, editingProduct = null }) {
             </p>
           </div>
 
-          {/* Grid: Etiqueta e Embalagem */}
-          <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-            <div>
-              <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
-                🏷️ Valor Etiqueta (R$)
-                {editingProduct && modifiedFields.has('precoEtiqueta') && (
-                  <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
-                )}
-              </label>
-              <input
-                type='number'
-                step='0.01'
-                min='0'
-                name='precoEtiqueta'
-                value={formData.precoEtiqueta}
-                onChange={handleInputChange}
-                className={`w-full border rounded px-3 py-2 text-sm sm:text-base focus:outline-none focus:border-blue-500 ${
-                  modifiedFields.has('precoEtiqueta')
-                    ? 'border-yellow-400 bg-yellow-50'
-                    : 'border-gray-300'
-                }`}
-                placeholder='0.00'
-              />
-              <p className='text-xs text-gray-500 mt-1'>Valor cobrado pela etiqueta</p>
-            </div>
-
-            <div>
-              <label className='block text-gray-700 font-medium mb-2 text-sm sm:text-base'>
-                📦 Valor Embalagem (R$)
-                {editingProduct && modifiedFields.has('precoEmbalagem') && (
-                  <span className='ml-2 text-xs text-yellow-600'>● Modificado</span>
-                )}
-              </label>
-              <input
-                type='number'
-                step='0.01'
-                min='0'
-                name='precoEmbalagem'
-                value={formData.precoEmbalagem}
-                onChange={handleInputChange}
-                className={`w-full border rounded px-3 py-2 text-sm sm:text-base focus:outline-none focus:border-blue-500 ${
-                  modifiedFields.has('precoEmbalagem')
-                    ? 'border-yellow-400 bg-yellow-50'
-                    : 'border-gray-300'
-                }`}
-                placeholder='0.00'
-              />
-              <p className='text-xs text-gray-500 mt-1'>Valor cobrado pela embalagem</p>
-            </div>
-          </div>
-
-          {/* Preview do Preço */}
+          {/* Preview dos royalties */}
           {precoBase > 0 && (
-            <div className='mt-4 p-3 bg-white rounded border'>
-              <h4 className='text-sm font-medium text-gray-800 mb-2'>
-                📊 Composição do Preço:
-              </h4>
-              <div className='space-y-1 text-sm'>
-                <div className='flex justify-between'>
-                  <span className='text-gray-600'>Preço Base:</span>
-                  <span className='font-medium'>R$ {precoBase.toFixed(2)}</span>
-                </div>
-                {precoEtiqueta > 0 && (
-                  <div className='flex justify-between'>
-                    <span className='text-gray-600'>+ Etiqueta:</span>
-                    <span className='font-medium text-blue-600'>
-                      R$ {precoEtiqueta.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-                {precoEmbalagem > 0 && (
-                  <div className='flex justify-between'>
-                    <span className='text-gray-600'>+ Embalagem:</span>
-                    <span className='font-medium text-purple-600'>
-                      R$ {precoEmbalagem.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-                <div className='border-t pt-2 mt-2'>
-                  <div className='flex justify-between font-bold'>
-                    <span>Preço Final:</span>
-                    <span className='text-green-600'>R$ {precoTotal.toFixed(2)}</span>
-                  </div>
-                </div>
-                <div className='text-xs text-gray-500 mt-2 p-2 bg-yellow-50 rounded'>
-                  💡 <strong>Royalties (5%):</strong> R$ {(precoBase * 0.05).toFixed(2)}{' '}
-                  (calculado apenas sobre o preço base)
-                </div>
-              </div>
+            <div className='text-xs text-gray-600 mt-2 p-2 bg-yellow-50 rounded border border-yellow-100'>
+              💡 <strong>Royalties (5%):</strong> R$ {(precoBase * 0.05).toFixed(2)} por unidade
+              &middot; o distribuidor paga R$ {(precoBase * 1.05).toFixed(2)} no total
             </div>
           )}
         </div>

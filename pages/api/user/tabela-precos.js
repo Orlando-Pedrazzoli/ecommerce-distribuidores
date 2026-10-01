@@ -76,9 +76,7 @@ async function handler(req, res) {
         
         const royalties = categoriaIsenta ? 0 : custoBase * ROYALTY_RATE;
         
-        const etiqueta = produto.precoEtiqueta || 0;
-        const embalagem = produto.precoEmbalagem || 0;
-        const custoTotal = custoBase + royalties + etiqueta + embalagem;
+        const custoTotal = custoBase + royalties;
 
         const precoVenda = tabelaPrecos[produto._id.toString()] || null;
         
@@ -100,8 +98,6 @@ async function handler(req, res) {
           fornecedorCodigo: produto.fornecedorId?.codigo || '',
           custoBase,
           royalties,
-          etiqueta,
-          embalagem,
           custoTotal,
           isentoRoyalty: categoriaIsenta,
           precoVenda,

@@ -102,15 +102,15 @@ export const Badge = ({ cor = 'gray', children, className = '' }) => {
   );
 };
 
+// Só dois status. Pedidos antigos "enviado"/"entregue" aparecem como confirmados.
 export const STATUS_PEDIDO = {
   pendente: { label: 'Pendente', cor: 'orange' },
-  confirmado: { label: 'Confirmado', cor: 'blue' },
-  enviado: { label: 'Enviado', cor: 'purple' },
-  entregue: { label: 'Entregue', cor: 'green' },
+  confirmado: { label: 'Confirmado', cor: 'green' },
 };
 
 export const BadgePedido = ({ status }) => {
-  const s = STATUS_PEDIDO[status] || { label: status, cor: 'gray' };
+  const chave = status === 'enviado' || status === 'entregue' ? 'confirmado' : status;
+  const s = STATUS_PEDIDO[chave] || { label: status, cor: 'gray' };
   return <Badge cor={s.cor}>{s.label}</Badge>;
 };
 

@@ -9,6 +9,7 @@ import Pedido from '../../../models/Pedido';
 import Distribuidor from '../../../models/Distribuidor';
 import Fornecedor from '../../../models/Fornecedor';
 import { requireAdmin } from '../../../lib/auth';
+import { STATUS_PEDIDO_VALIDOS, filtroStatus } from '../../../lib/statusPedido';
 
 async function handler(req, res) {
   await dbConnect();
@@ -40,7 +41,7 @@ async function handler(req, res) {
       }
 
       if (status && status !== 'todos') {
-        filter.status = status;
+        filter.status = filtroStatus(status);
       }
 
       // Filtro de data
@@ -114,8 +115,7 @@ async function handler(req, res) {
           .json({ message: 'ID e status são obrigatórios' });
       }
 
-      const statusValidos = ['pendente', 'confirmado', 'enviado', 'entregue'];
-      if (!statusValidos.includes(status)) {
+      if (!STATUS_PEDIDO_VALIDOS.includes(status)) {
         return res.status(400).json({ message: 'Status inválido' });
       }
 

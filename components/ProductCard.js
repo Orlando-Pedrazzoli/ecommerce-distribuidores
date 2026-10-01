@@ -93,12 +93,8 @@ export default function ProductCard({ produto }) {
 
   const descricaoCompleta = produto.descricao || '';
 
-  // Calcular preços
-  const precoBase = produto.preco || 0;
-  const precoEtiqueta = produto.precoEtiqueta || 0;
-  const precoEmbalagem = produto.precoEmbalagem || 0;
-  const precoTotal = precoBase + precoEtiqueta + precoEmbalagem;
-  const temAcrescimos = precoEtiqueta > 0 || precoEmbalagem > 0;
+  // Preço unitário do produto
+  const precoTotal = produto.preco || 0;
 
   const subtotal = precoTotal * quantidade;
 
@@ -284,77 +280,12 @@ export default function ProductCard({ produto }) {
         {/* ══════════════════════════════════════════════════════════════ */}
         <div className="mb-4">
           <div className="bg-gradient-to-br from-blue-50 to-green-50 rounded-lg p-4 border border-blue-100">
-            {/* Se tem acréscimos, mostra detalhamento */}
-            {temAcrescimos ? (
-              <div className="space-y-2">
-                {/* Cabeçalho */}
-                <p className="text-xs text-gray-500 font-medium text-center mb-2">
-                  Composição do preço
-                </p>
-
-                {/* Preço Base */}
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-600 flex items-center gap-1.5">
-                    <span className="w-5 h-5 bg-blue-100 rounded flex items-center justify-center text-xs">
-                      💵
-                    </span>
-                    Produto
-                  </span>
-                  <span className="font-medium text-gray-800">
-                    R$ {precoBase.toFixed(2)}
-                  </span>
-                </div>
-
-                {/* Etiqueta (se houver) */}
-                {precoEtiqueta > 0 && (
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600 flex items-center gap-1.5">
-                      <span className="w-5 h-5 bg-yellow-100 rounded flex items-center justify-center text-xs">
-                        🏷️
-                      </span>
-                      Etiqueta
-                    </span>
-                    <span className="font-medium text-yellow-600">
-                      + R$ {precoEtiqueta.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-
-                {/* Embalagem (se houver) */}
-                {precoEmbalagem > 0 && (
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600 flex items-center gap-1.5">
-                      <span className="w-5 h-5 bg-purple-100 rounded flex items-center justify-center text-xs">
-                        📦
-                      </span>
-                      Embalagem
-                    </span>
-                    <span className="font-medium text-purple-600">
-                      + R$ {precoEmbalagem.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-
-                {/* Linha divisória */}
-                <div className="border-t border-gray-200 my-2"></div>
-
-                {/* Total */}
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-700 font-semibold">Total unitário</span>
-                  <span className="text-xl font-bold text-green-600">
-                    R$ {precoTotal.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              // Se não tem acréscimos, mostra só o preço
-              <div className="text-center">
-                <p className="text-xs text-blue-600 font-medium mb-1">Preço unitário</p>
-                <p className="text-2xl font-bold text-blue-600">
-                  R$ {precoTotal.toFixed(2)}
-                </p>
-              </div>
-            )}
+            <div className="text-center">
+              <p className="text-xs text-blue-600 font-medium mb-1">Preço unitário</p>
+              <p className="text-2xl font-bold text-blue-600">
+                R$ {precoTotal.toFixed(2)}
+              </p>
+            </div>
           </div>
         </div>
 

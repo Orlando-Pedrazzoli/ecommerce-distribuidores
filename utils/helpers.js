@@ -162,9 +162,7 @@ export const masks = {
 // Status dos pedidos
 export const orderStatus = {
   pendente: { label: 'Pendente', color: 'yellow', icon: '⏳' },
-  confirmado: { label: 'Confirmado', color: 'blue', icon: '✅' },
-  enviado: { label: 'Enviado', color: 'green', icon: '🚚' },
-  entregue: { label: 'Entregue', color: 'green', icon: '📦' },
+  confirmado: { label: 'Confirmado', color: 'green', icon: '✅' },
 };
 
 // Categorias de produtos

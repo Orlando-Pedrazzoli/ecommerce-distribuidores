@@ -8,6 +8,7 @@ import Produto from '../../../models/Produto'; // ← NECESSÁRIO para populate
 import dbConnect from '../../../lib/mongodb';
 import { requireDistribuidor } from '../../../lib/auth';
 import { royaltiesEmAberto } from '../../../lib/financeiro';
+import { filtroStatus } from '../../../lib/statusPedido';
 
 async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -32,8 +33,9 @@ async function handler(req, res) {
     let filter = { userId: req.user.usuario };
 
     // Filtro opcional por status
+    // "confirmado" inclui os pedidos antigos gravados como enviado/entregue
     if (status && status !== 'todos') {
-      filter.status = status;
+      filter.status = filtroStatus(status);
     }
 
     // Filtro opcional por fornecedor
@@ -63,36 +65,20 @@ async function handler(req, res) {
     let resumoFinanceiro = {
       totalPedidos: 0,
       royaltiesPendentes: 0,
-      etiquetasPendentes: 0,
-      embalagensPendentes: 0,
       totalPendente: 0,
       pedidosComPendencia: 0,
     };
 
     todosOsPedidos.forEach(pedido => {
       resumoFinanceiro.totalPedidos += pedido.total || 0;
-      const cf = pedido.controleFinanceiro || {};
 
       // Royalties em aberto já descontam as baixas parciais feitas por Pix
-      resumoFinanceiro.royaltiesPendentes += royaltiesEmAberto(pedido);
-
-      const temPendencia =
-        royaltiesEmAberto(pedido) > 0 ||
-        (cf.etiquetas?.status !== 'pago' && (pedido.totalEtiquetas || 0) > 0) ||
-        (cf.embalagens?.status !== 'pago' && (pedido.totalEmbalagens || 0) > 0);
-      if (temPendencia) resumoFinanceiro.pedidosComPendencia += 1;
-      if (cf.etiquetas?.status !== 'pago') {
-        resumoFinanceiro.etiquetasPendentes += pedido.totalEtiquetas || 0;
-      }
-      if (cf.embalagens?.status !== 'pago') {
-        resumoFinanceiro.embalagensPendentes += pedido.totalEmbalagens || 0;
-      }
+      const emAberto = royaltiesEmAberto(pedido);
+      resumoFinanceiro.royaltiesPendentes += emAberto;
+      if (emAberto > 0) resumoFinanceiro.pedidosComPendencia += 1;
     });
 
-    resumoFinanceiro.totalPendente = 
-      resumoFinanceiro.royaltiesPendentes + 
-      resumoFinanceiro.etiquetasPendentes + 
-      resumoFinanceiro.embalagensPendentes;
+    resumoFinanceiro.totalPendente = resumoFinanceiro.royaltiesPendentes;
 
     // ══════════════════════════════════════════════════════════════
     // RESPOSTA

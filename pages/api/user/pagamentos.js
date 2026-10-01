@@ -54,25 +54,14 @@ async function listar(req, res) {
   let totalPedidos = 0;
   let royaltiesPendentes = 0;
   let royaltiesPagos = 0;
-  let etiquetasPendentes = 0;
-  let etiquetasPagas = 0;
-  let embalagensPendentes = 0;
-  let embalagensPagas = 0;
 
   const pedidos = pedidosDocs.map(doc => {
     const pedido = doc.toJSON();
-    const cf = pedido.controleFinanceiro || {};
     const emAberto = royaltiesEmAberto(pedido);
 
     totalPedidos += pedido.total || 0;
     royaltiesPendentes += emAberto;
     royaltiesPagos += Math.max(0, (pedido.royalties || 0) - emAberto);
-
-    if (cf.etiquetas?.status === 'pago') etiquetasPagas += pedido.totalEtiquetas || 0;
-    else etiquetasPendentes += pedido.totalEtiquetas || 0;
-
-    if (cf.embalagens?.status === 'pago') embalagensPagas += pedido.totalEmbalagens || 0;
-    else embalagensPendentes += pedido.totalEmbalagens || 0;
 
     return { ...pedido, royaltiesEmAberto: emAberto };
   });
@@ -94,12 +83,8 @@ async function listar(req, res) {
       royaltiesPendentes,
       royaltiesPagos,
       royaltiesEmConferencia: emConferencia,
-      etiquetasPendentes,
-      etiquetasPagas,
-      embalagensPendentes,
-      embalagensPagas,
-      totalPendente: arred(royaltiesPendentes + etiquetasPendentes + embalagensPendentes),
-      totalPago: arred(royaltiesPagos + etiquetasPagas + embalagensPagas),
+      totalPendente: royaltiesPendentes,
+      totalPago: royaltiesPagos,
     },
     totalPedidos: pedidos.length,
   });

@@ -10,6 +10,7 @@ import Layout from '../components/Layout';
 import Head from 'next/head';
 import PixPagamento, { LinkComprovante } from '../components/Pix/PixPagamento';
 import { formatarMoeda, royaltiesEmAberto, STATUS_SINAL } from '../lib/financeiro';
+import { normalizarStatus, STATUS_PEDIDO_INFO } from '../lib/statusPedido';
 
 const ESTILO_SINAL = {
   em_analise: 'bg-amber-50 border-amber-200 text-amber-900',
@@ -23,9 +24,10 @@ export default function MeusPedidos() {
   const [loading, setLoading] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState('todos');
 
-  // Filtro inicial vindo do dashboard (/meus-pedidos?status=enviado)
+  // Filtro inicial vindo do dashboard (/meus-pedidos?status=pendente)
   useEffect(() => {
-    if (router.isReady && router.query.status) setFiltroStatus(String(router.query.status));
+    if (router.isReady && router.query.status)
+      setFiltroStatus(normalizarStatus(String(router.query.status)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
   const [resumoFinanceiro, setResumoFinanceiro] = useState(null);
@@ -81,16 +83,7 @@ export default function MeusPedidos() {
     let pedidosComPendencia = 0;
 
     pedidosList.forEach(pedido => {
-      const cf = pedido.controleFinanceiro || {};
-      let pendentePedido = 0;
-
-      pendentePedido += royaltiesEmAberto(pedido);
-      if (cf.etiquetas?.status !== 'pago') {
-        pendentePedido += pedido.totalEtiquetas || 0;
-      }
-      if (cf.embalagens?.status !== 'pago') {
-        pendentePedido += pedido.totalEmbalagens || 0;
-      }
+      const pendentePedido = royaltiesEmAberto(pedido);
 
       if (pendentePedido > 0) {
         totalPendente += pendentePedido;
@@ -107,41 +100,21 @@ export default function MeusPedidos() {
   const getStatusColor = status => {
     const colors = {
       pendente: 'bg-yellow-100 text-yellow-800',
-      confirmado: 'bg-blue-100 text-blue-800',
-      enviado: 'bg-orange-100 text-orange-800',
-      entregue: 'bg-green-100 text-green-800',
+      confirmado: 'bg-green-100 text-green-800',
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
-  const getStatusIcon = status => {
-    const icons = {
-      pendente: '⏳',
-      confirmado: '✅',
-      enviado: '🚚',
-      entregue: '📦',
-    };
-    return icons[status] || '📋';
-  };
-
-  // Verificar status geral de pagamento do pedido
+  // Status do pagamento dos royalties do pedido (conta as baixas parciais por Pix)
   const getStatusPagamento = pedido => {
-    const cf = pedido.controleFinanceiro || {};
+    const falta = royaltiesEmAberto(pedido);
 
-    // Royalties: conta as baixas parciais feitas por Pix
-    const royaltiesPago = royaltiesEmAberto(pedido) <= 0;
-    const etiquetasPago = cf.etiquetas?.status === 'pago' || (pedido.totalEtiquetas || 0) === 0;
-    const embalagensPago = cf.embalagens?.status === 'pago' || (pedido.totalEmbalagens || 0) === 0;
-
-    if (royaltiesPago && etiquetasPago && embalagensPago) {
+    if (falta <= 0) {
       return { status: 'pago', label: 'Pago', color: 'bg-green-100 text-green-800', icon: '✓' };
     }
-
-    const algumPago = royaltiesPago || etiquetasPago || embalagensPago;
-    if (algumPago) {
+    if (falta < (pedido.royalties || 0) - 0.004) {
       return { status: 'parcial', label: 'Parcial', color: 'bg-blue-100 text-blue-800', icon: '◐' };
     }
-
     return {
       status: 'pendente',
       label: 'Pendente',
@@ -249,8 +222,6 @@ export default function MeusPedidos() {
                 { value: 'todos', label: 'Todos os Pedidos', icon: '📋' },
                 { value: 'pendente', label: 'Pendentes', icon: '⏳' },
                 { value: 'confirmado', label: 'Confirmados', icon: '✅' },
-                { value: 'enviado', label: 'Enviados', icon: '🚚' },
-                { value: 'entregue', label: 'Entregues', icon: '📦' },
               ].map(status => (
                 <button
                   key={status.value}
@@ -295,6 +266,8 @@ export default function MeusPedidos() {
               {pedidos.map(pedido => {
                 const itensPorCategoria = organizarItensPorCategoria(pedido.itens || []);
                 const statusPagamento = getStatusPagamento(pedido);
+                // pedidos antigos "enviado"/"entregue" aparecem como confirmados
+                const statusPedido = normalizarStatus(pedido.status);
 
                 return (
                   <div key={pedido._id} className='bg-white rounded-lg shadow-md p-6'>
@@ -322,11 +295,11 @@ export default function MeusPedidos() {
                         {/* Status do Pedido */}
                         <span
                           className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
-                            pedido.status,
+                            statusPedido,
                           )}`}
                         >
-                          <span>{getStatusIcon(pedido.status)}</span>
-                          {pedido.status?.charAt(0).toUpperCase() + pedido.status?.slice(1)}
+                          <span>{STATUS_PEDIDO_INFO[statusPedido]?.icone || '📋'}</span>
+                          {STATUS_PEDIDO_INFO[statusPedido]?.label || statusPedido}
                         </span>
 
                         {/* Status de Pagamento */}
@@ -335,7 +308,7 @@ export default function MeusPedidos() {
                             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${statusPagamento.color}`}
                           >
                             <span>{statusPagamento.icon}</span>
-                            Pgto: {statusPagamento.label}
+                            Royalties: {statusPagamento.label}
                           </span>
                         </div>
 
@@ -415,9 +388,9 @@ export default function MeusPedidos() {
                             {catData.itens.map((item, index) => (
                               <div key={index}>
                                 <div className='flex items-center gap-3 p-2 hover:bg-gray-50 rounded'>
-                                  {item.produtoId?.imagem ? (
+                                  {item.imagem || item.produtoId?.imagem ? (
                                     <img
-                                      src={item.produtoId.imagem}
+                                      src={item.imagem || item.produtoId.imagem}
                                       alt={item.nome}
                                       className='w-12 h-12 object-cover rounded'
                                     />
@@ -471,20 +444,8 @@ export default function MeusPedidos() {
                             <span className='text-gray-600'>Subtotal Produtos:</span>
                             <span>R$ {pedido.subtotal?.toFixed(2)}</span>
                           </div>
-                          {(pedido.totalEtiquetas || 0) > 0 && (
-                            <div className='flex justify-between items-center text-sm'>
-                              <span className='text-gray-600'>Etiquetas:</span>
-                              <span>R$ {pedido.totalEtiquetas?.toFixed(2)}</span>
-                            </div>
-                          )}
-                          {(pedido.totalEmbalagens || 0) > 0 && (
-                            <div className='flex justify-between items-center text-sm'>
-                              <span className='text-gray-600'>Embalagens:</span>
-                              <span>R$ {pedido.totalEmbalagens?.toFixed(2)}</span>
-                            </div>
-                          )}
                           <div className='flex justify-between items-center text-sm'>
-                            <span className='text-gray-600'>Taxa de serviço (5%):</span>
+                            <span className='text-gray-600'>Royalties (5%):</span>
                             <span>R$ {pedido.royalties?.toFixed(2)}</span>
                           </div>
                           <div className='flex justify-between items-center font-bold text-lg border-t pt-2 mt-2'>
@@ -496,11 +457,11 @@ export default function MeusPedidos() {
                         {/* Coluna Direita - Status de Pagamentos */}
                         <div className='bg-gray-50 rounded-lg p-3'>
                           <h5 className='font-medium text-gray-700 mb-2 text-sm'>
-                            💳 Status dos Pagamentos
+                            💳 Pagamento dos royalties
                           </h5>
                           <div className='space-y-1 text-xs'>
                             <div className='flex justify-between items-center'>
-                              <span>Taxa de serviço:</span>
+                              <span>Royalties:</span>
                               {royaltiesEmAberto(pedido) <= 0 ? (
                                 <span className='text-green-600 font-medium'>✓ Pago</span>
                               ) : royaltiesEmAberto(pedido) < (pedido.royalties || 0) - 0.004 ? (
@@ -511,26 +472,6 @@ export default function MeusPedidos() {
                                 <span className='text-yellow-600 font-medium'>⏳ Pendente</span>
                               )}
                             </div>
-                            {(pedido.totalEtiquetas || 0) > 0 && (
-                              <div className='flex justify-between items-center'>
-                                <span>Etiquetas:</span>
-                                {pedido.controleFinanceiro?.etiquetas?.status === 'pago' ? (
-                                  <span className='text-green-600 font-medium'>✓ Pago</span>
-                                ) : (
-                                  <span className='text-yellow-600 font-medium'>⏳ Pendente</span>
-                                )}
-                              </div>
-                            )}
-                            {(pedido.totalEmbalagens || 0) > 0 && (
-                              <div className='flex justify-between items-center'>
-                                <span>Embalagens:</span>
-                                {pedido.controleFinanceiro?.embalagens?.status === 'pago' ? (
-                                  <span className='text-green-600 font-medium'>✓ Pago</span>
-                                ) : (
-                                  <span className='text-yellow-600 font-medium'>⏳ Pendente</span>
-                                )}
-                              </div>
-                            )}
                           </div>
                           <button
                             onClick={() => router.push('/pagamentos')}

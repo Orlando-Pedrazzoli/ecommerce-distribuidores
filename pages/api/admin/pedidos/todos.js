@@ -22,9 +22,8 @@ async function handler(req, res) {
     const stats = {
       total: pedidos.length,
       pendentes: pedidos.filter(p => p.status === 'pendente').length,
-      confirmados: pedidos.filter(p => p.status === 'confirmado').length,
-      enviados: pedidos.filter(p => p.status === 'enviado').length,
-      entregues: pedidos.filter(p => p.status === 'entregue').length,
+      // pedidos antigos "enviado"/"entregue" contam como confirmados
+      confirmados: pedidos.filter(p => p.status !== 'pendente').length,
       valorTotal: pedidos.reduce((acc, p) => acc + (p.total || 0), 0),
     };
 

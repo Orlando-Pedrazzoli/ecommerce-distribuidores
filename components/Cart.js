@@ -1,7 +1,6 @@
 // COMPONENTS/CART.JS - COM FORMATO BRASILEIRO E DETALHAMENTO COMPLETO
 // ===================================
-// Preço único: base + etiqueta + embalagem
-// Royalties: 5% apenas sobre preço BASE
+// Total = produtos + royalties (5% sobre o preço dos produtos)
 
 import { useCart } from '../pages/_app';
 import { useToastContext } from '../pages/_app';
@@ -107,32 +106,17 @@ export default function Cart({ isOpen, onClose }) {
   // CÁLCULOS
   // ══════════════════════════════════════════════════════════════
 
-  // Subtotal BASE (preço dos produtos)
+  // Subtotal dos produtos
   const subtotalBase = cart.reduce(
     (total, item) => total + (item.preco || 0) * item.quantidade,
     0
   );
 
-  // Total de etiquetas
-  const totalEtiquetas = cart.reduce(
-    (total, item) => total + (item.precoEtiqueta || 0) * item.quantidade,
-    0
-  );
-
-  // Total de embalagens
-  const totalEmbalagens = cart.reduce(
-    (total, item) => total + (item.precoEmbalagem || 0) * item.quantidade,
-    0
-  );
-
-  // Subtotal dos produtos (base + etiqueta + embalagem)
-  const subtotalProdutos = subtotalBase + totalEtiquetas + totalEmbalagens;
-
-  // Royalties = 5% APENAS do subtotal BASE
+  // Royalties = 5% do subtotal dos produtos
   const royalties = subtotalBase * 0.05;
 
   // Total final
-  const total = subtotalProdutos + royalties;
+  const total = subtotalBase + royalties;
 
   // Agrupar itens por fornecedor
   const itemsPorFornecedor = cart.reduce((acc, item) => {
@@ -145,10 +129,8 @@ export default function Cart({ isOpen, onClose }) {
     return acc;
   }, {});
 
-  // Função para calcular preço total unitário do item
-  const getPrecoTotalItem = item => {
-    return (item.preco || 0) + (item.precoEtiqueta || 0) + (item.precoEmbalagem || 0);
-  };
+  // Preço unitário do item
+  const getPrecoTotalItem = item => item.preco || 0;
 
   if (!isOpen) return null;
 
@@ -371,22 +353,6 @@ export default function Cart({ isOpen, onClose }) {
                       </span>
                     </div>
 
-                    {/* Etiquetas (se houver) */}
-                    {totalEtiquetas > 0 && (
-                      <div className='flex justify-between text-gray-500'>
-                        <span>Etiquetas:</span>
-                        <span>+ {formatarMoeda(totalEtiquetas)}</span>
-                      </div>
-                    )}
-
-                    {/* Embalagens (se houver) */}
-                    {totalEmbalagens > 0 && (
-                      <div className='flex justify-between text-gray-500'>
-                        <span>Embalagens:</span>
-                        <span>+ {formatarMoeda(totalEmbalagens)}</span>
-                      </div>
-                    )}
-
                     {/* Royalties */}
                     <div className='flex justify-between text-gray-500'>
                       <span>Royalties (5%):</span>
@@ -407,10 +373,7 @@ export default function Cart({ isOpen, onClose }) {
 
                 {/* Info sobre royalties */}
                 <p className='text-xs text-gray-400 mt-2 text-center'>
-                  Royalties calculados sobre o preço base pago ao fornecedor.
-                </p>
-                <p className='text-xs text-gray-400 mt-2 text-center'>
-                  Etiquetas e embalagens são isentas de Royalties.
+                  Royalties calculados sobre o preço dos produtos pago ao fornecedor.
                 </p>
               </div>
 

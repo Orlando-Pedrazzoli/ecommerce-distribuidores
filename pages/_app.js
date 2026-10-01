@@ -151,10 +151,8 @@ export default function App({ Component, pageProps }) {
           {
             ...produto,
             quantidade,
-            // Garantir que os preços existam
+            // Garantir que o preço exista
             preco: produto.preco || 0,
-            precoEtiqueta: produto.precoEtiqueta || 0,
-            precoEmbalagem: produto.precoEmbalagem || 0,
           },
         ];
       }
@@ -200,28 +198,16 @@ export default function App({ Component, pageProps }) {
   // CÁLCULOS SIMPLIFICADOS
   // ══════════════════════════════════════════════════════════════
 
-  // Subtotal BASE (para cálculo de royalties)
+  // Subtotal dos produtos (base de cálculo dos royalties)
   const cartSubtotalBase = cart.reduce(
     (total, item) => total + (item.preco || 0) * item.quantidade,
     0
   );
 
-  // Total etiquetas
-  const cartTotalEtiquetas = cart.reduce(
-    (total, item) => total + (item.precoEtiqueta || 0) * item.quantidade,
-    0
-  );
+  // Mantido por compatibilidade: igual ao subtotal dos produtos
+  const cartSubtotalProdutos = cartSubtotalBase;
 
-  // Total embalagens
-  const cartTotalEmbalagens = cart.reduce(
-    (total, item) => total + (item.precoEmbalagem || 0) * item.quantidade,
-    0
-  );
-
-  // Subtotal produtos (base + etiqueta + embalagem)
-  const cartSubtotalProdutos = cartSubtotalBase + cartTotalEtiquetas + cartTotalEmbalagens;
-
-  // Royalties = 5% apenas do subtotal BASE
+  // Royalties = 5% do subtotal dos produtos
   const cartRoyalties = cartSubtotalBase * 0.05;
 
   // Total final
@@ -242,8 +228,6 @@ export default function App({ Component, pageProps }) {
     cartTotal,
     cartSubtotalBase,
     cartSubtotalProdutos,
-    cartTotalEtiquetas,
-    cartTotalEmbalagens,
     cartRoyalties,
     cartCount,
     isClient,

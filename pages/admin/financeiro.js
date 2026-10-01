@@ -1,6 +1,6 @@
-// PAGES/ADMIN/FINANCEIRO.JS - COM FILTRO POR DISTRIBUIDOR
+// PAGES/ADMIN/FINANCEIRO.JS - CONTROLE DOS ROYALTIES
 // ===================================
-// Interface para o admin gerenciar pagamentos de royalties, etiquetas e embalagens
+// Interface para o admin acompanhar e dar baixa nos royalties de cada pedido
 // + Chave Pix onde os distribuidores pagam os royalties
 // + Conferência dos Pix de royalties (comprovante, confirmar / rejeitar)
 
@@ -36,7 +36,6 @@ export default function FinanceiroAdmin() {
   const [loading, setLoading] = useState(true);
   const [dados, setDados] = useState(null);
   const [filtro, setFiltro] = useState('pendente');
-  const [tipoFiltro, setTipoFiltro] = useState('todos');
   const [filtroDistribuidor, setFiltroDistribuidor] = useState('todos'); // ← NOVO
   const [distribuidores, setDistribuidores] = useState([]); // ← NOVO
   const [periodo, setPeriodo] = useState('30dias');
@@ -126,17 +125,13 @@ export default function FinanceiroAdmin() {
     }
   };
 
-  const atualizarStatus = async (pedidoId, tipo, novoStatus) => {
+  const atualizarStatus = async (pedidoId, novoStatus) => {
     try {
-      setUpdating(`${pedidoId}-${tipo}`);
+      setUpdating(pedidoId);
       const response = await fetch('/api/admin/financeiro', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pedidoId,
-          tipo,
-          status: novoStatus,
-        }),
+        body: JSON.stringify({ pedidoId, status: novoStatus }),
       });
 
       if (response.ok) {
@@ -149,7 +144,7 @@ export default function FinanceiroAdmin() {
     }
   };
 
-  const atualizarMultiplos = async (tipo, status) => {
+  const atualizarMultiplos = async status => {
     if (selectedPedidos.length === 0) return;
 
     try {
@@ -157,11 +152,7 @@ export default function FinanceiroAdmin() {
       const response = await fetch('/api/admin/financeiro', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pedidoIds: selectedPedidos,
-          tipo,
-          status,
-        }),
+        body: JSON.stringify({ pedidoIds: selectedPedidos, status }),
       });
 
       if (response.ok) {
@@ -192,79 +183,23 @@ export default function FinanceiroAdmin() {
   // Limpar filtros
   const limparFiltros = () => {
     setFiltro('pendente');
-    setTipoFiltro('todos');
     setFiltroDistribuidor('todos');
   };
 
-  // Filtrar pedidos
-  const getPedidosFiltrados = () => {
-    if (!dados?.pedidos) return [];
+  // Filtrar pedidos: por distribuidor e por royalties em aberto / pagos
+  const pedidosFiltrados = (dados?.pedidos || []).filter(pedido => {
+    if (filtroDistribuidor !== 'todos' && pedido.userId !== filtroDistribuidor) return false;
+    if (filtro === 'pendente') return royaltiesEmAberto(pedido) > 0;
+    if (filtro === 'pago') return royaltiesEmAberto(pedido) <= 0;
+    return true;
+  });
 
-    return dados.pedidos.filter(pedido => {
-      // ══════════════════════════════════════════════════════════════
-      // NOVO: Filtro por Distribuidor
-      // ══════════════════════════════════════════════════════════════
-      if (filtroDistribuidor !== 'todos' && pedido.userId !== filtroDistribuidor) {
-        return false;
-      }
-
-      // Verificar status
-      let passaFiltroStatus = true;
-
-      if (filtro === 'pendente') {
-        if (tipoFiltro === 'todos') {
-          passaFiltroStatus =
-            royaltiesEmAberto(pedido) > 0 ||
-            pedido.controleFinanceiro?.etiquetas?.status === 'pendente' ||
-            pedido.controleFinanceiro?.embalagens?.status === 'pendente';
-        } else {
-          passaFiltroStatus = pedido.controleFinanceiro?.[tipoFiltro]?.status === 'pendente';
-        }
-      } else if (filtro === 'pago') {
-        if (tipoFiltro === 'todos') {
-          passaFiltroStatus =
-            pedido.controleFinanceiro?.royalties?.status === 'pago' &&
-            pedido.controleFinanceiro?.etiquetas?.status === 'pago' &&
-            pedido.controleFinanceiro?.embalagens?.status === 'pago';
-        } else {
-          passaFiltroStatus = pedido.controleFinanceiro?.[tipoFiltro]?.status === 'pago';
-        }
-      }
-
-      return passaFiltroStatus;
-    });
-  };
-
-  const pedidosFiltrados = getPedidosFiltrados();
-
-  // Calcular totais baseado nos pedidos filtrados (para mostrar valores por distribuidor)
-  const calcularTotaisFiltrados = () => {
-    let royaltiesPendentes = 0;
-    let etiquetasPendentes = 0;
-    let embalagensPendentes = 0;
-
-    pedidosFiltrados.forEach(pedido => {
-      const cf = pedido.controleFinanceiro || {};
-      royaltiesPendentes += royaltiesEmAberto(pedido); // já desconta os Pix parciais
-      if (cf.etiquetas?.status !== 'pago') {
-        etiquetasPendentes += pedido.totalEtiquetas || 0;
-      }
-      if (cf.embalagens?.status !== 'pago') {
-        embalagensPendentes += pedido.totalEmbalagens || 0;
-      }
-    });
-
-    return {
-      royaltiesPendentes,
-      etiquetasPendentes,
-      embalagensPendentes,
-      totalPendente: royaltiesPendentes + etiquetasPendentes + embalagensPendentes,
-    };
-  };
-
-  const totaisFiltrados = calcularTotaisFiltrados();
-  const temFiltroAtivo =
-    filtro !== 'pendente' || tipoFiltro !== 'todos' || filtroDistribuidor !== 'todos';
+  // Royalties em aberto nos pedidos filtrados (já desconta os Pix parciais)
+  const totalPendenteFiltrado = pedidosFiltrados.reduce(
+    (soma, pedido) => soma + royaltiesEmAberto(pedido),
+    0,
+  );
+  const temFiltroAtivo = filtro !== 'pendente' || filtroDistribuidor !== 'todos';
 
   if (loading) {
     return (
@@ -285,7 +220,7 @@ export default function FinanceiroAdmin() {
       </Head>
       <AdminShell
         titulo='Controle financeiro'
-        subtitulo='Pagamentos de royalties, etiquetas e embalagens'
+        subtitulo='Royalties a receber dos distribuidores'
       >
         <div>
           {/* ═══════════ PIX DE ROYALTIES ═══════════ */}
@@ -425,71 +360,37 @@ export default function FinanceiroAdmin() {
           </div>
 
           {/* Cards de Resumo */}
-          <div className='grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6'>
-            {/* Total a Receber */}
+          <div className='grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6'>
             <div className='bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg p-3 sm:p-4 col-span-2 lg:col-span-1'>
-              <div className='text-xs sm:text-sm opacity-80'>Total a Receber</div>
+              <div className='text-xs sm:text-sm opacity-80'>Royalties a receber</div>
               <div className='text-xl sm:text-2xl font-bold mt-1'>
-                R$ {(stats?.totalAReceber || 0).toFixed(2)}
+                {moeda(stats?.royalties?.pendente)}
               </div>
               <div className='text-xs opacity-70 mt-1'>
-                {(stats?.royalties?.qtdPendente || 0) +
-                  (stats?.etiquetas?.qtdPendente || 0) +
-                  (stats?.embalagens?.qtdPendente || 0)}{' '}
-                itens pendentes
+                {stats?.royalties?.qtdPendente || 0} pedido
+                {stats?.royalties?.qtdPendente !== 1 ? 's' : ''} em aberto
               </div>
             </div>
 
-            {/* Royalties */}
-            <div className='bg-white rounded-lg shadow p-3 sm:p-4 border-l-4 border-blue-500'>
-              <div className='text-xs sm:text-sm text-gray-500'>Royalties (5%)</div>
-              <div className='text-lg sm:text-xl font-bold text-blue-600 mt-1'>
-                R$ {(stats?.royalties?.pendente || 0).toFixed(2)}
-              </div>
-              <div className='text-xs text-gray-500 mt-1'>
-                {stats?.royalties?.qtdPendente || 0} pendente
-                {stats?.royalties?.qtdPendente !== 1 ? 's' : ''}
-              </div>
-            </div>
-
-            {/* Etiquetas */}
             <div className='bg-white rounded-lg shadow p-3 sm:p-4 border-l-4 border-green-500'>
-              <div className='text-xs sm:text-sm text-gray-500'>Etiquetas</div>
+              <div className='text-xs sm:text-sm text-gray-500'>Já recebido</div>
               <div className='text-lg sm:text-xl font-bold text-green-600 mt-1'>
-                R$ {(stats?.etiquetas?.pendente || 0).toFixed(2)}
+                {moeda(stats?.royalties?.pago)}
               </div>
               <div className='text-xs text-gray-500 mt-1'>
-                {stats?.etiquetas?.qtdPendente || 0} pendente
-                {stats?.etiquetas?.qtdPendente !== 1 ? 's' : ''}
+                {stats?.royalties?.qtdPago || 0} pedido
+                {stats?.royalties?.qtdPago !== 1 ? 's' : ''} quitado
+                {stats?.royalties?.qtdPago !== 1 ? 's' : ''}
               </div>
             </div>
 
-            {/* Embalagens */}
-            <div className='bg-white rounded-lg shadow p-3 sm:p-4 border-l-4 border-orange-500'>
-              <div className='text-xs sm:text-sm text-gray-500'>Embalagens</div>
-              <div className='text-lg sm:text-xl font-bold text-orange-600 mt-1'>
-                R$ {(stats?.embalagens?.pendente || 0).toFixed(2)}
+            <div className='bg-white rounded-lg shadow p-3 sm:p-4 border-l-4 border-blue-500'>
+              <div className='text-xs sm:text-sm text-gray-500'>Total de royalties</div>
+              <div className='text-lg sm:text-xl font-bold text-blue-600 mt-1'>
+                {moeda(stats?.royalties?.total)}
               </div>
               <div className='text-xs text-gray-500 mt-1'>
-                {stats?.embalagens?.qtdPendente || 0} pendente
-                {stats?.embalagens?.qtdPendente !== 1 ? 's' : ''}
-              </div>
-            </div>
-          </div>
-
-          {/* Já Recebido */}
-          <div className='bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6'>
-            <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'>
-              <div>
-                <span className='text-green-800 font-medium text-sm'>✅ Já Recebido:</span>
-                <span className='text-green-600 font-bold text-lg sm:text-xl ml-2'>
-                  R$ {(stats?.totalRecebido || 0).toFixed(2)}
-                </span>
-              </div>
-              <div className='text-xs sm:text-sm text-green-700'>
-                Royalties: R$ {(stats?.royalties?.pago || 0).toFixed(2)} | Etiquetas: R${' '}
-                {(stats?.etiquetas?.pago || 0).toFixed(2)} | Embalagens: R${' '}
-                {(stats?.embalagens?.pago || 0).toFixed(2)}
+                {stats?.totalPedidos || 0} pedido{stats?.totalPedidos !== 1 ? 's' : ''} no período
               </div>
             </div>
           </div>
@@ -508,7 +409,7 @@ export default function FinanceiroAdmin() {
               )}
             </div>
 
-            <div className='grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4'>
+            <div className='grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4'>
               {/* Período */}
               <div>
                 <label className='block text-xs font-medium text-gray-700 mb-1'>Período</label>
@@ -524,39 +425,22 @@ export default function FinanceiroAdmin() {
                 </select>
               </div>
 
-              {/* Status */}
+              {/* Status dos royalties */}
               <div>
-                <label className='block text-xs font-medium text-gray-700 mb-1'>Status</label>
+                <label className='block text-xs font-medium text-gray-700 mb-1'>Royalties</label>
                 <select
                   value={filtro}
                   onChange={e => setFiltro(e.target.value)}
                   className='w-full border border-gray-300 rounded px-3 py-2 text-sm'
                 >
-                  <option value='pendente'>⏳ Pendentes</option>
+                  <option value='pendente'>⏳ Em aberto</option>
                   <option value='pago'>✅ Pagos</option>
                   <option value='todos'>📋 Todos</option>
                 </select>
               </div>
 
-              {/* Tipo */}
-              <div>
-                <label className='block text-xs font-medium text-gray-700 mb-1'>Tipo</label>
-                <select
-                  value={tipoFiltro}
-                  onChange={e => setTipoFiltro(e.target.value)}
-                  className='w-full border border-gray-300 rounded px-3 py-2 text-sm'
-                >
-                  <option value='todos'>Todos os tipos</option>
-                  <option value='royalties'>💰 Royalties</option>
-                  <option value='etiquetas'>🏷️ Etiquetas</option>
-                  <option value='embalagens'>📦 Embalagens</option>
-                </select>
-              </div>
-
-              {/* ══════════════════════════════════════════════════════════════ */}
-              {/* NOVO: Filtro por Distribuidor */}
-              {/* ══════════════════════════════════════════════════════════════ */}
-              <div>
+              {/* Distribuidor */}
+              <div className='col-span-2 sm:col-span-1'>
                 <label className='block text-xs font-medium text-gray-700 mb-1'>Distribuidor</label>
                 <select
                   value={filtroDistribuidor}
@@ -582,8 +466,7 @@ export default function FinanceiroAdmin() {
                     <span className='font-bold'>{filtroDistribuidor}</span>
                   </p>
                   <div className='text-sm text-blue-700'>
-                    Pendente:{' '}
-                    <span className='font-bold'>R$ {totaisFiltrados.totalPendente.toFixed(2)}</span>
+                    Em aberto: <span className='font-bold'>{moeda(totalPendenteFiltrado)}</span>
                   </div>
                 </div>
               </div>
@@ -599,25 +482,18 @@ export default function FinanceiroAdmin() {
               </span>
               <div className='flex flex-wrap gap-2'>
                 <button
-                  onClick={() => atualizarMultiplos('royalties', 'pago')}
+                  onClick={() => atualizarMultiplos('pago')}
                   disabled={updating === 'bulk'}
-                  className='text-xs bg-blue-500 text-white px-3 py-1.5 rounded hover:bg-blue-600 disabled:opacity-50'
+                  className='text-xs bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 disabled:opacity-50'
                 >
-                  ✅ Royalties Pagos
+                  ✅ Marcar royalties como pagos
                 </button>
                 <button
-                  onClick={() => atualizarMultiplos('etiquetas', 'pago')}
+                  onClick={() => atualizarMultiplos('pendente')}
                   disabled={updating === 'bulk'}
-                  className='text-xs bg-green-500 text-white px-3 py-1.5 rounded hover:bg-green-600 disabled:opacity-50'
+                  className='text-xs bg-white border border-gray-300 text-gray-700 px-3 py-1.5 rounded hover:bg-gray-50 disabled:opacity-50'
                 >
-                  ✅ Etiquetas Pagas
-                </button>
-                <button
-                  onClick={() => atualizarMultiplos('embalagens', 'pago')}
-                  disabled={updating === 'bulk'}
-                  className='text-xs bg-orange-500 text-white px-3 py-1.5 rounded hover:bg-orange-600 disabled:opacity-50'
-                >
-                  ✅ Embalagens Pagas
+                  Voltar a pendente
                 </button>
               </div>
             </div>
@@ -651,6 +527,9 @@ export default function FinanceiroAdmin() {
                 {pedidosFiltrados.map(pedido => {
                   const numeroPedido = pedido._id.toString().slice(-8).toUpperCase();
                   const isSelected = selectedPedidos.includes(pedido._id);
+                  const royalties = pedido.controleFinanceiro?.royalties || {};
+                  const pago = royalties.status === 'pago';
+                  const abatido = !pago && (royalties.valorPago || 0) > 0.004;
 
                   return (
                     <div
@@ -659,8 +538,7 @@ export default function FinanceiroAdmin() {
                         isSelected ? 'bg-purple-50' : ''
                       }`}
                     >
-                      {/* Header do Pedido */}
-                      <div className='flex items-start gap-3 mb-3'>
+                      <div className='flex items-start gap-3'>
                         <input
                           type='checkbox'
                           checked={isSelected}
@@ -677,152 +555,44 @@ export default function FinanceiroAdmin() {
                               {new Date(pedido.createdAt).toLocaleDateString('pt-BR')}
                             </span>
                           </div>
-                          <div className='text-sm text-gray-600 mt-1'>
+                          <div className='text-sm text-gray-600 mt-1 flex flex-wrap items-center gap-2'>
                             <span className='bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs font-medium'>
                               👤 {pedido.userId}
                             </span>
-                          </div>
-                        </div>
-                        <div className='text-right'>
-                          <div className='text-xs text-gray-500'>Total Pedido</div>
-                          <div className='font-bold text-gray-800'>
-                            R$ {(pedido.total || 0).toFixed(2)}
+                            <span className='text-xs text-gray-500'>
+                              Pedido: {moeda(pedido.total)}
+                            </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Status de Pagamentos */}
-                      <div className='grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 ml-7'>
-                        {/* Royalties */}
-                        <div
-                          className={`p-2 rounded border ${
-                            pedido.controleFinanceiro?.royalties?.status === 'pago'
-                              ? 'bg-green-50 border-green-200'
-                              : 'bg-yellow-50 border-yellow-200'
-                          }`}
-                        >
-                          <div className='flex items-center justify-between'>
-                            <div>
-                              <div className='text-xs text-gray-600'>Royalties</div>
-                              <div className='font-bold text-sm'>
-                                R$ {(pedido.royalties || 0).toFixed(2)}
-                              </div>
-                              {pedido.controleFinanceiro?.royalties?.status !== 'pago' &&
-                                (pedido.controleFinanceiro?.royalties?.valorPago || 0) > 0.004 && (
-                                  <div className='text-[11px] text-blue-700'>
-                                    Pix abateu{' '}
-                                    {moeda(pedido.controleFinanceiro.royalties.valorPago)} · falta{' '}
-                                    {moeda(royaltiesEmAberto(pedido))}
-                                  </div>
-                                )}
+                      {/* Royalties do pedido */}
+                      <div
+                        className={`mt-3 ml-7 p-2 rounded border flex items-center justify-between gap-3 ${
+                          pago ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'
+                        }`}
+                      >
+                        <div>
+                          <div className='text-xs text-gray-600'>Royalties</div>
+                          <div className='font-bold text-sm'>{moeda(pedido.royalties)}</div>
+                          {abatido && (
+                            <div className='text-[11px] text-blue-700'>
+                              Pix abateu {moeda(royalties.valorPago)} · falta{' '}
+                              {moeda(royaltiesEmAberto(pedido))}
                             </div>
-                            <button
-                              onClick={() =>
-                                atualizarStatus(
-                                  pedido._id,
-                                  'royalties',
-                                  pedido.controleFinanceiro?.royalties?.status === 'pago'
-                                    ? 'pendente'
-                                    : 'pago',
-                                )
-                              }
-                              disabled={updating === `${pedido._id}-royalties`}
-                              className={`px-2 py-1 rounded text-xs font-medium transition ${
-                                pedido.controleFinanceiro?.royalties?.status === 'pago'
-                                  ? 'bg-green-500 text-white hover:bg-green-600'
-                                  : 'bg-yellow-400 text-yellow-900 hover:bg-yellow-500'
-                              } disabled:opacity-50`}
-                            >
-                              {updating === `${pedido._id}-royalties`
-                                ? '...'
-                                : pedido.controleFinanceiro?.royalties?.status === 'pago'
-                                  ? '✅ Pago'
-                                  : '⏳ Pendente'}
-                            </button>
-                          </div>
+                          )}
                         </div>
-
-                        {/* Etiquetas */}
-                        <div
-                          className={`p-2 rounded border ${
-                            pedido.controleFinanceiro?.etiquetas?.status === 'pago'
-                              ? 'bg-green-50 border-green-200'
-                              : 'bg-yellow-50 border-yellow-200'
-                          }`}
+                        <button
+                          onClick={() => atualizarStatus(pedido._id, pago ? 'pendente' : 'pago')}
+                          disabled={updating === pedido._id}
+                          className={`px-3 py-1.5 rounded text-xs font-medium transition ${
+                            pago
+                              ? 'bg-green-500 text-white hover:bg-green-600'
+                              : 'bg-yellow-400 text-yellow-900 hover:bg-yellow-500'
+                          } disabled:opacity-50`}
                         >
-                          <div className='flex items-center justify-between'>
-                            <div>
-                              <div className='text-xs text-gray-600'>Etiquetas</div>
-                              <div className='font-bold text-sm'>
-                                R$ {(pedido.totalEtiquetas || 0).toFixed(2)}
-                              </div>
-                            </div>
-                            <button
-                              onClick={() =>
-                                atualizarStatus(
-                                  pedido._id,
-                                  'etiquetas',
-                                  pedido.controleFinanceiro?.etiquetas?.status === 'pago'
-                                    ? 'pendente'
-                                    : 'pago',
-                                )
-                              }
-                              disabled={updating === `${pedido._id}-etiquetas`}
-                              className={`px-2 py-1 rounded text-xs font-medium transition ${
-                                pedido.controleFinanceiro?.etiquetas?.status === 'pago'
-                                  ? 'bg-green-500 text-white hover:bg-green-600'
-                                  : 'bg-yellow-400 text-yellow-900 hover:bg-yellow-500'
-                              } disabled:opacity-50`}
-                            >
-                              {updating === `${pedido._id}-etiquetas`
-                                ? '...'
-                                : pedido.controleFinanceiro?.etiquetas?.status === 'pago'
-                                  ? '✅ Pago'
-                                  : '⏳ Pendente'}
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Embalagens */}
-                        <div
-                          className={`p-2 rounded border ${
-                            pedido.controleFinanceiro?.embalagens?.status === 'pago'
-                              ? 'bg-green-50 border-green-200'
-                              : 'bg-yellow-50 border-yellow-200'
-                          }`}
-                        >
-                          <div className='flex items-center justify-between'>
-                            <div>
-                              <div className='text-xs text-gray-600'>Embalagens</div>
-                              <div className='font-bold text-sm'>
-                                R$ {(pedido.totalEmbalagens || 0).toFixed(2)}
-                              </div>
-                            </div>
-                            <button
-                              onClick={() =>
-                                atualizarStatus(
-                                  pedido._id,
-                                  'embalagens',
-                                  pedido.controleFinanceiro?.embalagens?.status === 'pago'
-                                    ? 'pendente'
-                                    : 'pago',
-                                )
-                              }
-                              disabled={updating === `${pedido._id}-embalagens`}
-                              className={`px-2 py-1 rounded text-xs font-medium transition ${
-                                pedido.controleFinanceiro?.embalagens?.status === 'pago'
-                                  ? 'bg-green-500 text-white hover:bg-green-600'
-                                  : 'bg-yellow-400 text-yellow-900 hover:bg-yellow-500'
-                              } disabled:opacity-50`}
-                            >
-                              {updating === `${pedido._id}-embalagens`
-                                ? '...'
-                                : pedido.controleFinanceiro?.embalagens?.status === 'pago'
-                                  ? '✅ Pago'
-                                  : '⏳ Pendente'}
-                            </button>
-                          </div>
-                        </div>
+                          {updating === pedido._id ? '...' : pago ? '✅ Pago' : '⏳ Pendente'}
+                        </button>
                       </div>
                     </div>
                   );

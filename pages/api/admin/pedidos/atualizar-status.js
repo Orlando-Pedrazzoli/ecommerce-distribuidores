@@ -1,9 +1,11 @@
 // pages/api/admin/pedidos/atualizar-status.js - ATUALIZAR STATUS DO PEDIDO
 // ===================================
+// PUT { pedidoId, status: 'pendente' | 'confirmado' }
 
 import dbConnect from '../../../../lib/mongodb';
 import Pedido from '../../../../models/Pedido';
 import { requireAdmin } from '../../../../lib/auth';
+import { STATUS_PEDIDO_VALIDOS } from '../../../../lib/statusPedido';
 
 async function handler(req, res) {
   if (req.method !== 'PUT') {
@@ -19,8 +21,7 @@ async function handler(req, res) {
         .json({ message: 'PedidoId e status são obrigatórios' });
     }
 
-    const statusValidos = ['pendente', 'confirmado', 'enviado', 'entregue'];
-    if (!statusValidos.includes(status)) {
+    if (!STATUS_PEDIDO_VALIDOS.includes(status)) {
       return res.status(400).json({ message: 'Status inválido' });
     }
 
@@ -36,19 +37,9 @@ async function handler(req, res) {
     // Atualizar status e datas correspondentes
     pedido.status = status;
 
-    // Registrar datas de mudança de status
+    // Registrar a data da confirmação
     const now = new Date();
-    switch (status) {
-      case 'confirmado':
-        pedido.dataConfirmacao = now;
-        break;
-      case 'enviado':
-        pedido.dataEnvio = now;
-        break;
-      case 'entregue':
-        pedido.dataEntrega = now;
-        break;
-    }
+    if (status === 'confirmado') pedido.dataConfirmacao = now;
 
     await pedido.save();
 

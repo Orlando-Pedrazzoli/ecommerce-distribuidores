@@ -184,12 +184,10 @@ export default function Checkout() {
   // CÁLCULOS - 🆕 COM VERIFICAÇÃO DE ISENÇÃO
   // ══════════════════════════════════════════════════════════════
 
-  // Função para calcular preço total de um item
-  const getPrecoTotalItem = item => {
-    return (item.preco || 0) + (item.precoEtiqueta || 0) + (item.precoEmbalagem || 0);
-  };
+  // Preço unitário de um item
+  const getPrecoTotalItem = item => item.preco || 0;
 
-  // Subtotal BASE (para cálculo de royalties)
+  // Subtotal dos produtos (base de cálculo dos royalties)
   const subtotalBase = cart.reduce(
     (acc, item) => acc + (item.preco || 0) * item.quantidade,
     0
@@ -206,26 +204,11 @@ export default function Checkout() {
   // 🆕 Subtotal de itens isentos
   const subtotalIsento = subtotalBase - subtotalComRoyalty;
 
-  // Total de etiquetas
-  const totalEtiquetas = cart.reduce(
-    (acc, item) => acc + (item.precoEtiqueta || 0) * item.quantidade,
-    0
-  );
-
-  // Total de embalagens
-  const totalEmbalagens = cart.reduce(
-    (acc, item) => acc + (item.precoEmbalagem || 0) * item.quantidade,
-    0
-  );
-
-  // Subtotal dos produtos (base + etiqueta + embalagem)
-  const subtotalProdutos = subtotalBase + totalEtiquetas + totalEmbalagens;
-
   // 🆕 Royalties = 5% APENAS do subtotal COM royalties (não isentos)
   const royalties = subtotalComRoyalty * 0.05;
 
   // Total final
-  const total = subtotalProdutos + royalties;
+  const total = subtotalBase + royalties;
 
   // Organizar produtos por fornecedor e categoria
   const organizarProdutos = () => {
@@ -316,8 +299,6 @@ export default function Checkout() {
                 produtoId: item._id,
                 quantidade: item.quantidade,
                 precoUnitario: item.preco || 0,
-                precoEtiqueta: item.precoEtiqueta || 0,
-                precoEmbalagem: item.precoEmbalagem || 0,
               })),
             },
           };
@@ -482,8 +463,6 @@ export default function Checkout() {
               categoria: categoria,
               quantidade: item.quantidade,
               precoUnitario: item.preco || 0,
-              precoEtiqueta: item.precoEtiqueta || 0,
-              precoEmbalagem: item.precoEmbalagem || 0,
             });
           });
         });
@@ -636,20 +615,6 @@ export default function Checkout() {
             <span className='font-medium'>{formatarMoeda(subtotalBase)}</span>
           </div>
 
-          {totalEtiquetas > 0 && (
-            <div className='flex justify-between items-center text-sm text-gray-500'>
-              <span>Etiquetas:</span>
-              <span>+ {formatarMoeda(totalEtiquetas)}</span>
-            </div>
-          )}
-
-          {totalEmbalagens > 0 && (
-            <div className='flex justify-between items-center text-sm text-gray-500'>
-              <span>Embalagens:</span>
-              <span>+ {formatarMoeda(totalEmbalagens)}</span>
-            </div>
-          )}
-
           {/* 🆕 Mostrar royalties com info de isenção */}
           <div className='flex justify-between items-center text-sm text-gray-500'>
             <span className='flex items-center gap-1'>
@@ -670,10 +635,7 @@ export default function Checkout() {
         {/* Info sobre royalties */}
         <div className='mt-3 pt-3 border-t'>
           <p className='text-xs text-gray-400 text-center'>
-            Royalties calculados sobre o preço base pago ao fornecedor.
-          </p>
-          <p className='text-xs text-gray-400 text-center'>
-            Etiquetas e embalagens são isentas de Royalties.
+            Royalties calculados sobre o preço dos produtos pago ao fornecedor.
           </p>
           {/* 🆕 Info se há itens isentos */}
           {subtotalIsento > 0 && (
