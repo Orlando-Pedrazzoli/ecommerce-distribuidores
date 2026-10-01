@@ -1,4 +1,4 @@
-// 13. PAGES/API/PRODUTOS/INDEX.JS
+// PAGES/API/PRODUTOS/INDEX.JS - LISTA DE PRODUTOS ATIVOS (QUALQUER USUÁRIO LOGADO)
 // ===================================
 
 import dbConnect from '../../../lib/mongodb';
@@ -26,7 +26,9 @@ async function handler(req, res) {
         filter.categoria = categoria;
       }
 
-      const produtos = await Produto.find(filter).populate('fornecedorId');
+      // Só nome e código do fornecedor: o documento completo tem dados
+      // internos (observações do admin, emails, CNPJ, chave Pix)
+      const produtos = await Produto.find(filter).populate('fornecedorId', 'nome codigo');
 
       return res.status(200).json(produtos);
     } catch (error) {

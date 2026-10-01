@@ -1,11 +1,14 @@
-// PAGES/API/PEDIDOS/INDEX.JS
+// PAGES/API/PEDIDOS/INDEX.JS - LISTAR / ALTERAR / APAGAR PEDIDOS (SÓ ADMIN)
 // ===================================
+// Rota antiga, sem uso nas páginas atuais. Lista, altera e apaga pedidos de
+// QUALQUER distribuidor, por isso só o admin pode chamá-la. O distribuidor
+// usa /api/user/pedidos (apenas os seus pedidos).
 
 import dbConnect from '../../../lib/mongodb';
 import Pedido from '../../../models/Pedido';
 import Distribuidor from '../../../models/Distribuidor';
 import Fornecedor from '../../../models/Fornecedor';
-import { requireAuth } from '../../../utils/auth';
+import { requireAdmin } from '../../../lib/auth';
 
 async function handler(req, res) {
   await dbConnect();
@@ -179,5 +182,5 @@ async function handler(req, res) {
   return res.status(405).json({ message: 'Method not allowed' });
 }
 
-// Aplicar middleware de autenticação
-export default requireAuth(handler);
+// Só administradores (antes bastava estar logado)
+export default requireAdmin(handler);
