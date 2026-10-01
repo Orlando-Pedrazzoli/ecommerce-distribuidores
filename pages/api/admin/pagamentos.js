@@ -1,10 +1,23 @@
 // PAGES/API/ADMIN/PAGAMENTOS.JS - API ADMIN PARA GERENCIAR PAGAMENTOS
 // ===================================
+// Os royalties pendentes já descontam as baixas parciais feitas por Pix
+// (controleFinanceiro.royalties.valorPago). Ao marcar manualmente, só o
+// status/data/observação mudam: o valorPago dos Pix nunca é apagado.
 
 import dbConnect from '../../../lib/mongodb';
 import Pedido from '../../../models/Pedido';
 import Fornecedor from '../../../models/Fornecedor';
 import { requireAdmin } from '../../../lib/auth';
+import { royaltiesEmAberto } from '../../../lib/financeiro';
+
+// Altera status/data/observação sem tocar no valorPago (baixas por Pix)
+const marcar = (pedido, tipo, status, agora, observacao) => {
+  const atual = pedido.controleFinanceiro[tipo] || {};
+  atual.status = status;
+  atual.dataPagamento = status === 'pago' ? agora : null;
+  atual.observacao = observacao || '';
+  pedido.controleFinanceiro[tipo] = atual;
+};
 
 async function handler(req, res) {
   // Autenticação admin garantida por requireAdmin (req.user disponível)
@@ -62,11 +75,9 @@ async function handler(req, res) {
         resumo.totalPedidos += pedido.total || 0;
         const cf = pedido.controleFinanceiro || {};
 
-        if (cf.royalties?.status === 'pago') {
-          resumo.royaltiesPagos += pedido.royalties || 0;
-        } else {
-          resumo.royaltiesPendentes += pedido.royalties || 0;
-        }
+        const emAberto = royaltiesEmAberto(pedido);
+        resumo.royaltiesPendentes += emAberto;
+        resumo.royaltiesPagos += Math.max(0, (pedido.royalties || 0) - emAberto);
 
         if (cf.etiquetas?.status === 'pago') {
           resumo.etiquetasPagas += pedido.totalEtiquetas || 0;
@@ -158,20 +169,12 @@ async function handler(req, res) {
       // Atualizar status
       if (tipo === 'todos') {
         // Atualizar todos de uma vez
-        ['royalties', 'etiquetas', 'embalagens'].forEach(t => {
-          pedido.controleFinanceiro[t] = {
-            status,
-            dataPagamento: status === 'pago' ? agora : null,
-            observacao: observacao || '',
-          };
-        });
+        ['royalties', 'etiquetas', 'embalagens'].forEach(t =>
+          marcar(pedido, t, status, agora, observacao),
+        );
       } else {
         // Atualizar apenas o tipo especificado
-        pedido.controleFinanceiro[tipo] = {
-          status,
-          dataPagamento: status === 'pago' ? agora : null,
-          observacao: observacao || '',
-        };
+        marcar(pedido, tipo, status, agora, observacao);
       }
 
       await pedido.save();

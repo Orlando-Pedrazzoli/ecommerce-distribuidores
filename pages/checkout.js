@@ -1,18 +1,51 @@
-// PAGES/CHECKOUT.JS - COM CATEGORIAS ISENTAS DE ROYALTIES
+// pages/checkout.js - CHECKOUT COM SINAL PIX OBRIGATÓRIO
 // ===================================
-// 3 steps: Endereço → Pagamento → Confirmar
-// 🆕 Verifica categorias isentas de royalties por fornecedor
+// Passos: Endereço → Pagamento → Revisão → Sinal Pix
+// O último passo só existe quando algum fornecedor do carrinho exige sinal
+// (percentualSinal > 0). Para cada um desses fornecedores o distribuidor paga
+// o sinal por Pix (Copia e Cola / QR Code gerados em /api/pedidos/sinal) e
+// anexa o comprovante; sem isso o pedido não é enviado.
+// O que já foi feito neste passo (códigos Pix e comprovantes) fica guardado
+// na sessão do navegador: ir ao app do banco e voltar não perde nada.
+// Verifica categorias isentas de royalties por fornecedor.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useCart } from '../pages/_app';
 import Layout from '../components/Layout';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useToastContext } from '../pages/_app';
+import PixPagamento from '../components/Pix/PixPagamento';
+
+// Identifica o conteúdo do carrinho de um fornecedor: se mudar, o valor do
+// sinal muda e o comprovante anterior deixa de servir.
+const assinaturaDe = itens =>
+  itens
+    .map(i => `${i._id}:${i.quantidade}`)
+    .sort()
+    .join('|');
+
+const chaveSessao = userId => `checkout_sinal_${userId}`;
+
+const lerSessao = userId => {
+  try {
+    return JSON.parse(sessionStorage.getItem(chaveSessao(userId)) || '{}') || {};
+  } catch {
+    return {};
+  }
+};
+
+const gravarSessao = (userId, dados) => {
+  try {
+    sessionStorage.setItem(chaveSessao(userId), JSON.stringify(dados));
+  } catch {
+    // sessão indisponível (modo privado): segue sem persistir
+  }
+};
 
 export default function Checkout() {
   const toast = useToastContext();
-  const { cart, cartTotal, clearCart, cartCount } = useCart();
+  const { cart, cartTotal, clearCart, removerItens, cartCount } = useCart();
   const [user, setUser] = useState(null);
   const [endereco, setEndereco] = useState({
     rua: '',
@@ -34,6 +67,15 @@ export default function Checkout() {
 
   // 🆕 Estado para fornecedores com categorias isentas
   const [fornecedoresInfo, setFornecedoresInfo] = useState({});
+
+  // Sinal Pix: por fornecedor -> { assinatura, info (resposta do servidor), comprovante }
+  const [sinais, setSinais] = useState({});
+  const [sinalLoading, setSinalLoading] = useState(false);
+  const [sinaisCarregados, setSinaisCarregados] = useState(false);
+  const [sinalErro, setSinalErro] = useState('');
+  const [sessaoRestaurada, setSessaoRestaurada] = useState(false);
+  // Depois de os pedidos serem enviados, nada mais é guardado na sessão
+  const concluido = useRef(false);
 
   // Formato brasileiro de moeda
   const formatarMoeda = (valor) => {
@@ -71,6 +113,15 @@ export default function Checkout() {
           setEndereco(data.user.endereco);
           setEnderecoOriginal(data.user.endereco);
         }
+
+        // Voltou do app do banco e a página recarregou: retoma onde estava
+        const guardado = lerSessao(data.user.id)._ui;
+        if (guardado) {
+          if (guardado.endereco) setEndereco(guardado.endereco);
+          if (guardado.formaPagamento) setFormaPagamento(guardado.formaPagamento);
+          if (guardado.step) setStep(guardado.step);
+        }
+        setSessaoRestaurada(true);
       } else {
         router.push('/');
       }
@@ -220,6 +271,145 @@ export default function Checkout() {
 
   const produtosOrganizados = organizarProdutos();
 
+  // ══════════════════════════════════════════════════════════════
+  // SINAL PIX
+  // ══════════════════════════════════════════════════════════════
+
+  // Itens do carrinho agrupados por fornecedor (formato enviado à API)
+  const gruposCarrinho = useMemo(() => {
+    const grupos = {};
+    cart.forEach(item => {
+      const fornecedorId = item.fornecedorId?._id || item.fornecedorId || 'unknown';
+      if (!grupos[fornecedorId]) grupos[fornecedorId] = [];
+      grupos[fornecedorId].push(item);
+    });
+    return grupos;
+  }, [cart]);
+
+  const assinaturaCarrinho = Object.entries(gruposCarrinho)
+    .map(([id, itens]) => `${id}=${assinaturaDe(itens)}`)
+    .sort()
+    .join(';');
+
+  // Calcula no servidor o sinal de cada fornecedor e gera o Pix
+  useEffect(() => {
+    if (!user?.id || cart.length === 0) return;
+    let cancelado = false;
+
+    const carregarSinais = async () => {
+      setSinalLoading(true);
+      setSinalErro('');
+      try {
+        const guardado = lerSessao(user.id);
+        const pedidos = Object.entries(gruposCarrinho).map(([fornecedorId, itens]) => {
+          const assinatura = assinaturaDe(itens);
+          const anterior = guardado[fornecedorId];
+          const mesmo = anterior?.assinatura === assinatura;
+          return {
+            fornecedorId,
+            assinatura,
+            comprovante: mesmo ? anterior.comprovante || null : null,
+            corpo: {
+              fornecedorId,
+              txid: mesmo ? anterior.txid : undefined,
+              itens: itens.map(item => ({
+                produtoId: item._id,
+                quantidade: item.quantidade,
+                precoUnitario: item.preco || 0,
+                precoEtiqueta: item.precoEtiqueta || 0,
+                precoEmbalagem: item.precoEmbalagem || 0,
+              })),
+            },
+          };
+        });
+
+        const response = await fetch('/api/pedidos/sinal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ grupos: pedidos.map(p => p.corpo) }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || 'Erro ao calcular o sinal');
+        if (cancelado) return;
+
+        const novo = {};
+        pedidos.forEach(p => {
+          const info = (data.grupos || []).find(g => g.fornecedorId === p.fornecedorId) || {
+            erro: 'Não foi possível calcular o sinal deste fornecedor',
+          };
+          novo[p.fornecedorId] = { assinatura: p.assinatura, info, comprovante: p.comprovante };
+        });
+        setSinais(novo);
+        setSinaisCarregados(true);
+      } catch (error) {
+        if (!cancelado) setSinalErro(error.message || 'Erro ao calcular o sinal');
+      } finally {
+        if (!cancelado) setSinalLoading(false);
+      }
+    };
+
+    carregarSinais();
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assinaturaCarrinho, user?.id]);
+
+  // Guarda na sessão o que já foi feito (códigos Pix, comprovantes, passo)
+  useEffect(() => {
+    if (!user?.id || !sessaoRestaurada || concluido.current) return;
+    // Enquanto o servidor não responde, mantém o que já estava guardado
+    const dados = {
+      ...(sinaisCarregados ? {} : lerSessao(user.id)),
+      _ui: { step, formaPagamento, endereco },
+    };
+    Object.entries(sinais).forEach(([fornecedorId, s]) => {
+      dados[fornecedorId] = {
+        assinatura: s.assinatura,
+        txid: s.info?.pix?.txid,
+        comprovante: s.comprovante || null,
+      };
+    });
+    gravarSessao(user.id, dados);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sinais, step, formaPagamento, endereco, user?.id, sessaoRestaurada]);
+
+  const definirComprovante = (fornecedorId, comprovante) =>
+    setSinais(prev => ({ ...prev, [fornecedorId]: { ...prev[fornecedorId], comprovante } }));
+
+  const listaSinais = Object.entries(sinais).filter(([id]) => gruposCarrinho[id]);
+  const sinaisExigidos = listaSinais.filter(([, s]) => s.info?.sinal?.exigido);
+  const exigeSinal = sinaisExigidos.length > 0;
+  const errosSinal = listaSinais.filter(([, s]) => s.info?.erro);
+  const semPix = sinaisExigidos.filter(([, s]) => !s.info.sinal.pixConfigurado);
+  const comprovantesFeitos = sinaisExigidos.filter(([, s]) => s.comprovante?.id).length;
+  const precosAlterados = listaSinais.some(([, s]) => s.info?.precosAlterados);
+  const totalSinal = sinaisExigidos.reduce((acc, [, s]) => acc + (s.info.sinal.valor || 0), 0);
+  const sinaisProntos =
+    !sinalLoading &&
+    !sinalErro &&
+    listaSinais.length === Object.keys(gruposCarrinho).length &&
+    errosSinal.length === 0 &&
+    semPix.length === 0;
+  const podeEnviar = sinaisProntos && comprovantesFeitos === sinaisExigidos.length;
+
+  // Total calculado pelo servidor (preços atuais do cadastro)
+  const totalServidor = sinaisProntos
+    ? listaSinais.reduce((acc, [, s]) => acc + (s.info?.valores?.total || 0), 0)
+    : 0;
+
+  const passos = [
+    { num: 1, label: 'Endereço' },
+    { num: 2, label: 'Pagamento' },
+    { num: 3, label: 'Revisão' },
+    ...(exigeSinal ? [{ num: 4, label: 'Sinal Pix' }] : []),
+  ];
+
+  // O passo 4 deixa de existir se o carrinho mudar e nenhum fornecedor exigir sinal
+  useEffect(() => {
+    if (step === 4 && sinaisCarregados && !sinalLoading && !exigeSinal) setStep(3);
+  }, [step, sinaisCarregados, sinalLoading, exigeSinal]);
+
   const validateEndereco = () => {
     const newErrors = {};
 
@@ -256,63 +446,87 @@ export default function Checkout() {
       setStep(1);
       return;
     }
+    if (!podeEnviar) {
+      toast.warning(
+        exigeSinal
+          ? 'Anexe o comprovante do Pix do sinal de cada fornecedor para enviar o pedido'
+          : 'Não foi possível validar o pedido. Atualize a página e tente novamente.',
+      );
+      return;
+    }
 
     setLoading(true);
+
+    // Pedidos enviados um a um: se algum falhar, os anteriores já ficaram
+    // registrados e os itens deles saem do carrinho (não são enviados de novo).
+    const enviados = [];
+    let fornecedorAtual = '';
 
     try {
       if (enderecoMudou()) {
         await salvarEndereco(endereco);
       }
 
-      const pedidosPromises = Object.entries(produtosOrganizados).map(
-        async ([fornecedorId, dados]) => {
-          const itensFormatados = [];
+      for (const [fornecedorId, dados] of Object.entries(produtosOrganizados)) {
+        fornecedorAtual = dados.nome;
+        const itensFormatados = [];
+        const idsNoCarrinho = [];
 
-          Object.entries(dados.categorias).forEach(([categoria, catData]) => {
-            catData.itens.forEach(item => {
-              itensFormatados.push({
-                produtoId: item._id,
-                codigo: item.codigo,
-                nome: item.nome,
-                categoria: categoria,
-                quantidade: item.quantidade,
-                precoUnitario: item.preco || 0,
-                precoEtiqueta: item.precoEtiqueta || 0,
-                precoEmbalagem: item.precoEmbalagem || 0,
-              });
+        Object.entries(dados.categorias).forEach(([categoria, catData]) => {
+          catData.itens.forEach(item => {
+            idsNoCarrinho.push(item._id);
+            itensFormatados.push({
+              produtoId: item._id,
+              codigo: item.codigo,
+              nome: item.nome,
+              categoria: categoria,
+              quantidade: item.quantidade,
+              precoUnitario: item.preco || 0,
+              precoEtiqueta: item.precoEtiqueta || 0,
+              precoEmbalagem: item.precoEmbalagem || 0,
             });
           });
+        });
 
-          const pedidoData = {
-            userId: user.id,
-            itens: itensFormatados,
-            fornecedorId,
-            formaPagamento,
-            endereco,
-          };
+        const sinal = sinais[fornecedorId];
+        const pedidoData = {
+          userId: user.id,
+          itens: itensFormatados,
+          fornecedorId,
+          formaPagamento,
+          endereco,
+          sinal: sinal?.info?.sinal?.exigido
+            ? {
+                txid: sinal.info.pix?.txid,
+                valor: sinal.info.sinal.valor,
+                comprovanteId: sinal.comprovante?.id,
+              }
+            : undefined,
+        };
 
-          const response = await fetch('/api/pedidos/criar', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(pedidoData),
-          });
+        const response = await fetch('/api/pedidos/criar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pedidoData),
+        });
 
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || 'Erro ao criar pedido');
-          }
-
-          return response.json();
+        const resultado = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(resultado.message || 'Erro ao criar pedido');
         }
-      );
 
-      const resultados = await Promise.all(pedidosPromises);
+        enviados.push({ numero: resultado.numeroPedido, ids: idsNoCarrinho });
+      }
 
+      concluido.current = true;
+      try {
+        sessionStorage.removeItem(chaveSessao(user.id));
+      } catch {}
       clearCart();
 
       toast.success(
         `Pedido realizado com sucesso!\n\n` +
-          `Total: ${formatarMoeda(total)}\n\n` +
+          `Total: ${formatarMoeda(totalServidor || total)}\n\n` +
           `Emails foram enviados automaticamente.\n` +
           `Acompanhe o status em "Meus Pedidos".`,
         8000
@@ -321,7 +535,18 @@ export default function Checkout() {
       router.push('/meus-pedidos');
     } catch (error) {
       console.error('Erro ao criar pedidos:', error);
-      toast.error(`Erro ao processar pedido:\n\n${error.message}`);
+
+      if (enviados.length > 0) {
+        removerItens(enviados.flatMap(e => e.ids));
+        toast.error(
+          `Pedido(s) #${enviados.map(e => e.numero).join(', #')} enviado(s).\n\n` +
+            `O pedido para ${fornecedorAtual} não foi enviado:\n${error.message}\n\n` +
+            `Os itens que faltam continuam no carrinho.`,
+          12000
+        );
+      } else {
+        toast.error(`Erro ao processar pedido:\n\n${error.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -461,6 +686,68 @@ export default function Checkout() {
     );
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // COMPONENTES: botão de envio e avisos do sinal
+  // ══════════════════════════════════════════════════════════════
+  function BotaoEnviar() {
+    return (
+      <button
+        onClick={handleSubmit}
+        disabled={loading || !podeEnviar}
+        className='flex-1 bg-green-500 text-white px-4 py-2.5 rounded-lg hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm font-medium'
+      >
+        {loading ? (
+          <>
+            <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin'></div>
+            Processando...
+          </>
+        ) : (
+          'Enviar Pedido'
+        )}
+      </button>
+    );
+  }
+
+  function AvisosSinal() {
+    return (
+      <>
+        {sinalErro && (
+          <div className='text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3'>
+            {sinalErro}{' '}
+            <button onClick={() => router.reload()} className='underline font-medium'>
+              Tentar novamente
+            </button>
+          </div>
+        )}
+        {errosSinal.map(([fornecedorId, s]) => (
+          <div
+            key={fornecedorId}
+            className='text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3'
+          >
+            <strong>{s.info.nome || produtosOrganizados[fornecedorId]?.nome}:</strong> {s.info.erro}
+          </div>
+        ))}
+        {step === 3 &&
+          semPix.map(([fornecedorId, s]) => (
+            <div
+              key={fornecedorId}
+              className='text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3'
+            >
+              <strong>{s.info.nome}:</strong> este fornecedor ainda não tem chave Pix configurada
+              para receber o sinal, por isso o pedido não pode ser enviado. Fale com o
+              administrador.
+            </div>
+          ))}
+        {precosAlterados && sinaisProntos && (
+          <div className='text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3'>
+            Alguns preços foram atualizados desde que adicionou os produtos ao carrinho. O total e
+            o sinal já usam os preços atuais: <strong>{formatarMoeda(totalServidor)}</strong>.
+          </div>
+        )}
+      </>
+    );
+  }
+
   // Loading
   if (loadingUser) {
     return (
@@ -520,11 +807,7 @@ export default function Checkout() {
           <div className='mb-4 lg:mb-6'>
             <div className='flex justify-center'>
               <div className='flex items-center space-x-2'>
-                {[
-                  { num: 1, label: 'Endereço' },
-                  { num: 2, label: 'Pagamento' },
-                  { num: 3, label: 'Confirmar' },
-                ].map(stepInfo => (
+                {passos.map(stepInfo => (
                   <div key={stepInfo.num} className='flex items-center'>
                     <div
                       className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${
@@ -544,7 +827,7 @@ export default function Checkout() {
                     >
                       {stepInfo.label}
                     </span>
-                    {stepInfo.num < 3 && (
+                    {stepInfo.num < passos.length && (
                       <div
                         className={`w-6 h-px mx-2 ${
                           step > stepInfo.num ? 'bg-blue-500' : 'bg-gray-300'
@@ -715,9 +998,14 @@ export default function Checkout() {
               {/* Step 2: Pagamento - Compacto */}
               {step === 2 && (
                 <div className='bg-white rounded-lg shadow-md p-4'>
-                  <h2 className='text-base font-bold text-gray-800 mb-3'>
-                    Forma de Pagamento
+                  <h2 className='text-base font-bold text-gray-800 mb-1'>
+                    {exigeSinal ? 'Pagamento do saldo' : 'Forma de Pagamento'}
                   </h2>
+                  <p className='text-xs text-gray-500 mb-3'>
+                    {exigeSinal
+                      ? 'O sinal é pago por Pix no último passo. Aqui escolhe como paga o restante ao fornecedor.'
+                      : 'Como pretende pagar o pedido ao fornecedor.'}
+                  </p>
 
                   <div className='grid grid-cols-2 gap-3 mb-4'>
                     <label
@@ -780,11 +1068,11 @@ export default function Checkout() {
                 </div>
               )}
 
-              {/* Step 3: Confirmação - Compacto */}
+              {/* Step 3: Revisão */}
               {step === 3 && (
                 <div className='bg-white rounded-lg shadow-md p-4'>
                   <h2 className='text-base font-bold text-gray-800 mb-3'>
-                    Confirmação
+                    Revisão do pedido
                   </h2>
 
                   <div className='space-y-2 mb-4'>
@@ -804,16 +1092,27 @@ export default function Checkout() {
 
                     {/* Pagamento */}
                     <div className='p-2 bg-gray-50 rounded-lg text-sm'>
-                      <span className='font-medium'>Pagamento:</span> {formaPagamento === 'boleto' ? 'Boleto' : 'Transferência'}
+                      <span className='font-medium'>{exigeSinal ? 'Saldo:' : 'Pagamento:'}</span>{' '}
+                      {formaPagamento === 'boleto' ? 'Boleto' : 'Transferência'}
                     </div>
 
                     {/* Total */}
                     <div className='p-3 bg-green-50 border border-green-200 rounded-lg'>
                       <div className='flex justify-between items-center'>
                         <span className='font-bold text-sm'>Total:</span>
-                        <span className='font-bold text-lg text-green-600'>{formatarMoeda(total)}</span>
+                        <span className='font-bold text-lg text-green-600'>
+                          {formatarMoeda(totalServidor || total)}
+                        </span>
                       </div>
+                      {exigeSinal && (
+                        <div className='flex justify-between items-center mt-1 pt-1 border-t border-green-200 text-sm'>
+                          <span className='text-gray-700'>Sinal a pagar agora por Pix:</span>
+                          <span className='font-bold text-gray-900'>{formatarMoeda(totalSinal)}</span>
+                        </div>
+                      )}
                     </div>
+
+                    <AvisosSinal />
                   </div>
 
                   <div className='flex gap-3'>
@@ -823,20 +1122,102 @@ export default function Checkout() {
                     >
                       ← Voltar
                     </button>
+                    {exigeSinal || !sinaisProntos ? (
+                      <button
+                        onClick={() => setStep(4)}
+                        disabled={!sinaisProntos}
+                        className='flex-1 bg-blue-500 text-white px-4 py-2.5 rounded-lg hover:bg-blue-600 transition disabled:opacity-50 flex items-center justify-center gap-2 text-sm font-medium'
+                      >
+                        {sinalLoading ? (
+                          <>
+                            <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin'></div>
+                            Calculando...
+                          </>
+                        ) : exigeSinal ? (
+                          'Pagar sinal →'
+                        ) : (
+                          'Enviar Pedido'
+                        )}
+                      </button>
+                    ) : (
+                      <BotaoEnviar />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Step 4: Sinal Pix */}
+              {step === 4 && (
+                <div className='bg-white rounded-lg shadow-md p-4'>
+                  <h2 className='text-base font-bold text-gray-800 mb-1'>Sinal por Pix</h2>
+                  <p className='text-xs text-gray-600 mb-4'>
+                    Para enviar o pedido, pague o sinal diretamente ao fornecedor por Pix e anexe o
+                    comprovante. O fornecedor recebe o pedido já com o comprovante.
+                  </p>
+
+                  <AvisosSinal />
+
+                  <div className='space-y-5'>
+                    {sinaisExigidos.map(([fornecedorId, s], indice) => (
+                      <div key={fornecedorId}>
+                        <div className='flex items-start justify-between gap-3 mb-2'>
+                          <div className='min-w-0'>
+                            <p className='text-sm font-bold text-gray-900 truncate'>
+                              {sinaisExigidos.length > 1 && `${indice + 1}. `}
+                              {s.info.nome || produtosOrganizados[fornecedorId]?.nome}
+                            </p>
+                            <p className='text-xs text-gray-500'>
+                              Sinal de {s.info.sinal.percentual}% sobre{' '}
+                              {formatarMoeda(s.info.valores.totalFornecedor)}
+                            </p>
+                          </div>
+                          {s.comprovante?.id && (
+                            <span className='shrink-0 text-[11px] font-semibold bg-green-100 text-green-800 px-2 py-0.5 rounded-full'>
+                              ✓ Pronto
+                            </span>
+                          )}
+                        </div>
+
+                        {s.info.pix ? (
+                          <>
+                            <PixPagamento
+                              cobranca={s.info.pix}
+                              finalidade='sinal'
+                              rotuloValor={`Sinal (${s.info.sinal.percentual}%)`}
+                              comprovante={s.comprovante}
+                              onComprovante={c => definirComprovante(fornecedorId, c)}
+                              desativado={loading}
+                            />
+                            <p className='text-xs text-gray-500 mt-2'>
+                              Saldo de <strong>{formatarMoeda(s.info.sinal.saldo)}</strong> a pagar
+                              ao fornecedor por {formaPagamento === 'boleto' ? 'boleto' : 'transferência'}.
+                            </p>
+                          </>
+                        ) : (
+                          <p className='text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2'>
+                            Este fornecedor ainda não tem chave Pix configurada, por isso o pedido
+                            não pode ser enviado. Fale com o administrador.
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {sinaisExigidos.length > 0 && (
+                    <p className='text-xs text-center text-gray-500 mt-4'>
+                      {comprovantesFeitos} de {sinaisExigidos.length} comprovante(s) anexado(s)
+                    </p>
+                  )}
+
+                  <div className='flex gap-3 mt-3'>
                     <button
-                      onClick={handleSubmit}
+                      onClick={() => setStep(3)}
                       disabled={loading}
-                      className='flex-1 bg-green-500 text-white px-4 py-2.5 rounded-lg hover:bg-green-600 transition disabled:opacity-50 flex items-center justify-center gap-2 text-sm font-medium'
+                      className='flex-1 bg-gray-200 text-gray-700 px-4 py-2.5 rounded-lg hover:bg-gray-300 transition text-sm disabled:opacity-50'
                     >
-                      {loading ? (
-                        <>
-                          <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin'></div>
-                          Processando...
-                        </>
-                      ) : (
-                        'Finalizar Pedido'
-                      )}
+                      ← Voltar
                     </button>
+                    <BotaoEnviar />
                   </div>
                 </div>
               )}

@@ -5,6 +5,21 @@
     },
     "pages/api/pedidos/criar.js": {
       "maxDuration": 30
+    },
+    "pages/api/comprovantes/index.js": {
+      "maxDuration": 30
+    },
+    "pages/api/user/pagamentos.js": {
+      "maxDuration": 30
+    },
+    "pages/api/user/sinal.js": {
+      "maxDuration": 30
+    },
+    "pages/api/admin/pagamentos-pix.js": {
+      "maxDuration": 30
+    },
+    "pages/api/admin/pedidos/sinal.js": {
+      "maxDuration": 30
     }
   }
 }

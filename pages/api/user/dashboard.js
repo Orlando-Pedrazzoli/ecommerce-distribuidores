@@ -10,6 +10,7 @@ import Fornecedor from '../../../models/Fornecedor';
 import Produto from '../../../models/Produto';
 import { requireDistribuidor } from '../../../lib/auth';
 import { fornecedorPublico } from '../../../lib/fornecedores';
+import { EXPR_ROYALTIES_EM_ABERTO } from '../../../lib/financeiro';
 
 async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method not allowed' });
@@ -35,15 +36,8 @@ async function handler(req, res) {
           {
             $group: {
               _id: null,
-              royaltiesPendentes: {
-                $sum: {
-                  $cond: [
-                    { $ne: ['$controleFinanceiro.royalties.status', 'pago'] },
-                    '$royalties',
-                    0,
-                  ],
-                },
-              },
+              // já desconta as baixas parciais feitas por Pix
+              royaltiesPendentes: { $sum: EXPR_ROYALTIES_EM_ABERTO },
               etiquetasPendentes: {
                 $sum: {
                   $cond: [

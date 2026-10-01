@@ -1,10 +1,13 @@
 // PAGES/API/ADMIN/FINANCEIRO.JS - CONTROLE DE PAGAMENTOS
 // ===================================
-// Permite ao admin marcar royalties, etiquetas e embalagens como pagos
+// Permite ao admin marcar royalties, etiquetas e embalagens como pagos.
+// Os royalties contam as baixas parciais feitas por Pix pelos distribuidores
+// (controleFinanceiro.royalties.valorPago) - ver lib/financeiro.js.
 
 import dbConnect from '../../../lib/mongodb';
 import Pedido from '../../../models/Pedido';
 import { requireAdmin } from '../../../lib/auth';
+import { arred, royaltiesEmAberto } from '../../../lib/financeiro';
 
 async function handler(req, res) {
   // Autenticação admin garantida por requireAdmin
@@ -59,20 +62,18 @@ async function handler(req, res) {
         totalPedidos: pedidos.length,
         totalGeral: pedidos.reduce((acc, p) => acc + (p.total || 0), 0),
 
-        // Royalties
+        // Royalties (pendente = o que falta pagar, já com as baixas parciais por Pix)
         royalties: {
           total: pedidos.reduce((acc, p) => acc + (p.royalties || 0), 0),
-          pendente: pedidos
-            .filter(p => p.controleFinanceiro?.royalties?.status === 'pendente')
-            .reduce((acc, p) => acc + (p.royalties || 0), 0),
-          pago: pedidos
-            .filter(p => p.controleFinanceiro?.royalties?.status === 'pago')
-            .reduce((acc, p) => acc + (p.royalties || 0), 0),
-          qtdPendente: pedidos.filter(
-            p => p.controleFinanceiro?.royalties?.status === 'pendente'
-          ).length,
-          qtdPago: pedidos.filter(p => p.controleFinanceiro?.royalties?.status === 'pago')
-            .length,
+          pendente: arred(pedidos.reduce((acc, p) => acc + royaltiesEmAberto(p), 0)),
+          pago: arred(
+            pedidos.reduce(
+              (acc, p) => acc + Math.max(0, (p.royalties || 0) - royaltiesEmAberto(p)),
+              0,
+            ),
+          ),
+          qtdPendente: pedidos.filter(p => royaltiesEmAberto(p) > 0).length,
+          qtdPago: pedidos.filter(p => royaltiesEmAberto(p) <= 0).length,
         },
 
         // Etiquetas

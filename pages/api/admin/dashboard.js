@@ -10,7 +10,9 @@ import Produto from '../../../models/Produto';
 import Fornecedor from '../../../models/Fornecedor';
 import User from '../../../models/User';
 import Convite from '../../../models/Convite';
+import Pagamento from '../../../models/Pagamento';
 import { requireAdmin } from '../../../lib/auth';
+import { EXPR_ROYALTIES_EM_ABERTO } from '../../../lib/financeiro';
 
 const inicioDoDia = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const inicioDoMes = d => new Date(d.getFullYear(), d.getMonth(), 1);
@@ -40,6 +42,8 @@ async function handler(req, res) {
       distribuidoresAgg,
       convitesAgg,
       serie,
+      sinaisAConferir,
+      pixAConferirAgg,
     ] = await Promise.all([
       Pedido.aggregate([
         { $group: { _id: '$status', total: { $sum: 1 }, valor: { $sum: '$total' } } },
@@ -60,11 +64,8 @@ async function handler(req, res) {
         {
           $group: {
             _id: null,
-            royalties: {
-              $sum: {
-                $cond: [{ $ne: ['$controleFinanceiro.royalties.status', 'pago'] }, '$royalties', 0],
-              },
-            },
+            // já desconta as baixas parciais feitas por Pix
+            royalties: { $sum: EXPR_ROYALTIES_EM_ABERTO },
             etiquetas: {
               $sum: {
                 $cond: [
@@ -119,7 +120,7 @@ async function handler(req, res) {
       ]),
       Fornecedor.find({})
         .sort({ ordem: 1, nome: 1 })
-        .select('nome codigo cor logo ativo especialidade')
+        .select('nome codigo cor logo ativo especialidade pix percentualSinal')
         .lean(),
       Produto.aggregate([
         {
@@ -196,6 +197,12 @@ async function handler(req, res) {
           },
         },
         { $sort: { _id: 1 } },
+      ]),
+      // Pix à espera de conferência
+      Pedido.countDocuments({ 'sinal.status': 'em_analise' }),
+      Pagamento.aggregate([
+        { $match: { status: 'em_analise' } },
+        { $group: { _id: null, total: { $sum: 1 }, valor: { $sum: '$valor' } } },
       ]),
     ]);
 
@@ -300,6 +307,10 @@ async function handler(req, res) {
         total: fornecedores.length,
         ativos: fornecedores.filter(f => f.ativo).length,
         semProdutos: fornecedoresResumo.filter(f => f.ativo && f.produtosAtivos === 0).length,
+        // ativos que exigem sinal mas não têm chave Pix: o checkout fica bloqueado
+        semPix: fornecedores.filter(
+          f => f.ativo && (f.percentualSinal ?? 40) > 0 && !(f.pix && f.pix.chave),
+        ).length,
         lista: fornecedoresResumo,
       },
       produtos: {
@@ -308,6 +319,11 @@ async function handler(req, res) {
       },
       distribuidores: dist,
       convites: conv,
+      pix: {
+        sinaisAConferir,
+        pagamentosAConferir: pixAConferirAgg[0]?.total || 0,
+        valorAConferir: pixAConferirAgg[0]?.valor || 0,
+      },
     });
   } catch (error) {
     console.error('❌ Erro na dashboard admin:', error);

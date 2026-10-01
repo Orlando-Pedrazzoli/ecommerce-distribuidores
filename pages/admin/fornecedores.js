@@ -2,6 +2,7 @@
 // ===================================
 // Criar, configurar (dados, apresentação, catálogo, operação), ativar/desativar
 // e apagar fornecedores. Substitui o "Funcionalidade em desenvolvimento".
+// Aba "Pix e sinal": chave Pix do fornecedor e % de sinal exigido no checkout.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
@@ -58,7 +59,20 @@ const FORM_VAZIO = {
   prazoEntregaDias: '',
   pedidoMinimo: '',
   observacoes: '',
+  percentualSinal: 40,
+  pix: { tipo: 'cnpj', chave: '', titular: '', cidade: '' },
 };
+
+const TIPOS_PIX = [
+  { id: 'cnpj', label: 'CNPJ', exemplo: '00.000.000/0000-00' },
+  { id: 'cpf', label: 'CPF', exemplo: '000.000.000-00' },
+  { id: 'email', label: 'Email', exemplo: 'financeiro@empresa.com.br' },
+  { id: 'telefone', label: 'Telefone', exemplo: '(11) 99999-9999' },
+  { id: 'aleatoria', label: 'Chave aleatória', exemplo: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
+];
+
+// Fornecedor ativo que exige sinal mas não tem chave Pix: o checkout fica bloqueado
+const semPix = f => (f.percentualSinal ?? 40) > 0 && !f.pix?.chave;
 
 const paraForm = f => ({
   ...FORM_VAZIO,
@@ -69,12 +83,20 @@ const paraForm = f => ({
   prazoEntregaDias: f.prazoEntregaDias ?? '',
   pedidoMinimo: f.pedidoMinimo ?? '',
   cor: f.cor || '#374151',
+  percentualSinal: f.percentualSinal ?? 40,
+  pix: {
+    tipo: f.pix?.tipo || 'cnpj',
+    chave: f.pix?.chave || '',
+    titular: f.pix?.titular || '',
+    cidade: f.pix?.cidade || '',
+  },
 });
 
 const ABAS = [
   { id: 'dados', label: 'Dados e contacto' },
   { id: 'apresentacao', label: 'Apresentação' },
   { id: 'catalogo', label: 'Catálogo e royalties' },
+  { id: 'pix', label: 'Pix e sinal' },
   { id: 'operacao', label: 'Operação' },
 ];
 
@@ -158,6 +180,8 @@ export default function AdminFornecedores() {
   };
 
   const set = (campo, valor) => setForm(prev => ({ ...prev, [campo]: valor }));
+  const setPix = (campo, valor) =>
+    setForm(prev => ({ ...prev, pix: { ...prev.pix, [campo]: valor } }));
 
   const categoriasLista = form.categorias
     .split(/[\n,]/)
@@ -692,6 +716,85 @@ export default function AdminFornecedores() {
               </>
             )}
 
+            {/* ── PIX E SINAL ── */}
+            {aba === 'pix' && (
+              <>
+                <Alerta tipo='info'>
+                  Para enviar um pedido, o distribuidor paga o sinal por Pix diretamente para esta
+                  chave e anexa o comprovante. O fornecedor recebe o pedido por email com o
+                  comprovante em anexo.
+                </Alerta>
+
+                <Campo
+                  label='Sinal exigido no pedido (%)'
+                  dica='Percentual sobre o valor que vai para o fornecedor. 0 = este fornecedor não exige sinal.'
+                >
+                  <div className='w-32'>
+                    <Input
+                      type='number'
+                      min={0}
+                      max={100}
+                      step='1'
+                      value={form.percentualSinal}
+                      onChange={e => set('percentualSinal', e.target.value)}
+                    />
+                  </div>
+                </Campo>
+
+                <div className='grid sm:grid-cols-3 gap-4'>
+                  <Campo label='Tipo de chave Pix'>
+                    <Select value={form.pix.tipo} onChange={e => setPix('tipo', e.target.value)}>
+                      {TIPOS_PIX.map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Campo>
+                  <Campo
+                    label='Chave Pix do fornecedor'
+                    className='sm:col-span-2'
+                    dica='Confirme com o fornecedor: é para esta chave que o dinheiro do sinal vai.'
+                  >
+                    <Input
+                      value={form.pix.chave}
+                      onChange={e => setPix('chave', e.target.value)}
+                      placeholder={TIPOS_PIX.find(t => t.id === form.pix.tipo)?.exemplo}
+                      className='font-mono'
+                      autoComplete='off'
+                    />
+                  </Campo>
+                  <Campo
+                    label='Titular da conta'
+                    className='sm:col-span-2'
+                    dica='Nome que o distribuidor vê ao pagar (máx. 25 caracteres). Vazio = nome do fornecedor.'
+                  >
+                    <Input
+                      value={form.pix.titular}
+                      onChange={e => setPix('titular', e.target.value)}
+                      maxLength={25}
+                      placeholder={form.nome}
+                    />
+                  </Campo>
+                  <Campo label='Cidade' dica='Vazio = cidade do fornecedor'>
+                    <Input
+                      value={form.pix.cidade}
+                      onChange={e => setPix('cidade', e.target.value)}
+                      maxLength={15}
+                      placeholder={form.cidade}
+                    />
+                  </Campo>
+                </div>
+
+                {Number(form.percentualSinal) > 0 && !form.pix.chave.trim() && (
+                  <Alerta tipo='aviso'>
+                    Sem chave Pix, os distribuidores <strong>não conseguem enviar pedidos</strong>{' '}
+                    para este fornecedor. Preencha a chave ou ponha o sinal a 0%.
+                  </Alerta>
+                )}
+              </>
+            )}
+
             {/* ── OPERAÇÃO ── */}
             {aba === 'operacao' && (
               <>
@@ -808,6 +911,10 @@ function CartaoFornecedor({ f, ocupado, onEditar, onToggleAtivo, onApagar, onVer
             <div className='mt-1.5 flex flex-wrap gap-1'>
               {f.ativo ? <Badge cor='green'>Ativo</Badge> : <Badge cor='gray'>Inativo</Badge>}
               {f.ativo && semProdutos && <Badge cor='orange'>Sem produtos ativos</Badge>}
+              {f.ativo && semPix(f) && <Badge cor='red'>Sem chave Pix</Badge>}
+              {(f.percentualSinal ?? 40) > 0 && !semPix(f) && (
+                <Badge cor='purple'>Sinal {f.percentualSinal ?? 40}%</Badge>
+              )}
               {(f.categoriasIsentasRoyalty || []).length > 0 && (
                 <Badge cor='blue'>{f.categoriasIsentasRoyalty.length} isenta(s)</Badge>
               )}
@@ -867,6 +974,11 @@ function CartaoFornecedor({ f, ocupado, onEditar, onToggleAtivo, onApagar, onVer
         <Botao variante='secundario' tamanho='sm' onClick={onVerProdutos}>
           Produtos
         </Botao>
+        {f.ativo && semPix(f) && (
+          <Botao variante='secundario' tamanho='sm' onClick={() => onEditar('pix')}>
+            Pix
+          </Botao>
+        )}
         <div className='ml-auto flex gap-1'>
           <Botao
             variante='fantasma'
@@ -901,7 +1013,7 @@ function UploadLogo({ valor, onChange, onErro }) {
 
   const enviar = async file => {
     if (!file) return;
-    if (!file.type.startsWith('image/')) return onErro('Selecione um ficheiro de imagem');
+    if (!file.type.startsWith('image/')) return onErro('Selecione um arquivo de imagem');
     if (file.size > 5 * 1024 * 1024) return onErro('Imagem demasiado grande (máx. 5 MB)');
     setEnviando(true);
     try {

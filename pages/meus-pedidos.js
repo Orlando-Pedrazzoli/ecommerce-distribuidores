@@ -1,11 +1,21 @@
 // PAGES/MEUS-PEDIDOS.JS - HISTÓRICO DE PEDIDOS DO DISTRIBUIDOR
 // ============================================================
 // Exibe todos os pedidos de TODOS os fornecedores
+// Mostra o sinal pago por Pix (status + comprovante). Se o sinal for
+// rejeitado, o distribuidor paga de novo e envia outro comprovante aqui.
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import Head from 'next/head';
+import PixPagamento, { LinkComprovante } from '../components/Pix/PixPagamento';
+import { formatarMoeda, royaltiesEmAberto, STATUS_SINAL } from '../lib/financeiro';
+
+const ESTILO_SINAL = {
+  em_analise: 'bg-amber-50 border-amber-200 text-amber-900',
+  confirmado: 'bg-green-50 border-green-200 text-green-900',
+  rejeitado: 'bg-red-50 border-red-300 text-red-900',
+};
 
 export default function MeusPedidos() {
   const router = useRouter();
@@ -20,9 +30,11 @@ export default function MeusPedidos() {
   }, [router.isReady]);
   const [resumoFinanceiro, setResumoFinanceiro] = useState(null);
   const [erro, setErro] = useState(null);
+  const [reenviando, setReenviando] = useState(null); // pedido com sinal rejeitado
 
   useEffect(() => {
     buscarPedidos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtroStatus]);
 
   const buscarPedidos = async () => {
@@ -72,9 +84,7 @@ export default function MeusPedidos() {
       const cf = pedido.controleFinanceiro || {};
       let pendentePedido = 0;
 
-      if (cf.royalties?.status !== 'pago') {
-        pendentePedido += pedido.royalties || 0;
-      }
+      pendentePedido += royaltiesEmAberto(pedido);
       if (cf.etiquetas?.status !== 'pago') {
         pendentePedido += pedido.totalEtiquetas || 0;
       }
@@ -118,7 +128,8 @@ export default function MeusPedidos() {
   const getStatusPagamento = pedido => {
     const cf = pedido.controleFinanceiro || {};
 
-    const royaltiesPago = cf.royalties?.status === 'pago';
+    // Royalties: conta as baixas parciais feitas por Pix
+    const royaltiesPago = royaltiesEmAberto(pedido) <= 0;
     const etiquetasPago = cf.etiquetas?.status === 'pago' || (pedido.totalEtiquetas || 0) === 0;
     const embalagensPago = cf.embalagens?.status === 'pago' || (pedido.totalEmbalagens || 0) === 0;
 
@@ -334,6 +345,46 @@ export default function MeusPedidos() {
                       </div>
                     </div>
 
+                    {/* Sinal pago por Pix */}
+                    {pedido.sinal && ESTILO_SINAL[pedido.sinal.status] && (
+                      <div
+                        className={`rounded-lg border p-3 mb-4 ${ESTILO_SINAL[pedido.sinal.status]}`}
+                      >
+                        <div className='flex items-start justify-between gap-3'>
+                          <div className='min-w-0'>
+                            <p className='text-sm font-semibold'>
+                              {STATUS_SINAL[pedido.sinal.status].label} ·{' '}
+                              {formatarMoeda(pedido.sinal.valor)}
+                            </p>
+                            <p className='text-xs opacity-80'>
+                              Sinal de {pedido.sinal.percentual}% pago por Pix ao fornecedor
+                              {pedido.sinal.status === 'em_analise' &&
+                                ' — aguardando a conferência do crédito'}
+                            </p>
+                            {pedido.sinal.status === 'rejeitado' && pedido.sinal.motivoRejeicao && (
+                              <p className='text-xs mt-1'>
+                                <strong>Motivo:</strong> {pedido.sinal.motivoRejeicao}
+                              </p>
+                            )}
+                          </div>
+                          <LinkComprovante
+                            id={pedido.sinal.comprovanteId}
+                            className='text-xs shrink-0'
+                          >
+                            Comprovante
+                          </LinkComprovante>
+                        </div>
+                        {pedido.sinal.status === 'rejeitado' && (
+                          <button
+                            onClick={() => setReenviando(pedido)}
+                            className='mt-3 w-full sm:w-auto bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition'
+                          >
+                            Pagar sinal e enviar novo comprovante
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {/* Itens organizados por categoria */}
                     <div className='border-t pt-4'>
                       <h4 className='font-medium text-gray-800 mb-3'>
@@ -450,8 +501,12 @@ export default function MeusPedidos() {
                           <div className='space-y-1 text-xs'>
                             <div className='flex justify-between items-center'>
                               <span>Taxa de serviço:</span>
-                              {pedido.controleFinanceiro?.royalties?.status === 'pago' ? (
+                              {royaltiesEmAberto(pedido) <= 0 ? (
                                 <span className='text-green-600 font-medium'>✓ Pago</span>
+                              ) : royaltiesEmAberto(pedido) < (pedido.royalties || 0) - 0.004 ? (
+                                <span className='text-blue-600 font-medium'>
+                                  ◐ Falta {formatarMoeda(royaltiesEmAberto(pedido))}
+                                </span>
                               ) : (
                                 <span className='text-yellow-600 font-medium'>⏳ Pendente</span>
                               )}
@@ -481,7 +536,7 @@ export default function MeusPedidos() {
                             onClick={() => router.push('/pagamentos')}
                             className='mt-2 text-xs text-blue-600 hover:text-blue-800 underline'
                           >
-                            Ver detalhes →
+                            {royaltiesEmAberto(pedido) > 0 ? 'Pagar por Pix →' : 'Ver detalhes →'}
                           </button>
                         </div>
                       </div>
@@ -502,7 +557,144 @@ export default function MeusPedidos() {
             </div>
           )}
         </div>
+
+        {reenviando && (
+          <ModalNovoComprovante
+            pedido={reenviando}
+            onFechar={() => setReenviando(null)}
+            onConcluido={() => {
+              setReenviando(null);
+              buscarPedidos();
+            }}
+          />
+        )}
       </Layout>
     </>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// MODAL: SINAL REJEITADO -> PAGAR DE NOVO E ENVIAR OUTRO COMPROVANTE
+// ══════════════════════════════════════════════════════════════
+function ModalNovoComprovante({ pedido, onFechar, onConcluido }) {
+  const [cobranca, setCobranca] = useState(null);
+  const [comprovante, setComprovante] = useState(null);
+  const [carregando, setCarregando] = useState(true);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState('');
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    let ativo = true;
+    (async () => {
+      try {
+        const r = await fetch(`/api/user/sinal?pedidoId=${pedido._id}`);
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.message || 'Não foi possível gerar o Pix do sinal');
+        if (ativo) setCobranca(data.pix);
+      } catch (e) {
+        if (ativo) setErro(e.message);
+      } finally {
+        if (ativo) setCarregando(false);
+      }
+    })();
+    return () => {
+      ativo = false;
+      document.body.style.overflow = '';
+    };
+  }, [pedido._id]);
+
+  const enviar = async () => {
+    setErro('');
+    setEnviando(true);
+    try {
+      const r = await fetch('/api/user/sinal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedidoId: pedido._id, comprovanteId: comprovante.id }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.message || 'Não foi possível enviar o comprovante');
+      onConcluido();
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div
+      className='fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 sm:p-4'
+      onClick={() => !enviando && onFechar()}
+    >
+      <div
+        className='bg-white w-full sm:max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-xl shadow-2xl flex flex-col'
+        onClick={e => e.stopPropagation()}
+      >
+        <div className='px-5 py-4 border-b flex items-start justify-between gap-3'>
+          <div>
+            <h2 className='text-base font-bold text-gray-900'>
+              Sinal do pedido #{pedido._id?.slice(-8).toUpperCase()}
+            </h2>
+            <p className='text-xs text-gray-500 mt-0.5'>
+              {pedido.fornecedorId?.nome} · pague o sinal e anexe o novo comprovante
+            </p>
+          </div>
+          <button
+            type='button'
+            onClick={onFechar}
+            disabled={enviando}
+            className='text-gray-400 hover:text-gray-600 text-2xl leading-none -mt-1'
+            aria-label='Fechar'
+          >
+            ×
+          </button>
+        </div>
+
+        <div className='px-5 py-5 overflow-y-auto flex-1 space-y-4'>
+          {carregando ? (
+            <div className='py-10 text-center'>
+              <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto'></div>
+            </div>
+          ) : (
+            cobranca && (
+              <PixPagamento
+                cobranca={cobranca}
+                finalidade='sinal'
+                rotuloValor={`Sinal (${pedido.sinal.percentual}%)`}
+                comprovante={comprovante}
+                onComprovante={setComprovante}
+                desativado={enviando}
+              />
+            )
+          )}
+          {erro && (
+            <p className='text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2'>
+              {erro}
+            </p>
+          )}
+        </div>
+
+        <div className='px-5 py-4 border-t bg-gray-50 rounded-b-2xl sm:rounded-b-xl flex gap-3'>
+          <button
+            type='button'
+            onClick={onFechar}
+            disabled={enviando}
+            className='flex-1 bg-white border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium disabled:opacity-50'
+          >
+            Cancelar
+          </button>
+          <button
+            type='button'
+            onClick={enviar}
+            disabled={enviando || !comprovante?.id}
+            className='flex-1 bg-green-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed'
+          >
+            {enviando ? 'Enviando…' : 'Enviar comprovante'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

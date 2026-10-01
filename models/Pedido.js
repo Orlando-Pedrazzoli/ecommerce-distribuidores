@@ -1,6 +1,8 @@
-// MODELS/PEDIDO.JS - ATUALIZADO COM CONTROLE FINANCEIRO
+// models/Pedido.js - PEDIDO (ITENS, VALORES, SINAL PIX E CONTROLE FINANCEIRO)
 // ===================================
-// Adicionado: totalEtiquetas, totalEmbalagens, controle de pagamentos
+// - sinal: entrada paga por Pix ao fornecedor no checkout (com comprovante)
+// - controleFinanceiro.royalties.valorPago: quanto já foi abatido por
+//   pagamentos Pix do distribuidor (ver models/Pagamento.js)
 
 import mongoose from 'mongoose';
 
@@ -110,6 +112,12 @@ const PedidoSchema = new mongoose.Schema(
         },
         dataPagamento: Date,
         observacao: String,
+        // Soma dos pagamentos Pix já abatidos neste pedido (baixas parciais).
+        // Em aberto = royalties - valorPago (ver lib/financeiro.js)
+        valorPago: {
+          type: Number,
+          default: 0,
+        },
       },
       // Etiquetas
       etiquetas: {
@@ -131,6 +139,40 @@ const PedidoSchema = new mongoose.Schema(
         dataPagamento: Date,
         observacao: String,
       },
+    },
+
+    // ══════════════════════════════════════════════════════════════
+    // SINAL - entrada paga por Pix ao fornecedor para o pedido ser enviado
+    // ══════════════════════════════════════════════════════════════
+
+    sinal: {
+      // % aplicado sobre o total do fornecedor no momento do pedido
+      percentual: { type: Number, default: 0 },
+      valor: { type: Number, default: 0 },
+      status: {
+        type: String,
+        enum: ['nao_aplicavel', 'em_analise', 'confirmado', 'rejeitado'],
+        default: 'nao_aplicavel',
+      },
+      // Identificador do Pix (aparece no extrato de quem recebe)
+      txid: String,
+      // Chave Pix para onde o sinal foi enviado (cópia do momento do pedido)
+      chavePix: String,
+      comprovanteId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Comprovante',
+      },
+      // Comprovantes substituídos depois de uma rejeição
+      comprovantesAnteriores: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Comprovante',
+        },
+      ],
+      enviadoEm: Date,
+      conferidoEm: Date,
+      conferidoPor: String,
+      motivoRejeicao: String,
     },
 
     // ══════════════════════════════════════════════════════════════
@@ -164,32 +206,37 @@ const PedidoSchema = new mongoose.Schema(
 // ══════════════════════════════════════════════════════════════
 
 PedidoSchema.pre('save', function (next) {
+  const cent = v => Math.round((Number(v) || 0) * 100) / 100;
+
   // Subtotal = soma dos preços BASE × quantidade
-  this.subtotal = this.itens.reduce(
-    (sum, item) => sum + item.quantidade * item.precoUnitario,
-    0
+  this.subtotal = cent(
+    this.itens.reduce((sum, item) => sum + item.quantidade * item.precoUnitario, 0),
   );
 
   // Total de etiquetas
-  this.totalEtiquetas = this.itens.reduce(
-    (sum, item) => sum + item.quantidade * (item.precoEtiqueta || 0),
-    0
+  this.totalEtiquetas = cent(
+    this.itens.reduce((sum, item) => sum + item.quantidade * (item.precoEtiqueta || 0), 0),
   );
 
   // Total de embalagens
-  this.totalEmbalagens = this.itens.reduce(
-    (sum, item) => sum + item.quantidade * (item.precoEmbalagem || 0),
-    0
+  this.totalEmbalagens = cent(
+    this.itens.reduce((sum, item) => sum + item.quantidade * (item.precoEmbalagem || 0), 0),
   );
 
-  // Royalties = 5% APENAS do subtotal base
-  this.royalties = this.subtotal * 0.05;
+  // Royalties: o valor vem calculado de pages/api/pedidos/criar.js, que já
+  // desconta as categorias isentas e usa ROYALTY_PERCENTAGE. NÃO recalcular
+  // aqui: antes este hook repunha sempre 5% do subtotal a cada save() e
+  // anulava a isenção. Só calcula se o pedido chegar sem o campo.
+  if (typeof this.royalties !== 'number' || Number.isNaN(this.royalties)) {
+    this.royalties = this.subtotal * (parseFloat(process.env.ROYALTY_PERCENTAGE) || 0.05);
+  }
+  this.royalties = cent(this.royalties);
 
   // Total do fornecedor (apenas subtotal base)
   this.totalFornecedor = this.subtotal;
 
   // Total do distribuidor (tudo junto)
-  this.total = this.subtotal + this.totalEtiquetas + this.totalEmbalagens + this.royalties;
+  this.total = cent(this.subtotal + this.totalEtiquetas + this.totalEmbalagens + this.royalties);
 
   // Inicializar controle financeiro se não existir
   if (!this.controleFinanceiro) {
@@ -213,6 +260,13 @@ PedidoSchema.index({ status: 1, createdAt: -1 });
 PedidoSchema.index({ 'controleFinanceiro.royalties.status': 1 });
 PedidoSchema.index({ 'controleFinanceiro.etiquetas.status': 1 });
 PedidoSchema.index({ 'controleFinanceiro.embalagens.status': 1 });
+PedidoSchema.index({ 'sinal.status': 1 });
+// Um identificador de Pix só pode pertencer a um pedido (evita pedido duplicado
+// se o distribuidor clicar duas vezes em "Enviar")
+PedidoSchema.index(
+  { 'sinal.txid': 1 },
+  { unique: true, partialFilterExpression: { 'sinal.txid': { $type: 'string' } } },
+);
 
 // ══════════════════════════════════════════════════════════════
 // VIRTUALS

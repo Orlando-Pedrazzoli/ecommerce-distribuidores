@@ -1,10 +1,25 @@
 // PAGES/ADMIN-PEDIDOS.JS - COM FILTRO POR DISTRIBUIDOR
 // ===================================
+// Cada pedido mostra o sinal pago por Pix (comprovante, confirmar/rejeitar).
+// Os royalties contam as baixas parciais feitas por Pix pelo distribuidor.
 
 import { useState, useEffect } from 'react';
 import AdminShell from '../components/Admin/AdminShell';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { LinkComprovante } from '../components/Pix/PixPagamento';
+import { formatarMoeda, royaltiesEmAberto, STATUS_SINAL } from '../lib/financeiro';
+
+const ESTILO_SINAL = {
+  em_analise: 'bg-amber-50 border-amber-200',
+  confirmado: 'bg-green-50 border-green-200',
+  rejeitado: 'bg-red-50 border-red-200',
+};
+const BADGE_SINAL = {
+  em_analise: 'bg-amber-100 text-amber-800',
+  confirmado: 'bg-green-100 text-green-800',
+  rejeitado: 'bg-red-100 text-red-800',
+};
 
 export default function AdminPedidos() {
   const [pedidos, setPedidos] = useState([]);
@@ -14,6 +29,8 @@ export default function AdminPedidos() {
   const [filtroFornecedor, setFiltroFornecedor] = useState('todos');
   const [filtroDistribuidor, setFiltroDistribuidor] = useState('todos'); // ← NOVO
   const [filtroPagamento, setFiltroPagamento] = useState('todos');
+  const [filtroSinal, setFiltroSinal] = useState('todos');
+  const [atualizandoSinal, setAtualizandoSinal] = useState({});
   const [fornecedores, setFornecedores] = useState([]);
   const [distribuidores, setDistribuidores] = useState([]); // ← NOVO
   const [user, setUser] = useState(null);
@@ -23,11 +40,14 @@ export default function AdminPedidos() {
   // Filtro inicial vindo da dashboard (/admin-pedidos?status=pendente)
   useEffect(() => {
     if (router.isReady && router.query.status) setFiltroStatus(String(router.query.status));
+    // /admin-pedidos?sinal=em_analise (alerta da dashboard)
+    if (router.isReady && router.query.sinal) setFiltroSinal(String(router.query.sinal));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
   useEffect(() => {
     verificarAdmin();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -40,7 +60,15 @@ export default function AdminPedidos() {
   // Aplicar filtros quando mudam
   useEffect(() => {
     aplicarFiltros();
-  }, [filtroStatus, filtroFornecedor, filtroDistribuidor, filtroPagamento, todosPedidos]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    filtroStatus,
+    filtroFornecedor,
+    filtroDistribuidor,
+    filtroPagamento,
+    filtroSinal,
+    todosPedidos,
+  ]);
 
   const verificarAdmin = async () => {
     try {
@@ -109,7 +137,7 @@ export default function AdminPedidos() {
       pedidosFiltrados = pedidosFiltrados.filter(p => {
         const cf = p.controleFinanceiro || {};
         const temPendente =
-          cf.royalties?.status === 'pendente' ||
+          royaltiesEmAberto(p) > 0 ||
           cf.etiquetas?.status === 'pendente' ||
           cf.embalagens?.status === 'pendente';
 
@@ -117,6 +145,13 @@ export default function AdminPedidos() {
         if (filtroPagamento === 'pago') return !temPendente;
         return true;
       });
+    }
+
+    // Filtro por status do sinal Pix
+    if (filtroSinal !== 'todos') {
+      pedidosFiltrados = pedidosFiltrados.filter(
+        p => (p.sinal?.status || 'nao_aplicavel') === filtroSinal,
+      );
     }
 
     setPedidos(pedidosFiltrados);
@@ -201,6 +236,41 @@ export default function AdminPedidos() {
     }
   };
 
+  // Confirmar / rejeitar o sinal pago por Pix
+  const conferirSinal = async (pedido, acao) => {
+    let motivo = '';
+    if (acao === 'rejeitar') {
+      motivo = prompt(
+        'Motivo da rejeição (o distribuidor recebe este texto por email e pode enviar novo comprovante):',
+      );
+      if (motivo === null) return;
+      if (!motivo.trim()) return alert('Informe o motivo da rejeição.');
+    } else if (
+      !confirm(`Confirmar o sinal de ${formatarMoeda(pedido.sinal.valor)}? O fornecedor viu o crédito no extrato?`)
+    ) {
+      return;
+    }
+
+    setAtualizandoSinal(prev => ({ ...prev, [pedido._id]: true }));
+    try {
+      const response = await fetch('/api/admin/pedidos/sinal', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedidoId: pedido._id, acao, motivo }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return alert(`❌ ${data.message || 'Erro ao conferir o sinal'}`);
+
+      const atualizar = p => (p._id === pedido._id ? { ...p, sinal: data.sinal } : p);
+      setTodosPedidos(prev => prev.map(atualizar));
+    } catch (error) {
+      console.error('Erro ao conferir sinal:', error);
+      alert('❌ Erro ao conferir o sinal');
+    } finally {
+      setAtualizandoSinal(prev => ({ ...prev, [pedido._id]: false }));
+    }
+  };
+
   const getStatusColor = status => {
     const colors = {
       pendente: 'bg-yellow-100 text-yellow-800 border-yellow-300',
@@ -224,7 +294,7 @@ export default function AdminPedidos() {
   const getStatusPagamento = pedido => {
     const cf = pedido.controleFinanceiro || {};
 
-    const royaltiesPago = cf.royalties?.status === 'pago';
+    const royaltiesPago = royaltiesEmAberto(pedido) <= 0;
     const etiquetasPago = cf.etiquetas?.status === 'pago' || (pedido.totalEtiquetas || 0) === 0;
     const embalagensPago = cf.embalagens?.status === 'pago' || (pedido.totalEmbalagens || 0) === 0;
 
@@ -271,9 +341,7 @@ export default function AdminPedidos() {
 
     pedidos.forEach(pedido => {
       const cf = pedido.controleFinanceiro || {};
-      if (cf.royalties?.status !== 'pago') {
-        royaltiesPendentes += pedido.royalties || 0;
-      }
+      royaltiesPendentes += royaltiesEmAberto(pedido);
       if (cf.etiquetas?.status !== 'pago') {
         etiquetasPendentes += pedido.totalEtiquetas || 0;
       }
@@ -293,7 +361,17 @@ export default function AdminPedidos() {
     setFiltroFornecedor('todos');
     setFiltroDistribuidor('todos');
     setFiltroPagamento('todos');
+    setFiltroSinal('todos');
   };
+
+  const temFiltro =
+    filtroStatus !== 'todos' ||
+    filtroFornecedor !== 'todos' ||
+    filtroDistribuidor !== 'todos' ||
+    filtroPagamento !== 'todos' ||
+    filtroSinal !== 'todos';
+
+  const sinaisAConferir = todosPedidos.filter(p => p.sinal?.status === 'em_analise').length;
 
   if (!user || user.tipo !== 'admin') {
     return null;
@@ -368,14 +446,27 @@ export default function AdminPedidos() {
             </div>
           </div>
 
+          {/* Sinais Pix à espera de conferência */}
+          {sinaisAConferir > 0 && filtroSinal !== 'em_analise' && (
+            <button
+              onClick={() => setFiltroSinal('em_analise')}
+              className='w-full text-left bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 hover:bg-amber-100 transition'
+            >
+              <span className='font-bold text-amber-900'>
+                🧾 {sinaisAConferir} sinal(is) Pix a conferir
+              </span>
+              <span className='block text-sm text-amber-800'>
+                Veja o comprovante e confirme depois de o fornecedor ver o crédito. Clique para
+                filtrar.
+              </span>
+            </button>
+          )}
+
           {/* Filtros */}
           <div className='bg-white rounded-lg shadow-md p-6 mb-6'>
             <div className='flex items-center justify-between mb-4'>
               <h3 className='text-lg font-semibold text-gray-800'>Filtros</h3>
-              {(filtroStatus !== 'todos' ||
-                filtroFornecedor !== 'todos' ||
-                filtroDistribuidor !== 'todos' ||
-                filtroPagamento !== 'todos') && (
+              {temFiltro && (
                 <button
                   onClick={limparFiltros}
                   className='text-sm text-blue-600 hover:text-blue-800 underline'
@@ -385,7 +476,7 @@ export default function AdminPedidos() {
               )}
             </div>
 
-            <div className='grid md:grid-cols-4 gap-4'>
+            <div className='grid md:grid-cols-5 gap-4'>
               {/* Filtro por Status */}
               <div>
                 <label className='block text-sm font-medium text-gray-700 mb-2'>
@@ -455,13 +546,26 @@ export default function AdminPedidos() {
                   <option value='pago'>✅ Totalmente Pago</option>
                 </select>
               </div>
+
+              {/* Filtro por Sinal Pix */}
+              <div>
+                <label className='block text-sm font-medium text-gray-700 mb-2'>Sinal Pix</label>
+                <select
+                  value={filtroSinal}
+                  onChange={e => setFiltroSinal(e.target.value)}
+                  className='w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500'
+                >
+                  <option value='todos'>Todos</option>
+                  <option value='em_analise'>🧾 A conferir</option>
+                  <option value='confirmado'>✅ Confirmado</option>
+                  <option value='rejeitado'>⚠️ Rejeitado</option>
+                  <option value='nao_aplicavel'>Sem sinal</option>
+                </select>
+              </div>
             </div>
 
             {/* Indicador de filtros ativos */}
-            {(filtroStatus !== 'todos' ||
-              filtroFornecedor !== 'todos' ||
-              filtroDistribuidor !== 'todos' ||
-              filtroPagamento !== 'todos') && (
+            {temFiltro && (
               <div className='mt-4 pt-4 border-t'>
                 <p className='text-sm text-gray-600'>
                   Exibindo <span className='font-bold text-blue-600'>{pedidos.length}</span> de{' '}
@@ -482,10 +586,7 @@ export default function AdminPedidos() {
               <div className='text-6xl mb-4'>📦</div>
               <h3 className='text-xl font-medium text-gray-900 mb-2'>Nenhum pedido encontrado</h3>
               <p className='text-gray-600'>
-                {filtroStatus !== 'todos' ||
-                filtroFornecedor !== 'todos' ||
-                filtroDistribuidor !== 'todos' ||
-                filtroPagamento !== 'todos'
+                {temFiltro
                   ? 'Tente ajustar os filtros'
                   : 'Ainda não há pedidos no sistema'}
               </p>
@@ -574,6 +675,79 @@ export default function AdminPedidos() {
                         CEP: {pedido.endereco.cep}
                       </p>
                     </div>
+
+                    {/* Sinal pago por Pix */}
+                    {pedido.sinal && ESTILO_SINAL[pedido.sinal.status] && (
+                      <div
+                        className={`rounded-lg border p-3 mb-4 ${ESTILO_SINAL[pedido.sinal.status]}`}
+                      >
+                        <div className='flex flex-wrap items-start justify-between gap-3'>
+                          <div className='min-w-0'>
+                            <div className='flex flex-wrap items-center gap-2'>
+                              <h4 className='font-medium text-gray-800 text-sm'>
+                                🧾 Sinal Pix ({pedido.sinal.percentual}%):{' '}
+                                <span className='font-bold'>
+                                  {formatarMoeda(pedido.sinal.valor)}
+                                </span>
+                              </h4>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-xs font-medium ${BADGE_SINAL[pedido.sinal.status]}`}
+                              >
+                                {STATUS_SINAL[pedido.sinal.status].label}
+                              </span>
+                            </div>
+                            <p className='text-xs text-gray-600 mt-1'>
+                              Saldo ao fornecedor:{' '}
+                              {formatarMoeda((pedido.totalFornecedor || 0) - pedido.sinal.valor)}
+                              {pedido.sinal.txid && (
+                                <>
+                                  {' '}
+                                  · ID do Pix:{' '}
+                                  <span className='font-mono'>{pedido.sinal.txid}</span>
+                                </>
+                              )}
+                            </p>
+                            {pedido.sinal.conferidoEm && (
+                              <p className='text-xs text-gray-500'>
+                                Conferido em{' '}
+                                {new Date(pedido.sinal.conferidoEm).toLocaleString('pt-BR', {
+                                  dateStyle: 'short',
+                                  timeStyle: 'short',
+                                })}
+                                {pedido.sinal.conferidoPor && ` por ${pedido.sinal.conferidoPor}`}
+                              </p>
+                            )}
+                            {pedido.sinal.status === 'rejeitado' && pedido.sinal.motivoRejeicao && (
+                              <p className='text-xs text-red-800 mt-1'>
+                                <strong>Motivo:</strong> {pedido.sinal.motivoRejeicao}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className='flex flex-wrap items-center gap-2'>
+                            <LinkComprovante id={pedido.sinal.comprovanteId} className='text-sm' />
+                            {pedido.sinal.status !== 'confirmado' && (
+                              <button
+                                onClick={() => conferirSinal(pedido, 'confirmar')}
+                                disabled={atualizandoSinal[pedido._id]}
+                                className='bg-green-600 text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-green-700 disabled:opacity-50'
+                              >
+                                ✓ Confirmar
+                              </button>
+                            )}
+                            {pedido.sinal.status !== 'rejeitado' && (
+                              <button
+                                onClick={() => conferirSinal(pedido, 'rejeitar')}
+                                disabled={atualizandoSinal[pedido._id]}
+                                className='bg-white border border-red-300 text-red-700 px-3 py-1.5 rounded text-xs font-medium hover:bg-red-50 disabled:opacity-50'
+                              >
+                                Rejeitar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Itens Organizados por Categoria */}
                     <div className='border-t pt-4'>
@@ -676,6 +850,13 @@ export default function AdminPedidos() {
                           <div className='flex items-center justify-between'>
                             <span className='text-sm'>
                               Royalties (R$ {pedido.royalties?.toFixed(2)}):
+                              {cf.royalties?.status !== 'pago' &&
+                                (cf.royalties?.valorPago || 0) > 0.004 && (
+                                  <span className='block text-xs text-blue-700'>
+                                    Pix abateu {formatarMoeda(cf.royalties.valorPago)} · falta{' '}
+                                    {formatarMoeda(royaltiesEmAberto(pedido))}
+                                  </span>
+                                )}
                             </span>
                             <button
                               onClick={() =>

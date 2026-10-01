@@ -166,6 +166,13 @@ export default function App({ Component, pageProps }) {
     toast.info('Item removido do carrinho');
   };
 
+  // Remove vários itens de uma vez, sem aviso (usado pelo checkout quando só
+  // parte dos pedidos foi enviada: os itens já pedidos saem do carrinho)
+  const removerItens = produtoIds => {
+    const ids = new Set(produtoIds);
+    setCart(prevCart => prevCart.filter(item => !ids.has(item._id)));
+  };
+
   const updateQuantity = (produtoId, quantidade) => {
     if (quantidade <= 0) {
       removeFromCart(produtoId);
@@ -227,6 +234,7 @@ export default function App({ Component, pageProps }) {
     cart,
     addToCart,
     removeFromCart,
+    removerItens,
     updateQuantity,
     clearCart,
     currentUser,

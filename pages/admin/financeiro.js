@@ -1,11 +1,35 @@
 // PAGES/ADMIN/FINANCEIRO.JS - COM FILTRO POR DISTRIBUIDOR
 // ===================================
 // Interface para o admin gerenciar pagamentos de royalties, etiquetas e embalagens
+// + Chave Pix onde os distribuidores pagam os royalties
+// + Conferência dos Pix de royalties (comprovante, confirmar / rejeitar)
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import AdminShell from '../../components/Admin/AdminShell';
+import {
+  Card,
+  Badge,
+  Botao,
+  Campo,
+  Input,
+  Select,
+  Alerta,
+  Modal,
+  moeda,
+  dataHora,
+} from '../../components/Admin/ui';
+import { LinkComprovante } from '../../components/Pix/PixPagamento';
+import { royaltiesEmAberto, STATUS_PAGAMENTO_PIX } from '../../lib/financeiro';
+
+const TIPOS_PIX = [
+  { id: 'cnpj', label: 'CNPJ', exemplo: '00.000.000/0000-00' },
+  { id: 'cpf', label: 'CPF', exemplo: '000.000.000-00' },
+  { id: 'email', label: 'Email', exemplo: 'financeiro@empresa.com.br' },
+  { id: 'telefone', label: 'Telefone', exemplo: '(11) 99999-9999' },
+  { id: 'aleatoria', label: 'Chave aleatória', exemplo: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
+];
 
 export default function FinanceiroAdmin() {
   const router = useRouter();
@@ -19,9 +43,61 @@ export default function FinanceiroAdmin() {
   const [updating, setUpdating] = useState(null);
   const [selectedPedidos, setSelectedPedidos] = useState([]);
 
+  // ── Pix de royalties ──
+  const [pix, setPix] = useState(null); // { pixRoyalties, pixConfigurado }
+  const [pagamentosPix, setPagamentosPix] = useState({ resumo: null, pagamentos: [] });
+  const [filtroPix, setFiltroPix] = useState('em_analise');
+  const [conferindo, setConferindo] = useState(null);
+  const [modalPix, setModalPix] = useState(false);
+  const [modalRejeitar, setModalRejeitar] = useState(null); // pagamento
+  const [erroPix, setErroPix] = useState('');
+
   useEffect(() => {
     carregarDados();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodo]);
+
+  const carregarPix = useCallback(async () => {
+    try {
+      const [rConfig, rPagamentos] = await Promise.all([
+        fetch('/api/admin/configuracoes'),
+        fetch(`/api/admin/pagamentos-pix?status=${filtroPix}`),
+      ]);
+      if (rConfig.ok) setPix(await rConfig.json());
+      if (rPagamentos.ok) setPagamentosPix(await rPagamentos.json());
+    } catch (error) {
+      console.error('Erro ao carregar Pix:', error);
+    }
+  }, [filtroPix]);
+
+  useEffect(() => {
+    carregarPix();
+  }, [carregarPix]);
+
+  const conferirPagamento = async (pagamento, acao, motivo = '') => {
+    setConferindo(pagamento._id);
+    setErroPix('');
+    try {
+      const response = await fetch('/api/admin/pagamentos-pix', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: pagamento._id, acao, motivo }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setErroPix(data.message || 'Erro ao conferir o pagamento');
+        return false;
+      }
+      await Promise.all([carregarPix(), carregarDados()]);
+      return true;
+    } catch (error) {
+      console.error('Erro ao conferir pagamento:', error);
+      setErroPix('Erro de conexão');
+      return false;
+    } finally {
+      setConferindo(null);
+    }
+  };
 
   const carregarDados = async () => {
     try {
@@ -138,7 +214,7 @@ export default function FinanceiroAdmin() {
       if (filtro === 'pendente') {
         if (tipoFiltro === 'todos') {
           passaFiltroStatus =
-            pedido.controleFinanceiro?.royalties?.status === 'pendente' ||
+            royaltiesEmAberto(pedido) > 0 ||
             pedido.controleFinanceiro?.etiquetas?.status === 'pendente' ||
             pedido.controleFinanceiro?.embalagens?.status === 'pendente';
         } else {
@@ -169,9 +245,7 @@ export default function FinanceiroAdmin() {
 
     pedidosFiltrados.forEach(pedido => {
       const cf = pedido.controleFinanceiro || {};
-      if (cf.royalties?.status !== 'pago') {
-        royaltiesPendentes += pedido.royalties || 0;
-      }
+      royaltiesPendentes += royaltiesEmAberto(pedido); // já desconta os Pix parciais
       if (cf.etiquetas?.status !== 'pago') {
         etiquetasPendentes += pedido.totalEtiquetas || 0;
       }
@@ -214,6 +288,142 @@ export default function FinanceiroAdmin() {
         subtitulo='Pagamentos de royalties, etiquetas e embalagens'
       >
         <div>
+          {/* ═══════════ PIX DE ROYALTIES ═══════════ */}
+          <div className='grid lg:grid-cols-3 gap-4 mb-4 sm:mb-6'>
+            {/* Chave Pix */}
+            <Card
+              titulo='Chave Pix dos royalties'
+              descricao='Para onde os distribuidores pagam'
+              acoes={
+                <Botao variante='secundario' tamanho='sm' onClick={() => setModalPix(true)}>
+                  {pix?.pixConfigurado ? 'Alterar' : 'Configurar'}
+                </Botao>
+              }
+            >
+              {!pix ? (
+                <p className='text-sm text-gray-400'>Carregando…</p>
+              ) : pix.pixConfigurado ? (
+                <dl className='text-sm space-y-1'>
+                  <div className='flex justify-between gap-3'>
+                    <dt className='text-gray-500'>
+                      {TIPOS_PIX.find(t => t.id === pix.pixRoyalties.tipo)?.label || 'Chave'}
+                    </dt>
+                    <dd className='font-mono font-medium text-gray-900 break-all text-right'>
+                      {pix.pixRoyalties.chave}
+                    </dd>
+                  </div>
+                  <div className='flex justify-between gap-3'>
+                    <dt className='text-gray-500'>Titular</dt>
+                    <dd className='font-medium text-gray-900 text-right'>
+                      {pix.pixRoyalties.titular}
+                    </dd>
+                  </div>
+                </dl>
+              ) : (
+                <Alerta tipo='aviso'>
+                  Sem chave configurada: os distribuidores ainda não conseguem pagar os royalties
+                  por Pix.
+                </Alerta>
+              )}
+            </Card>
+
+            {/* Pagamentos para conferir */}
+            <Card
+              className='lg:col-span-2'
+              semPadding
+              titulo='Pix de royalties recebidos'
+              descricao='A baixa já foi feita. Confirme depois de ver o crédito no extrato, ou rejeite para a dívida voltar.'
+              acoes={
+                <Select
+                  value={filtroPix}
+                  onChange={e => setFiltroPix(e.target.value)}
+                  className='!w-auto !py-1.5 text-xs'
+                >
+                  <option value='em_analise'>
+                    A conferir ({pagamentosPix.resumo?.em_analise?.total || 0})
+                  </option>
+                  <option value='confirmado'>Confirmados</option>
+                  <option value='rejeitado'>Rejeitados</option>
+                  <option value='todos'>Todos</option>
+                </Select>
+              }
+            >
+              {erroPix && (
+                <div className='px-5 pt-4'>
+                  <Alerta tipo='erro'>{erroPix}</Alerta>
+                </div>
+              )}
+              {pagamentosPix.pagamentos.length === 0 ? (
+                <p className='px-5 py-8 text-center text-sm text-gray-400'>
+                  {filtroPix === 'em_analise'
+                    ? 'Nenhum Pix à espera de conferência.'
+                    : 'Nenhum pagamento neste filtro.'}
+                </p>
+              ) : (
+                <ul className='divide-y divide-gray-100 max-h-96 overflow-y-auto'>
+                  {pagamentosPix.pagamentos.map(p => {
+                    const st = STATUS_PAGAMENTO_PIX[p.status] || STATUS_PAGAMENTO_PIX.em_analise;
+                    return (
+                      <li key={p._id} className='px-5 py-3'>
+                        <div className='flex flex-wrap items-start justify-between gap-3'>
+                          <div className='min-w-0'>
+                            <div className='flex flex-wrap items-center gap-2'>
+                              <span className='font-bold text-gray-900 tabular-nums'>
+                                {moeda(p.valor)}
+                              </span>
+                              <Badge cor={st.cor}>{st.label}</Badge>
+                            </div>
+                            <p className='text-sm text-gray-700'>
+                              {p.userNome || p.userId}{' '}
+                              <span className='text-gray-400'>({p.userId})</span>
+                            </p>
+                            <p className='text-xs text-gray-500'>
+                              {dataHora(p.createdAt)} · ID do Pix{' '}
+                              <span className='font-mono'>{p.txid}</span>
+                            </p>
+                            <p className='text-xs text-gray-500'>
+                              Abatido em {p.alocacoes.map(a => `#${a.numero}`).join(', ') || '—'} ·
+                              em aberto {moeda(p.saldoAntes)} → {moeda(p.saldoDepois)}
+                            </p>
+                            {p.status === 'rejeitado' && p.motivoRejeicao && (
+                              <p className='text-xs text-red-700 mt-0.5'>
+                                Motivo: {p.motivoRejeicao}
+                              </p>
+                            )}
+                          </div>
+                          <div className='flex flex-wrap items-center gap-2'>
+                            <LinkComprovante id={p.comprovanteId} className='text-sm' />
+                            {p.status === 'em_analise' && (
+                              <Botao
+                                tamanho='sm'
+                                variante='azul'
+                                loading={conferindo === p._id}
+                                onClick={() => conferirPagamento(p, 'confirmar')}
+                              >
+                                Confirmar
+                              </Botao>
+                            )}
+                            {p.status !== 'rejeitado' && (
+                              <Botao
+                                tamanho='sm'
+                                variante='secundario'
+                                className='!text-red-700 !border-red-300'
+                                disabled={conferindo === p._id}
+                                onClick={() => setModalRejeitar(p)}
+                              >
+                                Rejeitar
+                              </Botao>
+                            )}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Card>
+          </div>
+
           {/* Cards de Resumo */}
           <div className='grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6'>
             {/* Total a Receber */}
@@ -497,6 +707,14 @@ export default function FinanceiroAdmin() {
                               <div className='font-bold text-sm'>
                                 R$ {(pedido.royalties || 0).toFixed(2)}
                               </div>
+                              {pedido.controleFinanceiro?.royalties?.status !== 'pago' &&
+                                (pedido.controleFinanceiro?.royalties?.valorPago || 0) > 0.004 && (
+                                  <div className='text-[11px] text-blue-700'>
+                                    Pix abateu{' '}
+                                    {moeda(pedido.controleFinanceiro.royalties.valorPago)} · falta{' '}
+                                    {moeda(royaltiesEmAberto(pedido))}
+                                  </div>
+                                )}
                             </div>
                             <button
                               onClick={() =>
@@ -613,7 +831,178 @@ export default function FinanceiroAdmin() {
             )}
           </div>
         </div>
+
+        {modalPix && pix && (
+          <ModalChavePix
+            inicial={pix.pixRoyalties}
+            onFechar={() => setModalPix(false)}
+            onGuardado={() => {
+              setModalPix(false);
+              carregarPix();
+            }}
+          />
+        )}
+
+        {modalRejeitar && (
+          <ModalRejeitarPagamento
+            pagamento={modalRejeitar}
+            loading={conferindo === modalRejeitar._id}
+            onFechar={() => setModalRejeitar(null)}
+            onConfirmar={async motivo => {
+              const ok = await conferirPagamento(modalRejeitar, 'rejeitar', motivo);
+              if (ok) setModalRejeitar(null);
+            }}
+          />
+        )}
       </AdminShell>
     </>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// MODAL: CHAVE PIX DOS ROYALTIES
+// ══════════════════════════════════════════════════════════════
+function ModalChavePix({ inicial, onFechar, onGuardado }) {
+  const [form, setForm] = useState({
+    tipo: inicial?.tipo || 'cnpj',
+    chave: inicial?.chave || '',
+    titular: inicial?.titular || '',
+    cidade: inicial?.cidade || '',
+  });
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+  const set = (campo, valor) => setForm(prev => ({ ...prev, [campo]: valor }));
+
+  const guardar = async () => {
+    setSalvando(true);
+    setErro('');
+    try {
+      const response = await fetch('/api/admin/configuracoes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pixRoyalties: form }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return setErro(data.message || 'Erro ao salvar');
+      onGuardado();
+    } catch {
+      setErro('Erro de conexão');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <Modal
+      titulo='Chave Pix dos royalties'
+      subtitulo='Os distribuidores pagam os royalties para esta chave'
+      onFechar={onFechar}
+      bloqueado={salvando}
+      largura='max-w-lg'
+      rodape={
+        <>
+          <Botao variante='secundario' onClick={onFechar} disabled={salvando}>
+            Cancelar
+          </Botao>
+          <Botao variante='azul' onClick={guardar} loading={salvando}>
+            Salvar
+          </Botao>
+        </>
+      }
+    >
+      <div className='space-y-4'>
+        <Alerta tipo='erro'>{erro}</Alerta>
+        <div className='grid sm:grid-cols-3 gap-4'>
+          <Campo label='Tipo de chave'>
+            <Select value={form.tipo} onChange={e => set('tipo', e.target.value)}>
+              {TIPOS_PIX.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </Select>
+          </Campo>
+          <Campo label='Chave Pix' className='sm:col-span-2' dica='Vazio = desliga o pagamento por Pix'>
+            <Input
+              value={form.chave}
+              onChange={e => set('chave', e.target.value)}
+              placeholder={TIPOS_PIX.find(t => t.id === form.tipo)?.exemplo}
+              className='font-mono'
+              autoComplete='off'
+            />
+          </Campo>
+          <Campo
+            label='Titular da conta'
+            obrigatorio
+            className='sm:col-span-2'
+            dica='Nome que o distribuidor vê ao pagar (máx. 25 caracteres)'
+          >
+            <Input
+              value={form.titular}
+              onChange={e => set('titular', e.target.value)}
+              maxLength={25}
+            />
+          </Campo>
+          <Campo label='Cidade'>
+            <Input
+              value={form.cidade}
+              onChange={e => set('cidade', e.target.value)}
+              maxLength={15}
+            />
+          </Campo>
+        </div>
+        <Alerta tipo='info'>
+          Faça um Pix de teste de R$ 0,01 depois de salvar: o app do banco tem de mostrar o seu
+          nome como recebedor.
+        </Alerta>
+      </div>
+    </Modal>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// MODAL: REJEITAR PIX DE ROYALTIES
+// ══════════════════════════════════════════════════════════════
+function ModalRejeitarPagamento({ pagamento, loading, onFechar, onConfirmar }) {
+  const [motivo, setMotivo] = useState('');
+  return (
+    <Modal
+      titulo={`Rejeitar Pix de ${moeda(pagamento.valor)}`}
+      subtitulo={`${pagamento.userNome || pagamento.userId} · ${dataHora(pagamento.createdAt)}`}
+      onFechar={onFechar}
+      bloqueado={loading}
+      largura='max-w-md'
+      rodape={
+        <>
+          <Botao variante='secundario' onClick={onFechar} disabled={loading}>
+            Cancelar
+          </Botao>
+          <Botao
+            variante='perigo'
+            onClick={() => onConfirmar(motivo.trim())}
+            loading={loading}
+            disabled={!motivo.trim()}
+          >
+            Rejeitar e desfazer a baixa
+          </Botao>
+        </>
+      }
+    >
+      <div className='space-y-4'>
+        <Alerta tipo='aviso'>
+          A baixa é desfeita: {moeda(pagamento.valor)} voltam a ficar em aberto nos pedidos do
+          distribuidor, que é avisado por email.
+        </Alerta>
+        <Campo label='Motivo (o distribuidor vê este texto)' obrigatorio>
+          <Input
+            value={motivo}
+            onChange={e => setMotivo(e.target.value)}
+            placeholder='Ex.: o Pix não entrou na conta'
+            maxLength={300}
+            autoFocus
+          />
+        </Campo>
+      </div>
+    </Modal>
   );
 }

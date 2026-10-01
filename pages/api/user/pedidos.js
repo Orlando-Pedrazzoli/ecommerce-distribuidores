@@ -7,6 +7,7 @@ import Fornecedor from '../../../models/Fornecedor'; // ← NECESSÁRIO para pop
 import Produto from '../../../models/Produto'; // ← NECESSÁRIO para populate
 import dbConnect from '../../../lib/mongodb';
 import { requireDistribuidor } from '../../../lib/auth';
+import { royaltiesEmAberto } from '../../../lib/financeiro';
 
 async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -65,15 +66,21 @@ async function handler(req, res) {
       etiquetasPendentes: 0,
       embalagensPendentes: 0,
       totalPendente: 0,
+      pedidosComPendencia: 0,
     };
 
     todosOsPedidos.forEach(pedido => {
       resumoFinanceiro.totalPedidos += pedido.total || 0;
       const cf = pedido.controleFinanceiro || {};
 
-      if (cf.royalties?.status !== 'pago') {
-        resumoFinanceiro.royaltiesPendentes += pedido.royalties || 0;
-      }
+      // Royalties em aberto já descontam as baixas parciais feitas por Pix
+      resumoFinanceiro.royaltiesPendentes += royaltiesEmAberto(pedido);
+
+      const temPendencia =
+        royaltiesEmAberto(pedido) > 0 ||
+        (cf.etiquetas?.status !== 'pago' && (pedido.totalEtiquetas || 0) > 0) ||
+        (cf.embalagens?.status !== 'pago' && (pedido.totalEmbalagens || 0) > 0);
+      if (temPendencia) resumoFinanceiro.pedidosComPendencia += 1;
       if (cf.etiquetas?.status !== 'pago') {
         resumoFinanceiro.etiquetasPendentes += pedido.totalEtiquetas || 0;
       }

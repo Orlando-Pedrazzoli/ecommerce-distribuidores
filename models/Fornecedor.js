@@ -3,6 +3,7 @@
 // Passa a guardar tudo o que antes estava hardcoded em pages/dashboard.js e
 // no seed (especialidade, descrição, cor, logo), mais contactos e regras
 // de royalties. O admin gere estes dados em /admin/fornecedores.
+// Inclui a chave Pix do fornecedor e o % de sinal exigido no checkout.
 
 import mongoose from 'mongoose';
 
@@ -62,6 +63,23 @@ const FornecedorSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+
+    // ── Pix e sinal ──
+    // Chave Pix do fornecedor: é para ela que o distribuidor paga o sinal
+    // no checkout (Pix Copia e Cola gerado em lib/pix.js).
+    pix: {
+      tipo: {
+        type: String,
+        enum: ['', 'cpf', 'cnpj', 'email', 'telefone', 'aleatoria'],
+        default: '',
+      },
+      chave: { type: String, trim: true, default: '' },
+      titular: { type: String, trim: true, default: '' }, // nome que aparece no Pix
+      cidade: { type: String, trim: true, default: '' },
+    },
+    // % do valor do fornecedor exigido como sinal para enviar o pedido.
+    // 0 = este fornecedor não exige sinal.
+    percentualSinal: { type: Number, default: 40, min: 0, max: 100 },
 
     // ── Operação ──
     prazoEntregaDias: { type: Number, default: null },

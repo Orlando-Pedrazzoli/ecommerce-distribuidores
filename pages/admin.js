@@ -75,6 +75,7 @@ export default function Admin() {
   }
 
   const { pedidos, financeiro, recentes, fornecedores, produtos, distribuidores, convites } = dados;
+  const pix = dados.pix || { sinaisAConferir: 0, pagamentosAConferir: 0, valorAConferir: 0 };
 
   // ── Requer atenção ──
   const alertas = [];
@@ -85,6 +86,30 @@ export default function Admin() {
       desc: 'Confirme para o fornecedor iniciar a produção.',
       href: '/admin-pedidos?status=pendente',
       cta: 'Ver pedidos',
+    });
+  if (fornecedores.semPix > 0)
+    alertas.push({
+      tom: 'red',
+      titulo: `${fornecedores.semPix} fornecedor(es) sem chave Pix`,
+      desc: 'Exigem sinal mas não têm chave: os distribuidores não conseguem enviar pedidos.',
+      href: '/admin/fornecedores',
+      cta: 'Configurar Pix',
+    });
+  if (pix.sinaisAConferir > 0)
+    alertas.push({
+      tom: 'orange',
+      titulo: `${pix.sinaisAConferir} sinal(is) Pix a conferir`,
+      desc: 'Pedidos enviados com comprovante do sinal. Confirme depois de o fornecedor ver o crédito.',
+      href: '/admin-pedidos?sinal=em_analise',
+      cta: 'Conferir sinais',
+    });
+  if (pix.pagamentosAConferir > 0)
+    alertas.push({
+      tom: 'orange',
+      titulo: `${pix.pagamentosAConferir} Pix de royalties a conferir (${moeda(pix.valorAConferir)})`,
+      desc: 'A baixa já foi feita. Confirme o crédito no seu extrato ou rejeite.',
+      href: '/admin/financeiro',
+      cta: 'Conferir pagamentos',
     });
   if (financeiro.totalAReceber > 0)
     alertas.push({
