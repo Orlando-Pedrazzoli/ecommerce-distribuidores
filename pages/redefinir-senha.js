@@ -61,7 +61,7 @@ export default function RedefinirSenha() {
       const data = await response.json();
       if (data.success) {
         setEstado('concluido');
-        setTimeout(() => router.push('/?msg=senha-redefinida'), 2500);
+        setTimeout(() => router.push(urlLogin), 4000);
       } else {
         setError(data.message || 'Não foi possível redefinir a senha');
       }
@@ -73,6 +73,12 @@ export default function RedefinirSenha() {
   };
 
   const ehConvite = dadosToken?.convite;
+
+  // Volta ao login já com o usuário preenchido, para não haver dúvida
+  // sobre o que digitar no campo "Usuário ou email".
+  const urlLogin = dadosToken?.usuario
+    ? `/?msg=senha-redefinida&u=${encodeURIComponent(dadosToken.usuario)}`
+    : '/?msg=senha-redefinida';
 
   if (estado === 'validando') {
     return (
@@ -122,10 +128,17 @@ export default function RedefinirSenha() {
               <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M5 13l4 4L19 7' />
             </svg>
           </div>
-          <p className='text-sm text-gray-600 mb-6'>
+          <p className='text-sm text-gray-600 mb-4'>
             Sua senha foi salva. Redirecionando para o login...
           </p>
-          <Link href='/?msg=senha-redefinida' className='text-blue-600 hover:underline text-sm font-medium'>
+          {dadosToken?.usuario && (
+            <p className='text-sm text-gray-600 mb-6 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3'>
+              Para entrar, use o usuário{' '}
+              <strong className='font-mono break-words'>{dadosToken.usuario}</strong>{' '}
+              ou o seu email, com a nova senha.
+            </p>
+          )}
+          <Link href={urlLogin} className='text-blue-600 hover:underline text-sm font-medium'>
             Ir para o login agora
           </Link>
         </div>

@@ -22,6 +22,7 @@ import {
   getClientIp,
 } from '../../../lib/auth';
 import { rateLimit } from '../../../lib/rateLimit';
+import { enviarBoasVindasCadastro } from '../../../lib/authEmails';
 
 const USUARIO_REGEX = /^[a-z0-9._-]{3,30}$/;
 
@@ -144,6 +145,13 @@ export default async function handler(req, res) {
       setCookies(res, cookies);
 
       console.log(`🎉 Distribuidor auto-cadastrado via convite: ${usuario} (${convite.email})`);
+
+      // Email com o usuário de acesso (não bloqueia o cadastro se falhar)
+      try {
+        await enviarBoasVindasCadastro({ user });
+      } catch (emailError) {
+        console.error('⚠️ Conta criada, mas falhou o email de boas-vindas:', emailError.message);
+      }
       return res.status(201).json({
         success: true,
         message: 'Conta criada com sucesso',

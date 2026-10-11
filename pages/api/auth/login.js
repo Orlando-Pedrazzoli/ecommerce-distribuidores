@@ -2,12 +2,12 @@
 // ===================================
 // Fluxo:
 //   1. rate limit por IP e por usuário
-//   2. busca no Mongo, bcrypt, bloqueio após N falhas
+//   2. busca no Mongo (por usuário OU email, sem diferenciar maiúsculas),
+//      bcrypt, bloqueio após N falhas
 //   3. dispositivo confiável? -> emite sessão diretamente
 //      senão -> gera OTP, envia por email, emite cookie "otp-pending"
 
 import dbConnect from '../../../lib/mongodb';
-import User from '../../../models/User';
 import { rateLimit, responder429 } from '../../../lib/rateLimit';
 import {
   AUTH_CONFIG,
@@ -24,6 +24,7 @@ import {
   registarFalhaLogin,
   registarSucessoLogin,
   compararSenhaDummy,
+  buscarUsuarioPorIdentificador,
   dispositivoConfiavel,
   criarTokenUsoUnico,
   userPublico,
@@ -32,7 +33,8 @@ import {
 import { enviarOtpLogin } from '../../../lib/authEmails';
 import jwt from 'jsonwebtoken';
 
-const MENSAGEM_CREDENCIAIS = 'Usuário ou senha incorretos';
+const MENSAGEM_CREDENCIAIS =
+  'Usuário/email ou senha incorretos. Você pode entrar com o seu nome de usuário ou com o email cadastrado.';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -45,7 +47,7 @@ export default async function handler(req, res) {
   if (!username || !password) {
     return res
       .status(400)
-      .json({ success: false, message: 'Informe usuário e senha' });
+      .json({ success: false, message: 'Informe usuário (ou email) e senha' });
   }
 
   // ── Rate limit (IP: 20/15min · usuário: 10/15min) ──
@@ -62,11 +64,13 @@ export default async function handler(req, res) {
   try {
     await dbConnect();
 
-    const user = await User.findOne({ usuario: username }).select('+password');
+    // Aceita nome de usuário ou email (ver buscarUsuarioPorIdentificador)
+    const user = await buscarUsuarioPorIdentificador(username, { comSenha: true });
 
     // Usuário inexistente: gasta o mesmo tempo que um bcrypt real
     if (!user) {
       await compararSenhaDummy(password);
+      console.warn(`🔒 Falha de login (conta não encontrada): "${username}" (IP ${ip})`);
       return res.status(401).json({ success: false, message: MENSAGEM_CREDENCIAIS });
     }
 
@@ -99,7 +103,7 @@ export default async function handler(req, res) {
     const senhaOk = await user.comparePassword(password);
     if (!senhaOk) {
       await registarFalhaLogin(user);
-      console.warn(`🔒 Falha de login: ${username} (IP ${ip})`);
+      console.warn(`🔒 Falha de login (senha incorreta): ${user.usuario} (IP ${ip})`);
       return res.status(401).json({ success: false, message: MENSAGEM_CREDENCIAIS });
     }
 

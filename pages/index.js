@@ -36,6 +36,14 @@ export default function Login() {
     }
   }, [router.query.msg]);
 
+  // Usuário pré-preenchido (ex.: ao voltar da redefinição de senha)
+  useEffect(() => {
+    const u = router.query.u;
+    if (typeof u === 'string' && u) {
+      setFormData(f => (f.username ? f : { ...f, username: u.slice(0, 254) }));
+    }
+  }, [router.query.u]);
+
   // Contador para reenvio do código
   useEffect(() => {
     if (reenvioEm <= 0) return;
@@ -255,17 +263,19 @@ export default function Login() {
             <form onSubmit={handleSubmitSenha} className='space-y-6'>
               <div>
                 <label htmlFor='username' className='block text-gray-700 text-sm font-semibold mb-2'>
-                  Usuário
+                  Usuário ou email
                 </label>
                 <input
                   id='username'
                   type='text'
                   autoComplete='username'
                   autoCapitalize='none'
+                  autoCorrect='off'
+                  spellCheck={false}
                   className='w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200'
                   value={formData.username}
                   onChange={e => setFormData({ ...formData, username: e.target.value })}
-                  placeholder='Digite seu usuário'
+                  placeholder='seu.usuario ou email@exemplo.com'
                   required
                 />
               </div>

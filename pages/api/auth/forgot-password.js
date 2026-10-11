@@ -1,12 +1,16 @@
 // pages/api/auth/forgot-password.js - ESQUECI MINHA SENHA
 // ===================================
-// Aceita usuário OU email. Responde SEMPRE com a mesma mensagem (200) para
+// Aceita usuário OU email (sem diferenciar maiúsculas). Responde SEMPRE com a mesma mensagem (200) para
 // não revelar se a conta existe. Se existir, envia link de redefinição.
 
 import dbConnect from '../../../lib/mongodb';
-import User from '../../../models/User';
 import { rateLimit, responder429 } from '../../../lib/rateLimit';
-import { TIPOS_TOKEN, criarTokenUsoUnico, getClientIp } from '../../../lib/auth';
+import {
+  TIPOS_TOKEN,
+  criarTokenUsoUnico,
+  getClientIp,
+  buscarUsuarioPorIdentificador,
+} from '../../../lib/auth';
 import { enviarResetSenha, enviarConviteDefinirSenha } from '../../../lib/authEmails';
 
 const MENSAGEM_PADRAO =
@@ -36,9 +40,7 @@ export default async function handler(req, res) {
   try {
     await dbConnect();
 
-    const user = await User.findOne({
-      $or: [{ usuario: identificador }, { email: identificador.toLowerCase() }],
-    });
+    const user = await buscarUsuarioPorIdentificador(identificador);
 
     if (user && user.ativo && user.email) {
       // Senha nunca definida -> convite (7 dias). Caso normal -> reset (30 min).

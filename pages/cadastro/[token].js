@@ -112,7 +112,7 @@ export default function CadastroConvite() {
       const data = await response.json();
       if (response.ok && data.success) {
         setEstado('concluido');
-        setTimeout(() => router.push('/dashboard'), 2000);
+        setTimeout(() => router.push('/dashboard'), 5000);
       } else {
         setError(data.message || 'Não foi possível concluir o cadastro');
         if (/usu[aá]rio/i.test(data.message || '')) setPasso(1);
@@ -185,9 +185,14 @@ export default function CadastroConvite() {
               />
             </svg>
           </div>
-          <p className='text-sm text-gray-600 mb-6'>
-            Bem-vindo(a), <strong>{nome}</strong>. Seu usuário é{' '}
-            <strong className='font-mono'>{usuario}</strong>. Redirecionando para o portal...
+          <p className='text-sm text-gray-600 mb-4'>
+            Bem-vindo(a), <strong>{nome}</strong>. Redirecionando para o portal...
+          </p>
+          <p className='text-sm text-gray-600 mb-6 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3'>
+            Nos próximos acessos, entre com o usuário{' '}
+            <strong className='font-mono break-words'>{usuario}</strong> ou com o email{' '}
+            <strong className='break-all'>{convite?.email}</strong>, e a senha que acabou de criar.
+            Enviamos estes dados para o seu email.
           </p>
           <Link href='/dashboard' className='text-blue-600 hover:underline text-sm font-medium'>
             Entrar agora
@@ -266,11 +271,16 @@ export default function CadastroConvite() {
               minLength={3}
               maxLength={30}
               autoComplete='username'
+              autoCapitalize='none'
+              autoCorrect='off'
+              spellCheck={false}
               className={`${inputClass} font-mono`}
               placeholder='ex.: surfshop.rio'
             />
-            <p className='text-xs text-gray-400 mt-1'>
-              É com este nome que você entra no portal. Não pode ser alterado depois.
+            <p className='text-xs text-gray-500 mt-1'>
+              Sugerimos um a partir do nome, mas pode trocar por um mais curto. Você entra no
+              portal com este usuário <strong>ou com o seu email</strong>. Não pode ser alterado
+              depois.
             </p>
           </div>
 

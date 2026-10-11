@@ -75,6 +75,8 @@ export default function EsqueciSenha() {
               type='text'
               autoComplete='username'
               autoCapitalize='none'
+              autoCorrect='off'
+              spellCheck={false}
               value={identificador}
               onChange={e => setIdentificador(e.target.value)}
               placeholder='seu.usuario ou email@exemplo.com'
