@@ -1,7 +1,7 @@
 // PAGES/ADMIN-PEDIDOS.JS - COM FILTRO POR DISTRIBUIDOR
 // ===================================
 // Status do pedido: Pendente ou Confirmado.
-// Cada pedido mostra o sinal pago por Pix (comprovante, confirmar/rejeitar).
+// Cada pedido mostra o sinal por Pix (a pagar / comprovante, confirmar/rejeitar).
 // Os royalties contam as baixas parciais feitas por Pix pelo distribuidor.
 
 import { useState, useEffect } from 'react';
@@ -13,11 +13,13 @@ import { formatarMoeda, royaltiesEmAberto, STATUS_SINAL } from '../lib/financeir
 import { normalizarStatus, STATUS_PEDIDO_INFO, STATUS_PEDIDO_VALIDOS } from '../lib/statusPedido';
 
 const ESTILO_SINAL = {
+  pendente: 'bg-blue-50 border-blue-200',
   em_analise: 'bg-amber-50 border-amber-200',
   confirmado: 'bg-green-50 border-green-200',
   rejeitado: 'bg-red-50 border-red-200',
 };
 const BADGE_SINAL = {
+  pendente: 'bg-blue-100 text-blue-800',
   em_analise: 'bg-amber-100 text-amber-800',
   confirmado: 'bg-green-100 text-green-800',
   rejeitado: 'bg-red-100 text-red-800',
@@ -244,7 +246,11 @@ export default function AdminPedidos() {
       if (motivo === null) return;
       if (!motivo.trim()) return alert('Informe o motivo da rejeição.');
     } else if (
-      !confirm(`Confirmar o sinal de ${formatarMoeda(pedido.sinal.valor)}? O fornecedor viu o crédito no extrato?`)
+      !confirm(
+        pedido.sinal.status === 'pendente'
+          ? `O distribuidor ainda não enviou comprovante. Confirmar o sinal de ${formatarMoeda(pedido.sinal.valor)} mesmo assim (o fornecedor já viu o crédito)?`
+          : `Confirmar o sinal de ${formatarMoeda(pedido.sinal.valor)}? O fornecedor viu o crédito no extrato?`,
+      )
     ) {
       return;
     }
@@ -488,6 +494,7 @@ export default function AdminPedidos() {
                   className='w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500'
                 >
                   <option value='todos'>Todos</option>
+                  <option value='pendente'>⏳ A pagar</option>
                   <option value='em_analise'>🧾 A conferir</option>
                   <option value='confirmado'>✅ Confirmado</option>
                   <option value='rejeitado'>⚠️ Rejeitado</option>
@@ -627,6 +634,9 @@ export default function AdminPedidos() {
                               </span>
                             </div>
                             <p className='text-xs text-gray-600 mt-1'>
+                              {pedido.sinal.status === 'pendente'
+                                ? 'Pedido enviado sem comprovante; o distribuidor paga em "Meus Pedidos". '
+                                : ''}
                               Saldo ao fornecedor:{' '}
                               {formatarMoeda((pedido.totalFornecedor || 0) - pedido.sinal.valor)}
                               {pedido.sinal.txid && (
@@ -665,7 +675,7 @@ export default function AdminPedidos() {
                                 ✓ Confirmar
                               </button>
                             )}
-                            {pedido.sinal.status !== 'rejeitado' && (
+                            {['em_analise', 'confirmado'].includes(pedido.sinal.status) && (
                               <button
                                 onClick={() => conferirSinal(pedido, 'rejeitar')}
                                 disabled={atualizandoSinal[pedido._id]}

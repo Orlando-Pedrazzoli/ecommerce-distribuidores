@@ -1,11 +1,14 @@
-// pages/api/pedidos/criar.js - CRIAR PEDIDO (COM SINAL PIX OBRIGATÓRIO)
+// pages/api/pedidos/criar.js - CRIAR PEDIDO (SINAL PIX OPCIONAL NO CHECKOUT)
 // ===================================
-// POST { itens, fornecedorId, formaPagamento, endereco, sinal: { txid, comprovanteId, valor } }
+// POST { itens, fornecedorId, formaPagamento, endereco, sinal?: { txid, comprovanteId, valor } }
 //
 // - Preços, royalties (com categorias isentas) e sinal são calculados no
 //   servidor a partir do cadastro (lib/pedidos.js).
-// - Se o fornecedor exige sinal, o pedido só é criado com o comprovante do
-//   Pix anexado; o comprovante segue em anexo no email do fornecedor.
+// - O comprovante do sinal NÃO é obrigatório para criar o pedido (os pedidos
+//   são alterados com frequência depois de enviados). Se vier, o sinal nasce
+//   'em_analise' e o comprovante segue em anexo nos emails; se não vier, o
+//   sinal fica 'pendente' e o distribuidor paga depois em "Meus Pedidos"
+//   (/api/user/sinal).
 // - O txid do Pix é único por pedido: repetir o envio devolve o pedido que
 //   já existe em vez de criar outro.
 // 🔐 Autenticação via requireDistribuidor (dados do distribuidor vêm do Mongo)
@@ -88,21 +91,32 @@ async function handler(req, res) {
     const { valores, sinal } = calculo;
 
     // ══════════════════════════════════════════════════════════════
-    // SINAL: sem comprovante do Pix o pedido não é enviado
+    // SINAL: com comprovante -> em_analise; sem comprovante -> pendente
+    // (o distribuidor paga depois em "Meus Pedidos")
     // ══════════════════════════════════════════════════════════════
     let dadosSinal = { percentual: sinal.percentual, valor: 0, status: 'nao_aplicavel' };
 
-    if (sinal.exigido) {
+    const txid = String(sinalEnviado.txid || '');
+    const pagouAgora = Boolean(txid || sinalEnviado.comprovanteId);
+
+    if (sinal.exigido && !pagouAgora) {
+      dadosSinal = {
+        percentual: sinal.percentual,
+        valor: sinal.valor,
+        status: 'pendente',
+        ...(pixConfigurado(fornecedor.pix) ? { chavePix: fornecedor.pix.chave } : {}),
+      };
+    } else if (sinal.exigido) {
       if (!pixConfigurado(fornecedor.pix)) {
         return res.status(409).json({
-          message: `O fornecedor ${fornecedor.nome} ainda não tem chave Pix configurada para receber o sinal. Fale com o administrador.`,
+          message: `O fornecedor ${fornecedor.nome} ainda não tem chave Pix configurada para receber o sinal. Envie o pedido sem o sinal e pague-o depois.`,
         });
       }
 
-      const txid = String(sinalEnviado.txid || '');
       if (!txidValido(txid) || !sinalEnviado.comprovanteId) {
         return res.status(400).json({
-          message: `Para enviar o pedido, pague o sinal de ${sinal.percentual}% por Pix e anexe o comprovante.`,
+          message:
+            'Comprovante do sinal incompleto. Anexe o comprovante do Pix ou envie o pedido sem o sinal para o pagar depois.',
         });
       }
 
@@ -208,7 +222,7 @@ async function handler(req, res) {
 
     console.log(
       `✅ Pedido ${pedido._id} criado por ${distribuidor.usuario} (${fornecedor.codigo}) ` +
-        `total=${valores.total} sinal=${dadosSinal.valor}`,
+        `total=${valores.total} sinal=${dadosSinal.valor} (${dadosSinal.status})`,
     );
 
     if (comprovanteReservado) {
@@ -217,7 +231,7 @@ async function handler(req, res) {
     }
 
     // ══════════════════════════════════════════════════════════════
-    // ENVIAR EMAILS (o comprovante do sinal vai em anexo)
+    // ENVIAR EMAILS (o comprovante do sinal, se existir, vai em anexo)
     // ══════════════════════════════════════════════════════════════
     try {
       const anexos = dadosSinal.comprovanteId
@@ -247,6 +261,7 @@ async function handler(req, res) {
         resumo: {
           ...valores,
           sinal: dadosSinal.valor,
+          sinalStatus: dadosSinal.status,
         },
       }),
     );

@@ -1,18 +1,25 @@
 // PAGES/MEUS-PEDIDOS.JS - HISTÓRICO DE PEDIDOS DO DISTRIBUIDOR
 // ============================================================
 // Exibe todos os pedidos de TODOS os fornecedores
-// Mostra o sinal pago por Pix (status + comprovante). Se o sinal for
-// rejeitado, o distribuidor paga de novo e envia outro comprovante aqui.
+// Mostra o sinal por Pix (status + comprovante). O sinal pode ser pago aqui:
+// - 'pendente'  -> pedido enviado sem comprovante; paga e anexa pela 1.ª vez
+// - 'rejeitado' -> paga de novo e envia outro comprovante
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import Head from 'next/head';
 import PixPagamento, { LinkComprovante } from '../components/Pix/PixPagamento';
-import { formatarMoeda, royaltiesEmAberto, STATUS_SINAL } from '../lib/financeiro';
+import {
+  formatarMoeda,
+  royaltiesEmAberto,
+  STATUS_SINAL,
+  STATUS_SINAL_PAGAVEL,
+} from '../lib/financeiro';
 import { normalizarStatus, STATUS_PEDIDO_INFO } from '../lib/statusPedido';
 
 const ESTILO_SINAL = {
+  pendente: 'bg-blue-50 border-blue-200 text-blue-900',
   em_analise: 'bg-amber-50 border-amber-200 text-amber-900',
   confirmado: 'bg-green-50 border-green-200 text-green-900',
   rejeitado: 'bg-red-50 border-red-300 text-red-900',
@@ -32,7 +39,7 @@ export default function MeusPedidos() {
   }, [router.isReady]);
   const [resumoFinanceiro, setResumoFinanceiro] = useState(null);
   const [erro, setErro] = useState(null);
-  const [reenviando, setReenviando] = useState(null); // pedido com sinal rejeitado
+  const [reenviando, setReenviando] = useState(null); // pedido com sinal a pagar / rejeitado
 
   useEffect(() => {
     buscarPedidos();
@@ -318,7 +325,7 @@ export default function MeusPedidos() {
                       </div>
                     </div>
 
-                    {/* Sinal pago por Pix */}
+                    {/* Sinal por Pix ao fornecedor */}
                     {pedido.sinal && ESTILO_SINAL[pedido.sinal.status] && (
                       <div
                         className={`rounded-lg border p-3 mb-4 ${ESTILO_SINAL[pedido.sinal.status]}`}
@@ -330,7 +337,9 @@ export default function MeusPedidos() {
                               {formatarMoeda(pedido.sinal.valor)}
                             </p>
                             <p className='text-xs opacity-80'>
-                              Sinal de {pedido.sinal.percentual}% pago por Pix ao fornecedor
+                              {pedido.sinal.status === 'pendente'
+                                ? `Sinal de ${pedido.sinal.percentual}% a pagar por Pix ao fornecedor — pague quando o pedido estiver fechado`
+                                : `Sinal de ${pedido.sinal.percentual}% pago por Pix ao fornecedor`}
                               {pedido.sinal.status === 'em_analise' &&
                                 ' — aguardando a conferência do crédito'}
                             </p>
@@ -347,12 +356,18 @@ export default function MeusPedidos() {
                             Comprovante
                           </LinkComprovante>
                         </div>
-                        {pedido.sinal.status === 'rejeitado' && (
+                        {STATUS_SINAL_PAGAVEL.includes(pedido.sinal.status) && (
                           <button
                             onClick={() => setReenviando(pedido)}
-                            className='mt-3 w-full sm:w-auto bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition'
+                            className={`mt-3 w-full sm:w-auto text-white px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                              pedido.sinal.status === 'rejeitado'
+                                ? 'bg-red-600 hover:bg-red-700'
+                                : 'bg-blue-600 hover:bg-blue-700'
+                            }`}
                           >
-                            Pagar sinal e enviar novo comprovante
+                            {pedido.sinal.status === 'rejeitado'
+                              ? 'Pagar sinal e enviar novo comprovante'
+                              : 'Pagar sinal por Pix'}
                           </button>
                         )}
                       </div>
@@ -515,9 +530,10 @@ export default function MeusPedidos() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// MODAL: SINAL REJEITADO -> PAGAR DE NOVO E ENVIAR OUTRO COMPROVANTE
+// MODAL: PAGAR O SINAL (pendente) OU PAGAR DE NOVO (rejeitado)
 // ══════════════════════════════════════════════════════════════
 function ModalNovoComprovante({ pedido, onFechar, onConcluido }) {
+  const primeiro = pedido.sinal?.status === 'pendente';
   const [cobranca, setCobranca] = useState(null);
   const [comprovante, setComprovante] = useState(null);
   const [carregando, setCarregando] = useState(true);
@@ -552,7 +568,12 @@ function ModalNovoComprovante({ pedido, onFechar, onConcluido }) {
       const r = await fetch('/api/user/sinal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pedidoId: pedido._id, comprovanteId: comprovante.id }),
+        body: JSON.stringify({
+          pedidoId: pedido._id,
+          comprovanteId: comprovante.id,
+          // sinal pendente: o identificador do Pix foi gerado agora, no GET
+          txid: cobranca?.txid,
+        }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.message || 'Não foi possível enviar o comprovante');
@@ -579,7 +600,10 @@ function ModalNovoComprovante({ pedido, onFechar, onConcluido }) {
               Sinal do pedido #{pedido._id?.slice(-8).toUpperCase()}
             </h2>
             <p className='text-xs text-gray-500 mt-0.5'>
-              {pedido.fornecedorId?.nome} · pague o sinal e anexe o novo comprovante
+              {pedido.fornecedorId?.nome} ·{' '}
+              {primeiro
+                ? 'pague o sinal por Pix e anexe o comprovante'
+                : 'pague o sinal e anexe o novo comprovante'}
             </p>
           </div>
           <button

@@ -1,8 +1,10 @@
 // pages/api/admin/pedidos/sinal.js - CONFERIR O SINAL DE UM PEDIDO (ADMIN)
 // ===================================
 // PATCH { pedidoId, acao: 'confirmar' | 'rejeitar', motivo? }
-//   confirmar -> sinal conferido (o fornecedor viu o crédito)
-//   rejeitar  -> o distribuidor é avisado e pode enviar novo comprovante
+//   confirmar -> sinal conferido (o fornecedor viu o crédito). Também vale
+//                para sinal 'pendente' (pago fora do portal, sem comprovante)
+//   rejeitar  -> só com comprovante enviado (em_analise/confirmado); o
+//                distribuidor é avisado e pode enviar novo comprovante
 
 import mongoose from 'mongoose';
 import dbConnect from '../../../../lib/mongodb';
@@ -34,10 +36,12 @@ async function handler(req, res) {
     await dbConnect();
 
     const novoStatus = acao === 'confirmar' ? 'confirmado' : 'rejeitado';
+    const statusPermitidos =
+      acao === 'confirmar' ? ['pendente', 'em_analise', 'rejeitado'] : ['em_analise', 'confirmado'];
     const pedido = await Pedido.findOneAndUpdate(
       {
         _id: pedidoId,
-        'sinal.status': { $in: ['em_analise', 'confirmado', 'rejeitado'], $ne: novoStatus },
+        'sinal.status': { $in: statusPermitidos },
       },
       {
         $set: {
@@ -52,7 +56,10 @@ async function handler(req, res) {
 
     if (!pedido) {
       return res.status(409).json({
-        message: 'Este pedido não tem sinal para conferir ou já está nesse estado.',
+        message:
+          acao === 'rejeitar'
+            ? 'Só é possível rejeitar um sinal com comprovante enviado (ou já está rejeitado).'
+            : 'Este pedido não tem sinal para conferir ou já está confirmado.',
       });
     }
 

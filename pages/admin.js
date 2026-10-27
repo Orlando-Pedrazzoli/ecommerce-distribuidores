@@ -75,7 +75,13 @@ export default function Admin() {
   }
 
   const { pedidos, financeiro, recentes, fornecedores, produtos, distribuidores, convites } = dados;
-  const pix = dados.pix || { sinaisAConferir: 0, pagamentosAConferir: 0, valorAConferir: 0 };
+  const pix = dados.pix || {
+    sinaisAConferir: 0,
+    sinaisAPagar: 0,
+    valorSinaisAPagar: 0,
+    pagamentosAConferir: 0,
+    valorAConferir: 0,
+  };
 
   // ── Requer atenção ──
   const alertas = [];
@@ -91,7 +97,7 @@ export default function Admin() {
     alertas.push({
       tom: 'red',
       titulo: `${fornecedores.semPix} fornecedor(es) sem chave Pix`,
-      desc: 'Exigem sinal mas não têm chave: os distribuidores não conseguem enviar pedidos.',
+      desc: 'Exigem sinal mas não têm chave: os distribuidores não conseguem pagar o sinal desses pedidos.',
       href: '/admin/fornecedores',
       cta: 'Configurar Pix',
     });
@@ -99,9 +105,17 @@ export default function Admin() {
     alertas.push({
       tom: 'orange',
       titulo: `${pix.sinaisAConferir} sinal(is) Pix a conferir`,
-      desc: 'Pedidos enviados com comprovante do sinal. Confirme depois de o fornecedor ver o crédito.',
+      desc: 'Pedidos com comprovante do sinal enviado. Confirme depois de o fornecedor ver o crédito.',
       href: '/admin-pedidos?sinal=em_analise',
       cta: 'Conferir sinais',
+    });
+  if (pix.sinaisAPagar > 0)
+    alertas.push({
+      tom: 'blue',
+      titulo: `${pix.sinaisAPagar} pedido(s) com sinal a pagar (${moeda(pix.valorSinaisAPagar)})`,
+      desc: 'Enviados sem comprovante do sinal. O distribuidor paga depois em "Meus Pedidos".',
+      href: '/admin-pedidos?sinal=pendente',
+      cta: 'Ver pedidos',
     });
   if (pix.pagamentosAConferir > 0)
     alertas.push({

@@ -486,7 +486,8 @@ export default function Pagamentos() {
                 </li>
                 <li>
                   • <strong>Produtos:</strong> o valor dos produtos é pago diretamente ao
-                  fornecedor (sinal por Pix no pedido e o saldo combinado com ele).
+                  fornecedor (sinal por Pix, no checkout ou depois em &quot;Meus Pedidos&quot;, e o
+                  saldo combinado com ele).
                 </li>
               </ul>
             </div>

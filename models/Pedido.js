@@ -2,7 +2,8 @@
 // ===================================
 // Valores: subtotal (produtos, vai para o fornecedor) + royalties = total.
 // Status usados: pendente e confirmado.
-// - sinal: entrada paga por Pix ao fornecedor no checkout (com comprovante)
+// - sinal: entrada paga por Pix ao fornecedor. Pode ser paga no checkout ou
+//   depois, em "Meus Pedidos" (status 'pendente' enquanto não há comprovante)
 // - controleFinanceiro.royalties.valorPago: quanto já foi abatido por
 //   pagamentos Pix do distribuidor (ver models/Pagamento.js)
 
@@ -105,16 +106,20 @@ const PedidoSchema = new mongoose.Schema(
     },
 
     // ══════════════════════════════════════════════════════════════
-    // SINAL - entrada paga por Pix ao fornecedor para o pedido ser enviado
+    // SINAL - entrada paga por Pix ao fornecedor (no checkout ou depois)
     // ══════════════════════════════════════════════════════════════
 
     sinal: {
       // % aplicado sobre o total do fornecedor no momento do pedido
       percentual: { type: Number, default: 0 },
       valor: { type: Number, default: 0 },
+      // nao_aplicavel: fornecedor não exige sinal
+      // pendente:      exige, mas o distribuidor ainda não enviou comprovante
+      // em_analise:    comprovante enviado, à espera da conferência do admin
+      // confirmado / rejeitado: resultado da conferência
       status: {
         type: String,
-        enum: ['nao_aplicavel', 'em_analise', 'confirmado', 'rejeitado'],
+        enum: ['nao_aplicavel', 'pendente', 'em_analise', 'confirmado', 'rejeitado'],
         default: 'nao_aplicavel',
       },
       // Identificador do Pix (aparece no extrato de quem recebe)

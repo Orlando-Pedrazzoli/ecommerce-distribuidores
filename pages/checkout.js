@@ -1,10 +1,12 @@
-// pages/checkout.js - CHECKOUT COM SINAL PIX OBRIGATÓRIO
+// pages/checkout.js - CHECKOUT COM SINAL PIX OPCIONAL
 // ===================================
-// Passos: Endereço → Pagamento → Revisão → Sinal Pix
+// Passos: Endereço → Pagamento → Revisão → Sinal Pix (opcional)
 // O último passo só existe quando algum fornecedor do carrinho exige sinal
-// (percentualSinal > 0). Para cada um desses fornecedores o distribuidor paga
-// o sinal por Pix (Copia e Cola / QR Code gerados em /api/pedidos/sinal) e
-// anexa o comprovante; sem isso o pedido não é enviado.
+// (percentualSinal > 0) e tem chave Pix. Nele o distribuidor PODE pagar o
+// sinal por Pix (Copia e Cola / QR Code gerados em /api/pedidos/sinal) e
+// anexar o comprovante, mas o pedido também pode ser enviado sem isso: o
+// sinal fica "a pagar" e é pago depois em "Meus Pedidos" (os pedidos são
+// alterados com frequência depois de enviados).
 // O que já foi feito neste passo (códigos Pix e comprovantes) fica guardado
 // na sessão do navegador: ir ao app do banco e voltar não perde nada.
 // Verifica categorias isentas de royalties por fornecedor.
@@ -363,16 +365,21 @@ export default function Checkout() {
   const exigeSinal = sinaisExigidos.length > 0;
   const errosSinal = listaSinais.filter(([, s]) => s.info?.erro);
   const semPix = sinaisExigidos.filter(([, s]) => !s.info.sinal.pixConfigurado);
-  const comprovantesFeitos = sinaisExigidos.filter(([, s]) => s.comprovante?.id).length;
+  // Fornecedores em que o sinal pode ser pago já no checkout (têm chave Pix)
+  const sinaisPagaveis = sinaisExigidos.filter(([, s]) => s.info.sinal.pixConfigurado && s.info.pix);
+  const podePagarAgora = sinaisPagaveis.length > 0;
+  const comprovantesFeitos = sinaisPagaveis.filter(([, s]) => s.comprovante?.id).length;
+  const semComprovante = sinaisExigidos.length - comprovantesFeitos;
   const precosAlterados = listaSinais.some(([, s]) => s.info?.precosAlterados);
   const totalSinal = sinaisExigidos.reduce((acc, [, s]) => acc + (s.info.sinal.valor || 0), 0);
+  // O pedido só precisa de os totais estarem calculados no servidor; o
+  // comprovante do sinal é opcional (fornecedor sem chave Pix também não bloqueia)
   const sinaisProntos =
     !sinalLoading &&
     !sinalErro &&
     listaSinais.length === Object.keys(gruposCarrinho).length &&
-    errosSinal.length === 0 &&
-    semPix.length === 0;
-  const podeEnviar = sinaisProntos && comprovantesFeitos === sinaisExigidos.length;
+    errosSinal.length === 0;
+  const podeEnviar = sinaisProntos;
 
   // Total calculado pelo servidor (preços atuais do cadastro)
   const totalServidor = sinaisProntos
@@ -383,13 +390,13 @@ export default function Checkout() {
     { num: 1, label: 'Endereço' },
     { num: 2, label: 'Pagamento' },
     { num: 3, label: 'Revisão' },
-    ...(exigeSinal ? [{ num: 4, label: 'Sinal Pix' }] : []),
+    ...(podePagarAgora ? [{ num: 4, label: 'Sinal Pix' }] : []),
   ];
 
-  // O passo 4 deixa de existir se o carrinho mudar e nenhum fornecedor exigir sinal
+  // O passo 4 deixa de existir se o carrinho mudar e não houver sinal a pagar agora
   useEffect(() => {
-    if (step === 4 && sinaisCarregados && !sinalLoading && !exigeSinal) setStep(3);
-  }, [step, sinaisCarregados, sinalLoading, exigeSinal]);
+    if (step === 4 && sinaisCarregados && !sinalLoading && !podePagarAgora) setStep(3);
+  }, [step, sinaisCarregados, sinalLoading, podePagarAgora]);
 
   const validateEndereco = () => {
     const newErrors = {};
@@ -428,11 +435,7 @@ export default function Checkout() {
       return;
     }
     if (!podeEnviar) {
-      toast.warning(
-        exigeSinal
-          ? 'Anexe o comprovante do Pix do sinal de cada fornecedor para enviar o pedido'
-          : 'Não foi possível validar o pedido. Atualize a página e tente novamente.',
-      );
+      toast.warning('Não foi possível validar o pedido. Atualize a página e tente novamente.');
       return;
     }
 
@@ -467,18 +470,21 @@ export default function Checkout() {
           });
         });
 
+        // O sinal só vai no pedido quando o comprovante foi anexado; sem ele o
+        // servidor grava o sinal como "a pagar" e o distribuidor paga depois.
         const sinal = sinais[fornecedorId];
+        const pagouSinal = Boolean(sinal?.info?.sinal?.exigido && sinal.comprovante?.id);
         const pedidoData = {
           userId: user.id,
           itens: itensFormatados,
           fornecedorId,
           formaPagamento,
           endereco,
-          sinal: sinal?.info?.sinal?.exigido
+          sinal: pagouSinal
             ? {
                 txid: sinal.info.pix?.txid,
                 valor: sinal.info.sinal.valor,
-                comprovanteId: sinal.comprovante?.id,
+                comprovanteId: sinal.comprovante.id,
               }
             : undefined,
         };
@@ -507,7 +513,9 @@ export default function Checkout() {
         `Pedido realizado com sucesso!\n\n` +
           `Total: ${formatarMoeda(totalServidor || total)}\n\n` +
           `Emails foram enviados automaticamente.\n` +
-          `Acompanhe o status em "Meus Pedidos".`,
+          (semComprovante > 0
+            ? `O sinal ficou a pagar: pague por Pix em "Meus Pedidos" quando o pedido estiver fechado.`
+            : `Acompanhe o status em "Meus Pedidos".`),
         8000
       );
 
@@ -651,20 +659,28 @@ export default function Checkout() {
   // ══════════════════════════════════════════════════════════════
   // COMPONENTES: botão de envio e avisos do sinal
   // ══════════════════════════════════════════════════════════════
-  function BotaoEnviar() {
+  function BotaoEnviar({ rotulo = 'Enviar Pedido', secundario = false, className = '' }) {
     return (
       <button
         onClick={handleSubmit}
         disabled={loading || !podeEnviar}
-        className='flex-1 bg-green-500 text-white px-4 py-2.5 rounded-lg hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm font-medium'
+        className={`${
+          secundario
+            ? 'bg-white border border-green-600 text-green-700 hover:bg-green-50'
+            : 'bg-green-500 text-white hover:bg-green-600'
+        } px-4 py-2.5 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm font-medium ${className}`}
       >
         {loading ? (
           <>
-            <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin'></div>
+            <div
+              className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${
+                secundario ? 'border-green-600' : 'border-white'
+              }`}
+            ></div>
             Processando...
           </>
         ) : (
-          'Enviar Pedido'
+          rotulo
         )}
       </button>
     );
@@ -693,11 +709,11 @@ export default function Checkout() {
           semPix.map(([fornecedorId, s]) => (
             <div
               key={fornecedorId}
-              className='text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3'
+              className='text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3'
             >
-              <strong>{s.info.nome}:</strong> este fornecedor ainda não tem chave Pix configurada
-              para receber o sinal, por isso o pedido não pode ser enviado. Fale com o
-              administrador.
+              <strong>{s.info.nome}:</strong> este fornecedor ainda não tem chave Pix configurada.
+              O pedido segue normalmente e o sinal de {formatarMoeda(s.info.sinal.valor)} fica a
+              pagar em &quot;Meus Pedidos&quot; assim que a chave for configurada.
             </div>
           ))}
         {precosAlterados && sinaisProntos && (
@@ -965,7 +981,7 @@ export default function Checkout() {
                   </h2>
                   <p className='text-xs text-gray-500 mb-3'>
                     {exigeSinal
-                      ? 'O sinal é pago por Pix no último passo. Aqui escolhe como paga o restante ao fornecedor.'
+                      ? 'O sinal é pago por Pix (agora ou depois, em "Meus Pedidos"). Aqui escolhe como paga o restante ao fornecedor.'
                       : 'Como pretende pagar o pedido ao fornecedor.'}
                   </p>
 
@@ -1068,41 +1084,62 @@ export default function Checkout() {
                       </div>
                       {exigeSinal && (
                         <div className='flex justify-between items-center mt-1 pt-1 border-t border-green-200 text-sm'>
-                          <span className='text-gray-700'>Sinal a pagar agora por Pix:</span>
+                          <span className='text-gray-700'>Sinal por Pix ao fornecedor:</span>
                           <span className='font-bold text-gray-900'>{formatarMoeda(totalSinal)}</span>
                         </div>
                       )}
                     </div>
 
+                    {exigeSinal && sinaisProntos && (
+                      <div className='text-xs text-blue-900 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2'>
+                        O sinal <strong>não é obrigatório para enviar o pedido</strong>. Pode pagá-lo
+                        agora por Pix ou mais tarde em &quot;Meus Pedidos&quot; — útil quando o pedido
+                        ainda vai ser alterado.
+                      </div>
+                    )}
+
                     <AvisosSinal />
                   </div>
 
-                  <div className='flex gap-3'>
-                    <button
-                      onClick={() => setStep(2)}
-                      className='flex-1 bg-gray-200 text-gray-700 px-4 py-2.5 rounded-lg hover:bg-gray-300 transition text-sm'
-                    >
-                      ← Voltar
-                    </button>
-                    {exigeSinal || !sinaisProntos ? (
+                  <div className='space-y-2'>
+                    <div className='flex gap-3'>
                       <button
-                        onClick={() => setStep(4)}
-                        disabled={!sinaisProntos}
-                        className='flex-1 bg-blue-500 text-white px-4 py-2.5 rounded-lg hover:bg-blue-600 transition disabled:opacity-50 flex items-center justify-center gap-2 text-sm font-medium'
+                        onClick={() => setStep(2)}
+                        className='flex-1 bg-gray-200 text-gray-700 px-4 py-2.5 rounded-lg hover:bg-gray-300 transition text-sm'
                       >
-                        {sinalLoading ? (
-                          <>
-                            <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin'></div>
-                            Calculando...
-                          </>
-                        ) : exigeSinal ? (
-                          'Pagar sinal →'
-                        ) : (
-                          'Enviar Pedido'
-                        )}
+                        ← Voltar
                       </button>
-                    ) : (
-                      <BotaoEnviar />
+                      {!sinaisProntos ? (
+                        <button
+                          disabled
+                          className='flex-1 bg-blue-500 text-white px-4 py-2.5 rounded-lg opacity-50 flex items-center justify-center gap-2 text-sm font-medium'
+                        >
+                          {sinalLoading ? (
+                            <>
+                              <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin'></div>
+                              Calculando...
+                            </>
+                          ) : (
+                            'Enviar Pedido'
+                          )}
+                        </button>
+                      ) : podePagarAgora ? (
+                        <button
+                          onClick={() => setStep(4)}
+                          className='flex-1 bg-blue-500 text-white px-4 py-2.5 rounded-lg hover:bg-blue-600 transition flex items-center justify-center gap-2 text-sm font-medium'
+                        >
+                          Pagar sinal agora →
+                        </button>
+                      ) : (
+                        <BotaoEnviar className='flex-1' />
+                      )}
+                    </div>
+                    {sinaisProntos && podePagarAgora && (
+                      <BotaoEnviar
+                        secundario
+                        className='w-full'
+                        rotulo='Enviar pedido e pagar o sinal depois'
+                      />
                     )}
                   </div>
                 </div>
@@ -1111,21 +1148,22 @@ export default function Checkout() {
               {/* Step 4: Sinal Pix */}
               {step === 4 && (
                 <div className='bg-white rounded-lg shadow-md p-4'>
-                  <h2 className='text-base font-bold text-gray-800 mb-1'>Sinal por Pix</h2>
+                  <h2 className='text-base font-bold text-gray-800 mb-1'>Sinal por Pix (opcional)</h2>
                   <p className='text-xs text-gray-600 mb-4'>
-                    Para enviar o pedido, pague o sinal diretamente ao fornecedor por Pix e anexe o
-                    comprovante. O fornecedor recebe o pedido já com o comprovante.
+                    Pague o sinal diretamente ao fornecedor por Pix e anexe o comprovante, para o
+                    fornecedor receber o pedido já com ele. Se preferir, envie o pedido sem o
+                    comprovante e pague o sinal depois em &quot;Meus Pedidos&quot;.
                   </p>
 
                   <AvisosSinal />
 
                   <div className='space-y-5'>
-                    {sinaisExigidos.map(([fornecedorId, s], indice) => (
+                    {sinaisPagaveis.map(([fornecedorId, s], indice) => (
                       <div key={fornecedorId}>
                         <div className='flex items-start justify-between gap-3 mb-2'>
                           <div className='min-w-0'>
                             <p className='text-sm font-bold text-gray-900 truncate'>
-                              {sinaisExigidos.length > 1 && `${indice + 1}. `}
+                              {sinaisPagaveis.length > 1 && `${indice + 1}. `}
                               {s.info.nome || produtosOrganizados[fornecedorId]?.nome}
                             </p>
                             <p className='text-xs text-gray-500'>
@@ -1133,43 +1171,37 @@ export default function Checkout() {
                               {formatarMoeda(s.info.valores.totalFornecedor)}
                             </p>
                           </div>
-                          {s.comprovante?.id && (
+                          {s.comprovante?.id ? (
                             <span className='shrink-0 text-[11px] font-semibold bg-green-100 text-green-800 px-2 py-0.5 rounded-full'>
                               ✓ Pronto
+                            </span>
+                          ) : (
+                            <span className='shrink-0 text-[11px] font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full'>
+                              Pagar depois
                             </span>
                           )}
                         </div>
 
-                        {s.info.pix ? (
-                          <>
-                            <PixPagamento
-                              cobranca={s.info.pix}
-                              finalidade='sinal'
-                              rotuloValor={`Sinal (${s.info.sinal.percentual}%)`}
-                              comprovante={s.comprovante}
-                              onComprovante={c => definirComprovante(fornecedorId, c)}
-                              desativado={loading}
-                            />
-                            <p className='text-xs text-gray-500 mt-2'>
-                              Saldo de <strong>{formatarMoeda(s.info.sinal.saldo)}</strong> a pagar
-                              ao fornecedor por {formaPagamento === 'boleto' ? 'boleto' : 'transferência'}.
-                            </p>
-                          </>
-                        ) : (
-                          <p className='text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2'>
-                            Este fornecedor ainda não tem chave Pix configurada, por isso o pedido
-                            não pode ser enviado. Fale com o administrador.
-                          </p>
-                        )}
+                        <PixPagamento
+                          cobranca={s.info.pix}
+                          finalidade='sinal'
+                          rotuloValor={`Sinal (${s.info.sinal.percentual}%)`}
+                          comprovante={s.comprovante}
+                          onComprovante={c => definirComprovante(fornecedorId, c)}
+                          desativado={loading}
+                        />
+                        <p className='text-xs text-gray-500 mt-2'>
+                          Saldo de <strong>{formatarMoeda(s.info.sinal.saldo)}</strong> a pagar
+                          ao fornecedor por {formaPagamento === 'boleto' ? 'boleto' : 'transferência'}.
+                        </p>
                       </div>
                     ))}
                   </div>
 
-                  {sinaisExigidos.length > 0 && (
-                    <p className='text-xs text-center text-gray-500 mt-4'>
-                      {comprovantesFeitos} de {sinaisExigidos.length} comprovante(s) anexado(s)
-                    </p>
-                  )}
+                  <p className='text-xs text-center text-gray-500 mt-4'>
+                    {comprovantesFeitos} de {sinaisPagaveis.length} comprovante(s) anexado(s)
+                    {semComprovante > 0 && ' — os restantes ficam a pagar em "Meus Pedidos"'}
+                  </p>
 
                   <div className='flex gap-3 mt-3'>
                     <button
@@ -1179,7 +1211,10 @@ export default function Checkout() {
                     >
                       ← Voltar
                     </button>
-                    <BotaoEnviar />
+                    <BotaoEnviar
+                      className='flex-1'
+                      rotulo={comprovantesFeitos === 0 ? 'Enviar sem o sinal' : 'Enviar Pedido'}
+                    />
                   </div>
                 </div>
               )}

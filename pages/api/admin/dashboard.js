@@ -45,6 +45,7 @@ async function handler(req, res) {
       serie,
       sinaisAConferir,
       pixAConferirAgg,
+      sinaisAPagarAgg,
     ] = await Promise.all([
       Pedido.aggregate([
         { $group: { _id: '$status', total: { $sum: 1 }, valor: { $sum: '$total' } } },
@@ -175,6 +176,11 @@ async function handler(req, res) {
         { $match: { status: 'em_analise' } },
         { $group: { _id: null, total: { $sum: 1 }, valor: { $sum: '$valor' } } },
       ]),
+      // Pedidos enviados sem o sinal (o distribuidor paga depois em "Meus Pedidos")
+      Pedido.aggregate([
+        { $match: { 'sinal.status': 'pendente' } },
+        { $group: { _id: null, total: { $sum: 1 }, valor: { $sum: '$sinal.valor' } } },
+      ]),
     ]);
 
     // Só dois status; pedidos antigos "enviado"/"entregue" contam como confirmados
@@ -276,7 +282,8 @@ async function handler(req, res) {
         total: fornecedores.length,
         ativos: fornecedores.filter(f => f.ativo).length,
         semProdutos: fornecedoresResumo.filter(f => f.ativo && f.produtosAtivos === 0).length,
-        // ativos que exigem sinal mas não têm chave Pix: o checkout fica bloqueado
+        // ativos que exigem sinal mas não têm chave Pix: o pedido segue, mas o
+        // distribuidor não consegue pagar o sinal até a chave ser configurada
         semPix: fornecedores.filter(
           f => f.ativo && (f.percentualSinal ?? 40) > 0 && !(f.pix && f.pix.chave),
         ).length,
@@ -290,6 +297,8 @@ async function handler(req, res) {
       convites: conv,
       pix: {
         sinaisAConferir,
+        sinaisAPagar: sinaisAPagarAgg[0]?.total || 0,
+        valorSinaisAPagar: sinaisAPagarAgg[0]?.valor || 0,
         pagamentosAConferir: pixAConferirAgg[0]?.total || 0,
         valorAConferir: pixAConferirAgg[0]?.valor || 0,
       },
