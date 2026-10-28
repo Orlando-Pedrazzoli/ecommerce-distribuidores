@@ -1,7 +1,9 @@
 // PAGES/ADMIN-PEDIDOS.JS - COM FILTRO POR DISTRIBUIDOR
 // ===================================
 // Status do pedido: Pendente ou Confirmado.
-// Cada pedido mostra o sinal por Pix (a pagar / comprovante, confirmar/rejeitar).
+// Cada pedido mostra o sinal por Pix: total, confirmado, em aberto e a lista
+// de pagamentos (o sinal pode ser pago em partes), cada um com o seu
+// comprovante e os botões confirmar/rejeitar.
 // Os royalties contam as baixas parciais feitas por Pix pelo distribuidor.
 
 import { useState, useEffect } from 'react';
@@ -9,17 +11,25 @@ import AdminShell from '../components/Admin/AdminShell';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { LinkComprovante } from '../components/Pix/PixPagamento';
-import { formatarMoeda, royaltiesEmAberto, STATUS_SINAL } from '../lib/financeiro';
+import {
+  formatarMoeda,
+  royaltiesEmAberto,
+  resumoSinal,
+  STATUS_SINAL,
+  STATUS_PAGAMENTO_PIX,
+} from '../lib/financeiro';
 import { normalizarStatus, STATUS_PEDIDO_INFO, STATUS_PEDIDO_VALIDOS } from '../lib/statusPedido';
 
 const ESTILO_SINAL = {
   pendente: 'bg-blue-50 border-blue-200',
+  parcial: 'bg-blue-50 border-blue-200',
   em_analise: 'bg-amber-50 border-amber-200',
   confirmado: 'bg-green-50 border-green-200',
   rejeitado: 'bg-red-50 border-red-200',
 };
 const BADGE_SINAL = {
   pendente: 'bg-blue-100 text-blue-800',
+  parcial: 'bg-blue-100 text-blue-800',
   em_analise: 'bg-amber-100 text-amber-800',
   confirmado: 'bg-green-100 text-green-800',
   rejeitado: 'bg-red-100 text-red-800',
@@ -236,20 +246,18 @@ export default function AdminPedidos() {
     }
   };
 
-  // Confirmar / rejeitar o sinal pago por Pix
-  const conferirSinal = async (pedido, acao) => {
+  // Confirmar / rejeitar UM pagamento do sinal (o sinal pode ter vários)
+  const conferirSinal = async (pedido, pagamento, acao) => {
     let motivo = '';
     if (acao === 'rejeitar') {
       motivo = prompt(
-        'Motivo da rejeição (o distribuidor recebe este texto por email e pode enviar novo comprovante):',
+        `Motivo da rejeição do Pix de ${formatarMoeda(pagamento.valor)} (o distribuidor recebe este texto por email e o valor volta a ficar em aberto):`,
       );
       if (motivo === null) return;
       if (!motivo.trim()) return alert('Informe o motivo da rejeição.');
     } else if (
       !confirm(
-        pedido.sinal.status === 'pendente'
-          ? `O distribuidor ainda não enviou comprovante. Confirmar o sinal de ${formatarMoeda(pedido.sinal.valor)} mesmo assim (o fornecedor já viu o crédito)?`
-          : `Confirmar o sinal de ${formatarMoeda(pedido.sinal.valor)}? O fornecedor viu o crédito no extrato?`,
+        `Confirmar o Pix de ${formatarMoeda(pagamento.valor)} do sinal? O fornecedor viu o crédito no extrato?`,
       )
     ) {
       return;
@@ -260,7 +268,12 @@ export default function AdminPedidos() {
       const response = await fetch('/api/admin/pedidos/sinal', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pedidoId: pedido._id, acao, motivo }),
+        body: JSON.stringify({
+          pedidoId: pedido._id,
+          pagamentoId: pagamento._id || 'legado',
+          acao,
+          motivo,
+        }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) return alert(`❌ ${data.message || 'Erro ao conferir o sinal'}`);
@@ -495,6 +508,7 @@ export default function AdminPedidos() {
                 >
                   <option value='todos'>Todos</option>
                   <option value='pendente'>⏳ A pagar</option>
+                  <option value='parcial'>◐ Pago em parte</option>
                   <option value='em_analise'>🧾 A conferir</option>
                   <option value='confirmado'>✅ Confirmado</option>
                   <option value='rejeitado'>⚠️ Rejeitado</option>
@@ -613,81 +627,118 @@ export default function AdminPedidos() {
                       </p>
                     </div>
 
-                    {/* Sinal pago por Pix */}
-                    {pedido.sinal && ESTILO_SINAL[pedido.sinal.status] && (
-                      <div
-                        className={`rounded-lg border p-3 mb-4 ${ESTILO_SINAL[pedido.sinal.status]}`}
-                      >
-                        <div className='flex flex-wrap items-start justify-between gap-3'>
-                          <div className='min-w-0'>
-                            <div className='flex flex-wrap items-center gap-2'>
-                              <h4 className='font-medium text-gray-800 text-sm'>
-                                🧾 Sinal Pix ({pedido.sinal.percentual}%):{' '}
-                                <span className='font-bold'>
-                                  {formatarMoeda(pedido.sinal.valor)}
+                    {/* Sinal por Pix (pode ser pago em partes) */}
+                    {pedido.sinal && ESTILO_SINAL[pedido.sinal.status] && (() => {
+                      const r = resumoSinal(pedido);
+                      return (
+                        <div
+                          className={`rounded-lg border p-3 mb-4 ${ESTILO_SINAL[pedido.sinal.status]}`}
+                        >
+                          <div className='flex flex-wrap items-start justify-between gap-3'>
+                            <div className='min-w-0'>
+                              <div className='flex flex-wrap items-center gap-2'>
+                                <h4 className='font-medium text-gray-800 text-sm'>
+                                  🧾 Sinal Pix ({r.percentual}%):{' '}
+                                  <span className='font-bold'>{formatarMoeda(r.total)}</span>
+                                </h4>
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-xs font-medium ${BADGE_SINAL[pedido.sinal.status]}`}
+                                >
+                                  {STATUS_SINAL[pedido.sinal.status].label}
                                 </span>
-                              </h4>
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-xs font-medium ${BADGE_SINAL[pedido.sinal.status]}`}
-                              >
-                                {STATUS_SINAL[pedido.sinal.status].label}
-                              </span>
+                              </div>
+                              <p className='text-xs text-gray-600 mt-1'>
+                                Saldo ao fornecedor:{' '}
+                                {formatarMoeda((pedido.totalFornecedor || 0) - r.total)}
+                                {r.pagamentos.length === 0 &&
+                                  ' · pedido enviado sem pagamento; o distribuidor paga em "Meus Pedidos"'}
+                              </p>
                             </div>
-                            <p className='text-xs text-gray-600 mt-1'>
-                              {pedido.sinal.status === 'pendente'
-                                ? 'Pedido enviado sem comprovante; o distribuidor paga em "Meus Pedidos". '
-                                : ''}
-                              Saldo ao fornecedor:{' '}
-                              {formatarMoeda((pedido.totalFornecedor || 0) - pedido.sinal.valor)}
-                              {pedido.sinal.txid && (
-                                <>
-                                  {' '}
-                                  · ID do Pix:{' '}
-                                  <span className='font-mono'>{pedido.sinal.txid}</span>
-                                </>
+                            <div className='text-xs text-right tabular-nums text-gray-700'>
+                              <div>
+                                Confirmado: <strong>{formatarMoeda(r.confirmado)}</strong>
+                              </div>
+                              {r.emConferencia > 0 && (
+                                <div>
+                                  Em conferência: <strong>{formatarMoeda(r.emConferencia)}</strong>
+                                </div>
                               )}
-                            </p>
-                            {pedido.sinal.conferidoEm && (
-                              <p className='text-xs text-gray-500'>
-                                Conferido em{' '}
-                                {new Date(pedido.sinal.conferidoEm).toLocaleString('pt-BR', {
-                                  dateStyle: 'short',
-                                  timeStyle: 'short',
-                                })}
-                                {pedido.sinal.conferidoPor && ` por ${pedido.sinal.conferidoPor}`}
-                              </p>
-                            )}
-                            {pedido.sinal.status === 'rejeitado' && pedido.sinal.motivoRejeicao && (
-                              <p className='text-xs text-red-800 mt-1'>
-                                <strong>Motivo:</strong> {pedido.sinal.motivoRejeicao}
-                              </p>
-                            )}
+                              <div>
+                                Falta: <strong>{formatarMoeda(r.emAberto)}</strong>
+                              </div>
+                            </div>
                           </div>
 
-                          <div className='flex flex-wrap items-center gap-2'>
-                            <LinkComprovante id={pedido.sinal.comprovanteId} className='text-sm' />
-                            {pedido.sinal.status !== 'confirmado' && (
-                              <button
-                                onClick={() => conferirSinal(pedido, 'confirmar')}
-                                disabled={atualizandoSinal[pedido._id]}
-                                className='bg-green-600 text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-green-700 disabled:opacity-50'
-                              >
-                                ✓ Confirmar
-                              </button>
-                            )}
-                            {['em_analise', 'confirmado'].includes(pedido.sinal.status) && (
-                              <button
-                                onClick={() => conferirSinal(pedido, 'rejeitar')}
-                                disabled={atualizandoSinal[pedido._id]}
-                                className='bg-white border border-red-300 text-red-700 px-3 py-1.5 rounded text-xs font-medium hover:bg-red-50 disabled:opacity-50'
-                              >
-                                Rejeitar
-                              </button>
-                            )}
-                          </div>
+                          {r.pagamentos.length > 0 && (
+                            <ul className='mt-3 border-t border-black/10 pt-2 space-y-2'>
+                              {r.pagamentos.map((p, i) => (
+                                <li
+                                  key={p._id || i}
+                                  className='flex flex-wrap items-center justify-between gap-2 text-xs'
+                                >
+                                  <div className='flex flex-wrap items-center gap-x-3 gap-y-1'>
+                                    <span className='font-semibold tabular-nums text-sm'>
+                                      {formatarMoeda(p.valor)}
+                                    </span>
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full font-medium ${BADGE_SINAL[p.status]}`}
+                                    >
+                                      {STATUS_PAGAMENTO_PIX[p.status]?.label || p.status}
+                                    </span>
+                                    {p.enviadoEm && (
+                                      <span className='text-gray-500'>
+                                        {new Date(p.enviadoEm).toLocaleString('pt-BR', {
+                                          dateStyle: 'short',
+                                          timeStyle: 'short',
+                                        })}
+                                      </span>
+                                    )}
+                                    {p.txid && (
+                                      <span className='text-gray-500'>
+                                        ID <span className='font-mono'>{p.txid}</span>
+                                      </span>
+                                    )}
+                                    {p.conferidoEm && (
+                                      <span className='text-gray-500'>
+                                        conferido{' '}
+                                        {new Date(p.conferidoEm).toLocaleDateString('pt-BR')}
+                                        {p.conferidoPor && ` por ${p.conferidoPor}`}
+                                      </span>
+                                    )}
+                                    {p.status === 'rejeitado' && p.motivoRejeicao && (
+                                      <span className='w-full text-red-800'>
+                                        <strong>Motivo:</strong> {p.motivoRejeicao}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className='flex items-center gap-2'>
+                                    <LinkComprovante id={p.comprovanteId} className='text-xs' />
+                                    {p.status !== 'confirmado' && (
+                                      <button
+                                        onClick={() => conferirSinal(pedido, p, 'confirmar')}
+                                        disabled={atualizandoSinal[pedido._id]}
+                                        className='bg-green-600 text-white px-3 py-1 rounded text-xs font-medium hover:bg-green-700 disabled:opacity-50'
+                                      >
+                                        ✓ Confirmar
+                                      </button>
+                                    )}
+                                    {p.status !== 'rejeitado' && (
+                                      <button
+                                        onClick={() => conferirSinal(pedido, p, 'rejeitar')}
+                                        disabled={atualizandoSinal[pedido._id]}
+                                        className='bg-white border border-red-300 text-red-700 px-3 py-1 rounded text-xs font-medium hover:bg-red-50 disabled:opacity-50'
+                                      >
+                                        Rejeitar
+                                      </button>
+                                    )}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Itens Organizados por Categoria */}
                     <div className='border-t pt-4'>

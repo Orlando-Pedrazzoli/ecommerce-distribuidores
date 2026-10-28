@@ -1,9 +1,10 @@
 // PAGES/MEUS-PEDIDOS.JS - HISTÓRICO DE PEDIDOS DO DISTRIBUIDOR
 // ============================================================
 // Exibe todos os pedidos de TODOS os fornecedores
-// Mostra o sinal por Pix (status + comprovante). O sinal pode ser pago aqui:
-// - 'pendente'  -> pedido enviado sem comprovante; paga e anexa pela 1.ª vez
-// - 'rejeitado' -> paga de novo e envia outro comprovante
+// Mostra o sinal por Pix (total, pago, em aberto, lista de pagamentos). O
+// sinal pode ser pago aqui, inteiro ou em partes (ex.: 30% agora, 10% na
+// semana seguinte), cada pagamento com o seu comprovante. Um pagamento
+// rejeitado volta ao em aberto e pode ser pago de novo.
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
@@ -12,17 +13,25 @@ import Head from 'next/head';
 import PixPagamento, { LinkComprovante } from '../components/Pix/PixPagamento';
 import {
   formatarMoeda,
+  parsearValor,
   royaltiesEmAberto,
+  resumoSinal,
   STATUS_SINAL,
-  STATUS_SINAL_PAGAVEL,
+  STATUS_PAGAMENTO_PIX,
 } from '../lib/financeiro';
 import { normalizarStatus, STATUS_PEDIDO_INFO } from '../lib/statusPedido';
 
 const ESTILO_SINAL = {
   pendente: 'bg-blue-50 border-blue-200 text-blue-900',
+  parcial: 'bg-blue-50 border-blue-200 text-blue-900',
   em_analise: 'bg-amber-50 border-amber-200 text-amber-900',
   confirmado: 'bg-green-50 border-green-200 text-green-900',
   rejeitado: 'bg-red-50 border-red-300 text-red-900',
+};
+const BADGE_PAGAMENTO = {
+  em_analise: 'bg-amber-100 text-amber-800',
+  confirmado: 'bg-green-100 text-green-800',
+  rejeitado: 'bg-red-100 text-red-800',
 };
 
 export default function MeusPedidos() {
@@ -39,7 +48,7 @@ export default function MeusPedidos() {
   }, [router.isReady]);
   const [resumoFinanceiro, setResumoFinanceiro] = useState(null);
   const [erro, setErro] = useState(null);
-  const [reenviando, setReenviando] = useState(null); // pedido com sinal a pagar / rejeitado
+  const [pagandoSinal, setPagandoSinal] = useState(null); // pedido com sinal em aberto
 
   useEffect(() => {
     buscarPedidos();
@@ -325,53 +334,96 @@ export default function MeusPedidos() {
                       </div>
                     </div>
 
-                    {/* Sinal por Pix ao fornecedor */}
-                    {pedido.sinal && ESTILO_SINAL[pedido.sinal.status] && (
-                      <div
-                        className={`rounded-lg border p-3 mb-4 ${ESTILO_SINAL[pedido.sinal.status]}`}
-                      >
-                        <div className='flex items-start justify-between gap-3'>
-                          <div className='min-w-0'>
-                            <p className='text-sm font-semibold'>
-                              {STATUS_SINAL[pedido.sinal.status].label} ·{' '}
-                              {formatarMoeda(pedido.sinal.valor)}
-                            </p>
-                            <p className='text-xs opacity-80'>
-                              {pedido.sinal.status === 'pendente'
-                                ? `Sinal de ${pedido.sinal.percentual}% a pagar por Pix ao fornecedor — pague quando o pedido estiver fechado`
-                                : `Sinal de ${pedido.sinal.percentual}% pago por Pix ao fornecedor`}
-                              {pedido.sinal.status === 'em_analise' &&
-                                ' — aguardando a conferência do crédito'}
-                            </p>
-                            {pedido.sinal.status === 'rejeitado' && pedido.sinal.motivoRejeicao && (
-                              <p className='text-xs mt-1'>
-                                <strong>Motivo:</strong> {pedido.sinal.motivoRejeicao}
+                    {/* Sinal por Pix ao fornecedor (pode ser pago em partes) */}
+                    {pedido.sinal && ESTILO_SINAL[pedido.sinal.status] && (() => {
+                      const r = resumoSinal(pedido);
+                      return (
+                        <div
+                          className={`rounded-lg border p-3 mb-4 ${ESTILO_SINAL[pedido.sinal.status]}`}
+                        >
+                          <div className='flex flex-wrap items-start justify-between gap-3'>
+                            <div className='min-w-0'>
+                              <p className='text-sm font-semibold'>
+                                {STATUS_SINAL[pedido.sinal.status].label} · sinal de {r.percentual}%
+                                = {formatarMoeda(r.total)}
                               </p>
-                            )}
+                              <p className='text-xs opacity-80'>
+                                {pedido.sinal.status === 'pendente' &&
+                                  'A pagar por Pix ao fornecedor, tudo ou em partes — pague quando o pedido estiver fechado'}
+                                {pedido.sinal.status === 'em_analise' &&
+                                  'Comprovante enviado — aguardando a conferência do crédito'}
+                                {pedido.sinal.status === 'parcial' &&
+                                  'Parte do sinal confirmada; o restante continua em aberto'}
+                                {pedido.sinal.status === 'confirmado' && 'Sinal pago e confirmado'}
+                                {pedido.sinal.status === 'rejeitado' &&
+                                  'O pagamento não foi confirmado — pague de novo e envie outro comprovante'}
+                              </p>
+                            </div>
+                            <div className='text-xs text-right shrink-0 tabular-nums'>
+                              <div>
+                                Confirmado: <strong>{formatarMoeda(r.confirmado)}</strong>
+                              </div>
+                              {r.emConferencia > 0 && (
+                                <div>
+                                  Em conferência: <strong>{formatarMoeda(r.emConferencia)}</strong>
+                                </div>
+                              )}
+                              <div className={r.emAberto > 0 ? 'font-bold' : ''}>
+                                Falta: <strong>{formatarMoeda(r.emAberto)}</strong>
+                              </div>
+                            </div>
                           </div>
-                          <LinkComprovante
-                            id={pedido.sinal.comprovanteId}
-                            className='text-xs shrink-0'
-                          >
-                            Comprovante
-                          </LinkComprovante>
+
+                          {r.pagamentos.length > 0 && (
+                            <ul className='mt-3 space-y-1 border-t border-black/10 pt-2'>
+                              {r.pagamentos.map((p, i) => (
+                                <li
+                                  key={p._id || i}
+                                  className='flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'
+                                >
+                                  <span className='font-semibold tabular-nums'>
+                                    {formatarMoeda(p.valor)}
+                                  </span>
+                                  <span
+                                    className={`px-2 py-0.5 rounded-full font-medium ${BADGE_PAGAMENTO[p.status]}`}
+                                  >
+                                    {STATUS_PAGAMENTO_PIX[p.status]?.label || p.status}
+                                  </span>
+                                  {p.enviadoEm && (
+                                    <span className='opacity-70'>
+                                      {new Date(p.enviadoEm).toLocaleDateString('pt-BR')}
+                                    </span>
+                                  )}
+                                  <LinkComprovante id={p.comprovanteId} className='text-xs'>
+                                    Comprovante
+                                  </LinkComprovante>
+                                  {p.status === 'rejeitado' && p.motivoRejeicao && (
+                                    <span className='w-full text-red-800'>
+                                      <strong>Motivo:</strong> {p.motivoRejeicao}
+                                    </span>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+
+                          {r.emAberto >= 0.01 && (
+                            <button
+                              onClick={() => setPagandoSinal(pedido)}
+                              className={`mt-3 w-full sm:w-auto text-white px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                                pedido.sinal.status === 'rejeitado'
+                                  ? 'bg-red-600 hover:bg-red-700'
+                                  : 'bg-blue-600 hover:bg-blue-700'
+                              }`}
+                            >
+                              {r.confirmado + r.emConferencia > 0
+                                ? `Pagar o restante (${formatarMoeda(r.emAberto)}) por Pix`
+                                : 'Pagar sinal por Pix'}
+                            </button>
+                          )}
                         </div>
-                        {STATUS_SINAL_PAGAVEL.includes(pedido.sinal.status) && (
-                          <button
-                            onClick={() => setReenviando(pedido)}
-                            className={`mt-3 w-full sm:w-auto text-white px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                              pedido.sinal.status === 'rejeitado'
-                                ? 'bg-red-600 hover:bg-red-700'
-                                : 'bg-blue-600 hover:bg-blue-700'
-                            }`}
-                          >
-                            {pedido.sinal.status === 'rejeitado'
-                              ? 'Pagar sinal e enviar novo comprovante'
-                              : 'Pagar sinal por Pix'}
-                          </button>
-                        )}
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Itens organizados por categoria */}
                     <div className='border-t pt-4'>
@@ -514,12 +566,12 @@ export default function MeusPedidos() {
           )}
         </div>
 
-        {reenviando && (
-          <ModalNovoComprovante
-            pedido={reenviando}
-            onFechar={() => setReenviando(null)}
+        {pagandoSinal && (
+          <ModalPagarSinal
+            pedido={pagandoSinal}
+            onFechar={() => setPagandoSinal(null)}
             onConcluido={() => {
-              setReenviando(null);
+              setPagandoSinal(null);
               buscarPedidos();
             }}
           />
@@ -530,65 +582,83 @@ export default function MeusPedidos() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// MODAL: PAGAR O SINAL (pendente) OU PAGAR DE NOVO (rejeitado)
+// MODAL: PAGAR O SINAL POR PIX (TUDO O QUE FALTA OU UMA PARTE)
+// Passo 1: escolher o valor · Passo 2: Pix + comprovante
 // ══════════════════════════════════════════════════════════════
-function ModalNovoComprovante({ pedido, onFechar, onConcluido }) {
-  const primeiro = pedido.sinal?.status === 'pendente';
+function ModalPagarSinal({ pedido, onFechar, onConcluido }) {
+  const emAberto = resumoSinal(pedido).emAberto;
+  const [modo, setModo] = useState('total'); // total | parcial
+  const [valorTexto, setValorTexto] = useState('');
   const [cobranca, setCobranca] = useState(null);
   const [comprovante, setComprovante] = useState(null);
-  const [carregando, setCarregando] = useState(true);
-  const [enviando, setEnviando] = useState(false);
+  const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
-    let ativo = true;
-    (async () => {
-      try {
-        const r = await fetch(`/api/user/sinal?pedidoId=${pedido._id}`);
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(data.message || 'Não foi possível gerar o Pix do sinal');
-        if (ativo) setCobranca(data.pix);
-      } catch (e) {
-        if (ativo) setErro(e.message);
-      } finally {
-        if (ativo) setCarregando(false);
-      }
-    })();
     return () => {
-      ativo = false;
       document.body.style.overflow = '';
     };
-  }, [pedido._id]);
+  }, []);
 
-  const enviar = async () => {
+  const valorEscolhido = modo === 'total' ? emAberto : parsearValor(valorTexto);
+  const valorValido =
+    Number.isFinite(valorEscolhido) && valorEscolhido >= 0.01 && valorEscolhido <= emAberto;
+
+  const gerarPix = async () => {
     setErro('');
-    setEnviando(true);
+    if (!valorValido) {
+      setErro(
+        valorEscolhido > emAberto
+          ? `O valor não pode ser maior do que ${formatarMoeda(emAberto)}.`
+          : 'Informe um valor válido. Ex.: 150,00',
+      );
+      return;
+    }
+    setCarregando(true);
+    try {
+      const r = await fetch(
+        `/api/user/sinal?pedidoId=${pedido._id}&valor=${encodeURIComponent(valorEscolhido)}`,
+      );
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.message || 'Não foi possível gerar o Pix do sinal');
+      setCobranca(data.pix);
+      setComprovante(null);
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  const registrar = async () => {
+    setErro('');
+    setCarregando(true);
     try {
       const r = await fetch('/api/user/sinal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pedidoId: pedido._id,
+          valor: cobranca.valor,
+          txid: cobranca.txid,
           comprovanteId: comprovante.id,
-          // sinal pendente: o identificador do Pix foi gerado agora, no GET
-          txid: cobranca?.txid,
         }),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.message || 'Não foi possível enviar o comprovante');
+      if (!r.ok) throw new Error(data.message || 'Não foi possível registrar o pagamento');
       onConcluido();
     } catch (e) {
       setErro(e.message);
     } finally {
-      setEnviando(false);
+      setCarregando(false);
     }
   };
 
   return (
     <div
       className='fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 sm:p-4'
-      onClick={() => !enviando && onFechar()}
+      onClick={() => !carregando && onFechar()}
     >
       <div
         className='bg-white w-full sm:max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-xl shadow-2xl flex flex-col'
@@ -600,16 +670,14 @@ function ModalNovoComprovante({ pedido, onFechar, onConcluido }) {
               Sinal do pedido #{pedido._id?.slice(-8).toUpperCase()}
             </h2>
             <p className='text-xs text-gray-500 mt-0.5'>
-              {pedido.fornecedorId?.nome} ·{' '}
-              {primeiro
-                ? 'pague o sinal por Pix e anexe o comprovante'
-                : 'pague o sinal e anexe o novo comprovante'}
+              {pedido.fornecedorId?.nome} · falta <strong>{formatarMoeda(emAberto)}</strong> de{' '}
+              {formatarMoeda(pedido.sinal?.valor)}
             </p>
           </div>
           <button
             type='button'
             onClick={onFechar}
-            disabled={enviando}
+            disabled={carregando}
             className='text-gray-400 hover:text-gray-600 text-2xl leading-none -mt-1'
             aria-label='Fechar'
           >
@@ -618,22 +686,86 @@ function ModalNovoComprovante({ pedido, onFechar, onConcluido }) {
         </div>
 
         <div className='px-5 py-5 overflow-y-auto flex-1 space-y-4'>
-          {carregando ? (
-            <div className='py-10 text-center'>
-              <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto'></div>
-            </div>
+          {!cobranca ? (
+            <>
+              <p className='text-sm font-semibold text-gray-800'>Quanto quer pagar agora?</p>
+
+              <label
+                className={`flex items-center gap-3 border-2 rounded-xl p-4 cursor-pointer transition ${
+                  modo === 'total' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                }`}
+              >
+                <input
+                  type='radio'
+                  name='modoSinal'
+                  checked={modo === 'total'}
+                  onChange={() => setModo('total')}
+                  className='h-4 w-4'
+                />
+                <div className='flex-1'>
+                  <p className='text-sm font-semibold text-gray-900'>Tudo o que falta</p>
+                  <p className='text-xs text-gray-500'>Completa o sinal deste pedido</p>
+                </div>
+                <span className='font-bold text-gray-900 tabular-nums'>{formatarMoeda(emAberto)}</span>
+              </label>
+
+              <label
+                className={`block border-2 rounded-xl p-4 cursor-pointer transition ${
+                  modo === 'parcial' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                }`}
+              >
+                <div className='flex items-center gap-3'>
+                  <input
+                    type='radio'
+                    name='modoSinal'
+                    checked={modo === 'parcial'}
+                    onChange={() => setModo('parcial')}
+                    className='h-4 w-4'
+                  />
+                  <div className='flex-1'>
+                    <p className='text-sm font-semibold text-gray-900'>Outro valor</p>
+                    <p className='text-xs text-gray-500'>
+                      Paga uma parte agora; o restante fica em aberto
+                    </p>
+                  </div>
+                </div>
+                {modo === 'parcial' && (
+                  <div className='mt-3 flex items-center gap-2'>
+                    <span className='text-sm font-semibold text-gray-600'>R$</span>
+                    <input
+                      type='text'
+                      inputMode='decimal'
+                      autoFocus
+                      value={valorTexto}
+                      onChange={e => setValorTexto(e.target.value.replace(/[^\d.,]/g, ''))}
+                      onKeyDown={e => e.key === 'Enter' && gerarPix()}
+                      placeholder='0,00'
+                      className='flex-1 border border-gray-300 rounded-lg px-3 py-2.5 text-lg font-semibold tabular-nums focus:outline-none focus:border-blue-500'
+                    />
+                  </div>
+                )}
+              </label>
+            </>
           ) : (
-            cobranca && (
+            <>
               <PixPagamento
                 cobranca={cobranca}
                 finalidade='sinal'
-                rotuloValor={`Sinal (${pedido.sinal.percentual}%)`}
+                rotuloValor='Sinal a pagar agora'
                 comprovante={comprovante}
                 onComprovante={setComprovante}
-                desativado={enviando}
+                desativado={carregando}
               />
-            )
+              <p className='text-xs text-gray-500'>
+                Pague por Pix ao fornecedor e anexe o comprovante. O administrador confere o
+                crédito a seguir
+                {cobranca.valor < emAberto - 0.004 &&
+                  `; ficam ${formatarMoeda(emAberto - cobranca.valor)} em aberto para pagar depois`}
+                .
+              </p>
+            </>
           )}
+
           {erro && (
             <p className='text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2'>
               {erro}
@@ -642,22 +774,47 @@ function ModalNovoComprovante({ pedido, onFechar, onConcluido }) {
         </div>
 
         <div className='px-5 py-4 border-t bg-gray-50 rounded-b-2xl sm:rounded-b-xl flex gap-3'>
-          <button
-            type='button'
-            onClick={onFechar}
-            disabled={enviando}
-            className='flex-1 bg-white border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium disabled:opacity-50'
-          >
-            Cancelar
-          </button>
-          <button
-            type='button'
-            onClick={enviar}
-            disabled={enviando || !comprovante?.id}
-            className='flex-1 bg-green-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed'
-          >
-            {enviando ? 'Enviando…' : 'Enviar comprovante'}
-          </button>
+          {!cobranca ? (
+            <>
+              <button
+                type='button'
+                onClick={onFechar}
+                className='flex-1 bg-white border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium'
+              >
+                Cancelar
+              </button>
+              <button
+                type='button'
+                onClick={gerarPix}
+                disabled={carregando || (modo === 'parcial' && !valorTexto)}
+                className='flex-1 bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50'
+              >
+                {carregando ? 'Gerando…' : 'Gerar Pix'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type='button'
+                onClick={() => {
+                  setCobranca(null);
+                  setErro('');
+                }}
+                disabled={carregando}
+                className='flex-1 bg-white border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium disabled:opacity-50'
+              >
+                ← Alterar valor
+              </button>
+              <button
+                type='button'
+                onClick={registrar}
+                disabled={carregando || !comprovante?.id}
+                className='flex-1 bg-green-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed'
+              >
+                {carregando ? 'Enviando…' : 'Confirmar pagamento'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

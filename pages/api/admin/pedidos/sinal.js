@@ -1,17 +1,19 @@
-// pages/api/admin/pedidos/sinal.js - CONFERIR O SINAL DE UM PEDIDO (ADMIN)
+// pages/api/admin/pedidos/sinal.js - CONFERIR UM PAGAMENTO DO SINAL (ADMIN)
 // ===================================
-// PATCH { pedidoId, acao: 'confirmar' | 'rejeitar', motivo? }
-//   confirmar -> sinal conferido (o fornecedor viu o crédito). Também vale
-//                para sinal 'pendente' (pago fora do portal, sem comprovante)
-//   rejeitar  -> só com comprovante enviado (em_analise/confirmado); o
-//                distribuidor é avisado e pode enviar novo comprovante
+// PATCH { pedidoId, pagamentoId, acao: 'confirmar' | 'rejeitar', motivo? }
+//   O sinal pode ter vários pagamentos (parciais); cada um é conferido à parte.
+//   confirmar -> o fornecedor viu o crédito desse Pix no extrato
+//   rejeitar  -> o valor volta ao em aberto; o distribuidor é avisado e paga
+//                de novo em "Meus Pedidos"
+//   pagamentoId 'legado' = o Pix único de pedidos anteriores aos parciais
 
 import mongoose from 'mongoose';
 import dbConnect from '../../../../lib/mongodb';
-import Pedido from '../../../../models/Pedido';
 import Fornecedor from '../../../../models/Fornecedor';
 import User from '../../../../models/User';
 import { requireAdmin } from '../../../../lib/auth';
+import { conferirPagamentoSinal, idPagamentoValido, ErroSinal } from '../../../../lib/sinal';
+import { resumoSinal } from '../../../../lib/financeiro';
 import { enviarSinalConfirmado, enviarSinalRejeitado } from '../../../../lib/pagamentoEmails';
 
 async function handler(req, res) {
@@ -20,11 +22,14 @@ async function handler(req, res) {
   }
 
   try {
-    const { pedidoId, acao } = req.body || {};
+    const { pedidoId, pagamentoId, acao } = req.body || {};
     const motivo = String(req.body?.motivo || '').trim().slice(0, 300);
 
     if (!mongoose.Types.ObjectId.isValid(String(pedidoId || ''))) {
       return res.status(400).json({ message: 'Pedido inválido' });
+    }
+    if (!idPagamentoValido(pagamentoId)) {
+      return res.status(400).json({ message: 'Pagamento inválido' });
     }
     if (!['confirmar', 'rejeitar'].includes(acao)) {
       return res.status(400).json({ message: 'Ação inválida' });
@@ -35,35 +40,26 @@ async function handler(req, res) {
 
     await dbConnect();
 
-    const novoStatus = acao === 'confirmar' ? 'confirmado' : 'rejeitado';
-    const statusPermitidos =
-      acao === 'confirmar' ? ['pendente', 'em_analise', 'rejeitado'] : ['em_analise', 'confirmado'];
-    const pedido = await Pedido.findOneAndUpdate(
-      {
-        _id: pedidoId,
-        'sinal.status': { $in: statusPermitidos },
-      },
-      {
-        $set: {
-          'sinal.status': novoStatus,
-          'sinal.conferidoEm': new Date(),
-          'sinal.conferidoPor': req.user.usuario,
-          'sinal.motivoRejeicao': acao === 'rejeitar' ? motivo : '',
-        },
-      },
-      { new: true },
-    );
-
-    if (!pedido) {
-      return res.status(409).json({
-        message:
-          acao === 'rejeitar'
-            ? 'Só é possível rejeitar um sinal com comprovante enviado (ou já está rejeitado).'
-            : 'Este pedido não tem sinal para conferir ou já está confirmado.',
+    let resultado;
+    try {
+      resultado = await conferirPagamentoSinal({
+        pedidoId,
+        pagamentoId,
+        acao,
+        motivo,
+        admin: req.user.usuario,
       });
+    } catch (error) {
+      if (error instanceof ErroSinal) return res.status(error.status).json({ message: error.message });
+      throw error;
     }
+    const { pedido, pagamento } = resultado;
+    const resumo = resumoSinal(pedido);
 
-    console.log(`🧾 Sinal do pedido ${pedido._id} ${novoStatus} por ${req.user.usuario}`);
+    console.log(
+      `🧾 Sinal do pedido ${pedido._id}: pagamento ${pagamento.valor} ${pagamento.status} ` +
+        `por ${req.user.usuario} (sinal ${resumo.status}, em aberto ${resumo.emAberto})`,
+    );
 
     const [fornecedor, distribuidor] = await Promise.all([
       Fornecedor.findById(pedido.fornecedorId).select('nome'),
@@ -71,16 +67,19 @@ async function handler(req, res) {
     ]);
     if (distribuidor) {
       const enviar = acao === 'confirmar' ? enviarSinalConfirmado : enviarSinalRejeitado;
-      await enviar({ pedido, fornecedor, distribuidor });
+      await enviar({ pedido, pagamento, fornecedor, distribuidor });
     }
 
     return res.status(200).json({
       success: true,
       message:
         acao === 'confirmar'
-          ? 'Sinal confirmado'
-          : 'Sinal rejeitado. O distribuidor foi avisado para enviar novo comprovante.',
+          ? resumo.emAberto > 0
+            ? `Pagamento confirmado. Falta R$ ${resumo.emAberto.toFixed(2)} do sinal.`
+            : 'Pagamento confirmado. Sinal completo.'
+          : 'Pagamento rejeitado. O distribuidor foi avisado para pagar de novo.',
       sinal: pedido.sinal,
+      resumo,
     });
   } catch (error) {
     console.error('❌ Erro ao conferir sinal:', error);

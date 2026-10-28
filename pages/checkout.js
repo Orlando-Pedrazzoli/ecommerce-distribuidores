@@ -3,10 +3,11 @@
 // Passos: Endereço → Pagamento → Revisão → Sinal Pix (opcional)
 // O último passo só existe quando algum fornecedor do carrinho exige sinal
 // (percentualSinal > 0) e tem chave Pix. Nele o distribuidor PODE pagar o
-// sinal por Pix (Copia e Cola / QR Code gerados em /api/pedidos/sinal) e
-// anexar o comprovante, mas o pedido também pode ser enviado sem isso: o
-// sinal fica "a pagar" e é pago depois em "Meus Pedidos" (os pedidos são
-// alterados com frequência depois de enviados).
+// sinal por Pix (Copia e Cola / QR Code gerados em /api/pedidos/sinal) —
+// inteiro ou só uma parte — e anexar o comprovante, mas o pedido também pode
+// ser enviado sem isso: o que faltar do sinal fica "em aberto" e é pago
+// depois em "Meus Pedidos" (os pedidos são alterados com frequência depois
+// de enviados).
 // O que já foi feito neste passo (códigos Pix e comprovantes) fica guardado
 // na sessão do navegador: ir ao app do banco e voltar não perde nada.
 // Verifica categorias isentas de royalties por fornecedor.
@@ -18,6 +19,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useToastContext } from '../pages/_app';
 import PixPagamento from '../components/Pix/PixPagamento';
+import { parsearValor } from '../lib/financeiro';
 
 // Identifica o conteúdo do carrinho de um fornecedor: se mudar, o valor do
 // sinal muda e o comprovante anterior deixa de servir.
@@ -72,6 +74,8 @@ export default function Checkout() {
 
   // Sinal Pix: por fornecedor -> { assinatura, info (resposta do servidor), comprovante }
   const [sinais, setSinais] = useState({});
+  // Valor escolhido para o Pix de cada fornecedor (undefined = sinal inteiro)
+  const [valoresPix, setValoresPix] = useState({});
   const [sinalLoading, setSinalLoading] = useState(false);
   const [sinaisCarregados, setSinaisCarregados] = useState(false);
   const [sinalErro, setSinalErro] = useState('');
@@ -117,12 +121,18 @@ export default function Checkout() {
         }
 
         // Voltou do app do banco e a página recarregou: retoma onde estava
-        const guardado = lerSessao(data.user.id)._ui;
+        const sessao = lerSessao(data.user.id);
+        const guardado = sessao._ui;
         if (guardado) {
           if (guardado.endereco) setEndereco(guardado.endereco);
           if (guardado.formaPagamento) setFormaPagamento(guardado.formaPagamento);
           if (guardado.step) setStep(guardado.step);
         }
+        const valores = {};
+        Object.entries(sessao).forEach(([id, v]) => {
+          if (id !== '_ui' && v?.valorPix >= 0.01) valores[id] = v.valorPix;
+        });
+        if (Object.keys(valores).length > 0) setValoresPix(valores);
         setSessaoRestaurada(true);
       } else {
         router.push('/');
@@ -289,7 +299,10 @@ export default function Checkout() {
         const pedidos = Object.entries(gruposCarrinho).map(([fornecedorId, itens]) => {
           const assinatura = assinaturaDe(itens);
           const anterior = guardado[fornecedorId];
-          const mesmo = anterior?.assinatura === assinatura;
+          const valorPix = valoresPix[fornecedorId];
+          // Mesmo carrinho e mesmo valor escolhido: mantém o Pix e o comprovante
+          const mesmo =
+            anterior?.assinatura === assinatura && (anterior.valorPix ?? null) === (valorPix ?? null);
           return {
             fornecedorId,
             assinatura,
@@ -297,6 +310,7 @@ export default function Checkout() {
             corpo: {
               fornecedorId,
               txid: mesmo ? anterior.txid : undefined,
+              valorPix,
               itens: itens.map(item => ({
                 produtoId: item._id,
                 quantidade: item.quantidade,
@@ -336,7 +350,7 @@ export default function Checkout() {
       cancelado = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assinaturaCarrinho, user?.id]);
+  }, [assinaturaCarrinho, user?.id, JSON.stringify(valoresPix)]);
 
   // Guarda na sessão o que já foi feito (códigos Pix, comprovantes, passo)
   useEffect(() => {
@@ -350,15 +364,26 @@ export default function Checkout() {
       dados[fornecedorId] = {
         assinatura: s.assinatura,
         txid: s.info?.pix?.txid,
+        valorPix: valoresPix[fornecedorId],
         comprovante: s.comprovante || null,
       };
     });
     gravarSessao(user.id, dados);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sinais, step, formaPagamento, endereco, user?.id, sessaoRestaurada]);
+  }, [sinais, step, formaPagamento, endereco, user?.id, sessaoRestaurada, valoresPix]);
 
   const definirComprovante = (fornecedorId, comprovante) =>
     setSinais(prev => ({ ...prev, [fornecedorId]: { ...prev[fornecedorId], comprovante } }));
+
+  // Escolher quanto pagar agora do sinal de um fornecedor (undefined = inteiro).
+  // Gera um Pix novo, por isso o comprovante anterior deixa de valer.
+  const definirValorPix = (fornecedorId, valor) =>
+    setValoresPix(prev => {
+      const novo = { ...prev };
+      if (valor === undefined) delete novo[fornecedorId];
+      else novo[fornecedorId] = valor;
+      return novo;
+    });
 
   const listaSinais = Object.entries(sinais).filter(([id]) => gruposCarrinho[id]);
   const sinaisExigidos = listaSinais.filter(([, s]) => s.info?.sinal?.exigido);
@@ -369,9 +394,13 @@ export default function Checkout() {
   const sinaisPagaveis = sinaisExigidos.filter(([, s]) => s.info.sinal.pixConfigurado && s.info.pix);
   const podePagarAgora = sinaisPagaveis.length > 0;
   const comprovantesFeitos = sinaisPagaveis.filter(([, s]) => s.comprovante?.id).length;
-  const semComprovante = sinaisExigidos.length - comprovantesFeitos;
   const precosAlterados = listaSinais.some(([, s]) => s.info?.precosAlterados);
   const totalSinal = sinaisExigidos.reduce((acc, [, s]) => acc + (s.info.sinal.valor || 0), 0);
+  // O que fica pago já no checkout (Pix com comprovante anexado)
+  const totalPagoAgora = sinaisPagaveis.reduce(
+    (acc, [, s]) => acc + (s.comprovante?.id ? s.info.pix.valor || 0 : 0),
+    0,
+  );
   // O pedido só precisa de os totais estarem calculados no servidor; o
   // comprovante do sinal é opcional (fornecedor sem chave Pix também não bloqueia)
   const sinaisProntos =
@@ -483,7 +512,8 @@ export default function Checkout() {
           sinal: pagouSinal
             ? {
                 txid: sinal.info.pix?.txid,
-                valor: sinal.info.sinal.valor,
+                // valor deste Pix: o sinal inteiro ou a parte escolhida
+                valor: sinal.info.pix?.valor,
                 comprovanteId: sinal.comprovante.id,
               }
             : undefined,
@@ -513,8 +543,8 @@ export default function Checkout() {
         `Pedido realizado com sucesso!\n\n` +
           `Total: ${formatarMoeda(totalServidor || total)}\n\n` +
           `Emails foram enviados automaticamente.\n` +
-          (semComprovante > 0
-            ? `O sinal ficou a pagar: pague por Pix em "Meus Pedidos" quando o pedido estiver fechado.`
+          (totalPagoAgora < totalSinal - 0.004
+            ? `Falta ${formatarMoeda(totalSinal - totalPagoAgora)} do sinal: pague por Pix em "Meus Pedidos" quando o pedido estiver fechado.`
             : `Acompanhe o status em "Meus Pedidos".`),
         8000
       );
@@ -1093,8 +1123,8 @@ export default function Checkout() {
                     {exigeSinal && sinaisProntos && (
                       <div className='text-xs text-blue-900 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2'>
                         O sinal <strong>não é obrigatório para enviar o pedido</strong>. Pode pagá-lo
-                        agora por Pix ou mais tarde em &quot;Meus Pedidos&quot; — útil quando o pedido
-                        ainda vai ser alterado.
+                        agora por Pix (inteiro ou só uma parte) ou mais tarde em &quot;Meus
+                        Pedidos&quot; — útil quando o pedido ainda vai ser alterado.
                       </div>
                     )}
 
@@ -1173,7 +1203,7 @@ export default function Checkout() {
                           </div>
                           {s.comprovante?.id ? (
                             <span className='shrink-0 text-[11px] font-semibold bg-green-100 text-green-800 px-2 py-0.5 rounded-full'>
-                              ✓ Pronto
+                              ✓ {formatarMoeda(s.info.pix.valor)} pronto
                             </span>
                           ) : (
                             <span className='shrink-0 text-[11px] font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full'>
@@ -1182,15 +1212,34 @@ export default function Checkout() {
                           )}
                         </div>
 
+                        <EscolhaValorSinal
+                          total={s.info.sinal.valor}
+                          atual={s.info.pix.valor}
+                          escolhido={valoresPix[fornecedorId]}
+                          bloqueado={Boolean(s.comprovante?.id) || loading}
+                          onEscolher={v => definirValorPix(fornecedorId, v)}
+                        />
+
                         <PixPagamento
                           cobranca={s.info.pix}
                           finalidade='sinal'
-                          rotuloValor={`Sinal (${s.info.sinal.percentual}%)`}
+                          rotuloValor={
+                            s.info.pix.valor < s.info.sinal.valor - 0.004
+                              ? `Parte do sinal (de ${formatarMoeda(s.info.sinal.valor)})`
+                              : `Sinal (${s.info.sinal.percentual}%)`
+                          }
                           comprovante={s.comprovante}
                           onComprovante={c => definirComprovante(fornecedorId, c)}
                           desativado={loading}
                         />
                         <p className='text-xs text-gray-500 mt-2'>
+                          {s.info.pix.valor < s.info.sinal.valor - 0.004 && (
+                            <>
+                              Restante do sinal (
+                              {formatarMoeda(s.info.sinal.valor - s.info.pix.valor)}) a pagar depois
+                              em &quot;Meus Pedidos&quot;.{' '}
+                            </>
+                          )}
                           Saldo de <strong>{formatarMoeda(s.info.sinal.saldo)}</strong> a pagar
                           ao fornecedor por {formaPagamento === 'boleto' ? 'boleto' : 'transferência'}.
                         </p>
@@ -1200,7 +1249,8 @@ export default function Checkout() {
 
                   <p className='text-xs text-center text-gray-500 mt-4'>
                     {comprovantesFeitos} de {sinaisPagaveis.length} comprovante(s) anexado(s)
-                    {semComprovante > 0 && ' — os restantes ficam a pagar em "Meus Pedidos"'}
+                    {totalPagoAgora < totalSinal - 0.004 &&
+                      ` — ${formatarMoeda(totalSinal - totalPagoAgora)} do sinal ficam a pagar em "Meus Pedidos"`}
                   </p>
 
                   <div className='flex gap-3 mt-3'>
@@ -1230,5 +1280,101 @@ export default function Checkout() {
         </div>
       </Layout>
     </>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// Escolher quanto do sinal pagar agora: inteiro ou outro valor
+// ══════════════════════════════════════════════════════════════
+function EscolhaValorSinal({ total, atual, escolhido, bloqueado, onEscolher }) {
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState('');
+  const [erro, setErro] = useState('');
+  const parcial = escolhido !== undefined && escolhido < total - 0.004;
+
+  const formatar = v =>
+    `R$ ${(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const aplicar = () => {
+    const v = parsearValor(texto);
+    if (!Number.isFinite(v) || v < 0.01) return setErro('Informe um valor válido. Ex.: 150,00');
+    if (v > total + 0.004) return setErro(`No máximo ${formatar(total)}.`);
+    setErro('');
+    setEditando(false);
+    onEscolher(v >= total - 0.004 ? undefined : v);
+  };
+
+  if (bloqueado) {
+    return (
+      <p className='text-xs text-gray-500 mb-2'>
+        Pix de <strong>{formatar(atual)}</strong>
+        {parcial && ` (parte do sinal de ${formatar(total)})`}.
+      </p>
+    );
+  }
+
+  return (
+    <div className='mb-2 text-xs'>
+      {!editando ? (
+        <div className='flex flex-wrap items-center gap-2'>
+          <span className='text-gray-600'>
+            Pagar agora: <strong className='text-gray-900'>{formatar(atual)}</strong>
+            {parcial ? ' (parte)' : ' (sinal inteiro)'}
+          </span>
+          <button
+            type='button'
+            onClick={() => {
+              setTexto(parcial ? String(escolhido).replace('.', ',') : '');
+              setEditando(true);
+            }}
+            className='text-blue-600 underline font-medium'
+          >
+            {parcial ? 'alterar valor' : 'pagar só uma parte'}
+          </button>
+          {parcial && (
+            <button
+              type='button'
+              onClick={() => onEscolher(undefined)}
+              className='text-gray-500 underline'
+            >
+              pagar o sinal inteiro
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className='flex flex-wrap items-center gap-2'>
+          <span className='text-gray-600'>Pagar agora R$</span>
+          <input
+            type='text'
+            inputMode='decimal'
+            autoFocus
+            value={texto}
+            onChange={e => setTexto(e.target.value.replace(/[^\d.,]/g, ''))}
+            onKeyDown={e => e.key === 'Enter' && aplicar()}
+            placeholder='0,00'
+            className='w-28 border border-gray-300 rounded px-2 py-1 text-sm font-semibold tabular-nums focus:outline-none focus:border-blue-500'
+          />
+          <span className='text-gray-500'>de {formatar(total)}</span>
+          <button
+            type='button'
+            onClick={aplicar}
+            className='bg-blue-600 text-white px-3 py-1 rounded font-medium'
+          >
+            Gerar Pix
+          </button>
+          <button
+            type='button'
+            onClick={() => {
+              setEditando(false);
+              setErro('');
+            }}
+            className='text-gray-500 underline'
+          >
+            cancelar
+          </button>
+          {erro && <span className='w-full text-red-600'>{erro}</span>}
+        </div>
+      )}
+    </div>
   );
 }

@@ -2,8 +2,9 @@
 // ===================================
 // Valores: subtotal (produtos, vai para o fornecedor) + royalties = total.
 // Status usados: pendente e confirmado.
-// - sinal: entrada paga por Pix ao fornecedor. Pode ser paga no checkout ou
-//   depois, em "Meus Pedidos" (status 'pendente' enquanto não há comprovante)
+// - sinal: entrada paga por Pix ao fornecedor, no checkout ou depois em
+//   "Meus Pedidos", integral ou em partes (sinal.pagamentos[]), cada parte
+//   com o seu comprovante
 // - controleFinanceiro.royalties.valorPago: quanto já foi abatido por
 //   pagamentos Pix do distribuidor (ver models/Pagamento.js)
 
@@ -112,25 +113,57 @@ const PedidoSchema = new mongoose.Schema(
     sinal: {
       // % aplicado sobre o total do fornecedor no momento do pedido
       percentual: { type: Number, default: 0 },
+      // Valor TOTAL do sinal exigido (ex.: 40% do total do fornecedor)
       valor: { type: Number, default: 0 },
+      // Estado agregado, recalculado a partir de `pagamentos` (lib/financeiro.js):
       // nao_aplicavel: fornecedor não exige sinal
-      // pendente:      exige, mas o distribuidor ainda não enviou comprovante
-      // em_analise:    comprovante enviado, à espera da conferência do admin
-      // confirmado / rejeitado: resultado da conferência
+      // pendente:      exige, ainda sem nenhum pagamento
+      // em_analise:    há pagamento(s) com comprovante à espera do admin
+      // parcial:       parte confirmada, resto em aberto
+      // confirmado:    pagamentos confirmados cobrem o valor
+      // rejeitado:     só há pagamentos rejeitados
       status: {
         type: String,
-        enum: ['nao_aplicavel', 'pendente', 'em_analise', 'confirmado', 'rejeitado'],
+        enum: ['nao_aplicavel', 'pendente', 'em_analise', 'parcial', 'confirmado', 'rejeitado'],
         default: 'nao_aplicavel',
       },
-      // Identificador do Pix (aparece no extrato de quem recebe)
-      txid: String,
-      // Chave Pix para onde o sinal foi enviado (cópia do momento do pedido)
+      // Chave Pix do fornecedor (cópia do momento do pedido/pagamento)
       chavePix: String,
+
+      // Pagamentos Pix do sinal: o distribuidor pode pagar em partes (ex.: 30%
+      // hoje, 10% na semana seguinte), cada um com o seu comprovante. Um
+      // pagamento em_analise já conta como "pago" para efeito de em aberto;
+      // rejeitado devolve o valor ao em aberto.
+      pagamentos: [
+        {
+          valor: { type: Number, required: true, min: 0.01 },
+          // Identificador do Pix (aparece no extrato de quem recebe)
+          txid: { type: String, required: true },
+          chavePix: String,
+          comprovanteId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Comprovante',
+            required: true,
+          },
+          status: {
+            type: String,
+            enum: ['em_analise', 'confirmado', 'rejeitado'],
+            default: 'em_analise',
+          },
+          enviadoEm: { type: Date, default: Date.now },
+          conferidoEm: Date,
+          conferidoPor: String,
+          motivoRejeicao: String,
+        },
+      ],
+
+      // ── Campos antigos (pedidos anteriores aos pagamentos parciais) ──
+      // Convertidos para pagamentos[0] na primeira alteração (lib/sinal.js).
+      txid: String,
       comprovanteId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Comprovante',
       },
-      // Comprovantes substituídos depois de uma rejeição
       comprovantesAnteriores: [
         {
           type: mongoose.Schema.Types.ObjectId,
@@ -224,6 +257,11 @@ PedidoSchema.index({ 'sinal.status': 1 });
 PedidoSchema.index(
   { 'sinal.txid': 1 },
   { unique: true, partialFilterExpression: { 'sinal.txid': { $type: 'string' } } },
+);
+// O mesmo para cada pagamento parcial do sinal
+PedidoSchema.index(
+  { 'sinal.pagamentos.txid': 1 },
+  { unique: true, partialFilterExpression: { 'sinal.pagamentos.txid': { $type: 'string' } } },
 );
 
 // ══════════════════════════════════════════════════════════════

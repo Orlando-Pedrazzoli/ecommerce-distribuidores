@@ -105,15 +105,15 @@ export default function Admin() {
     alertas.push({
       tom: 'orange',
       titulo: `${pix.sinaisAConferir} sinal(is) Pix a conferir`,
-      desc: 'Pedidos com comprovante do sinal enviado. Confirme depois de o fornecedor ver o crédito.',
+      desc: 'Pagamentos do sinal com comprovante. Confirme cada um depois de o fornecedor ver o crédito.',
       href: '/admin-pedidos?sinal=em_analise',
       cta: 'Conferir sinais',
     });
   if (pix.sinaisAPagar > 0)
     alertas.push({
       tom: 'blue',
-      titulo: `${pix.sinaisAPagar} pedido(s) com sinal a pagar (${moeda(pix.valorSinaisAPagar)})`,
-      desc: 'Enviados sem comprovante do sinal. O distribuidor paga depois em "Meus Pedidos".',
+      titulo: `${pix.sinaisAPagar} pedido(s) com sinal em aberto (${moeda(pix.valorSinaisAPagar)})`,
+      desc: 'Sinal ainda não pago, no todo ou em parte. O distribuidor paga em "Meus Pedidos".',
       href: '/admin-pedidos?sinal=pendente',
       cta: 'Ver pedidos',
     });

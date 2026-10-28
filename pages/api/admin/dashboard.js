@@ -12,7 +12,7 @@ import User from '../../../models/User';
 import Convite from '../../../models/Convite';
 import Pagamento from '../../../models/Pagamento';
 import { requireAdmin } from '../../../lib/auth';
-import { EXPR_ROYALTIES_EM_ABERTO } from '../../../lib/financeiro';
+import { EXPR_ROYALTIES_EM_ABERTO, sinalEmAberto } from '../../../lib/financeiro';
 import { normalizarStatus } from '../../../lib/statusPedido';
 
 const inicioDoDia = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -45,7 +45,7 @@ async function handler(req, res) {
       serie,
       sinaisAConferir,
       pixAConferirAgg,
-      sinaisAPagarAgg,
+      pedidosSinalAberto,
     ] = await Promise.all([
       Pedido.aggregate([
         { $group: { _id: '$status', total: { $sum: 1 }, valor: { $sum: '$total' } } },
@@ -176,11 +176,11 @@ async function handler(req, res) {
         { $match: { status: 'em_analise' } },
         { $group: { _id: null, total: { $sum: 1 }, valor: { $sum: '$valor' } } },
       ]),
-      // Pedidos enviados sem o sinal (o distribuidor paga depois em "Meus Pedidos")
-      Pedido.aggregate([
-        { $match: { 'sinal.status': 'pendente' } },
-        { $group: { _id: null, total: { $sum: 1 }, valor: { $sum: '$sinal.valor' } } },
-      ]),
+      // Pedidos com sinal ainda por pagar (no todo ou em parte); o valor que
+      // falta é calculado em JS porque desconta os pagamentos parciais
+      Pedido.find({ 'sinal.status': { $in: ['pendente', 'parcial', 'rejeitado'] } })
+        .select('sinal')
+        .lean(),
     ]);
 
     // Só dois status; pedidos antigos "enviado"/"entregue" contam como confirmados
@@ -297,8 +297,9 @@ async function handler(req, res) {
       convites: conv,
       pix: {
         sinaisAConferir,
-        sinaisAPagar: sinaisAPagarAgg[0]?.total || 0,
-        valorSinaisAPagar: sinaisAPagarAgg[0]?.valor || 0,
+        sinaisAPagar: pedidosSinalAberto.length,
+        valorSinaisAPagar:
+          Math.round(pedidosSinalAberto.reduce((s, p) => s + sinalEmAberto(p) * 100, 0)) / 100,
         pagamentosAConferir: pixAConferirAgg[0]?.total || 0,
         valorAConferir: pixAConferirAgg[0]?.valor || 0,
       },

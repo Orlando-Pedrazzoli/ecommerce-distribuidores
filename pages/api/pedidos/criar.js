@@ -5,10 +5,11 @@
 // - Preços, royalties (com categorias isentas) e sinal são calculados no
 //   servidor a partir do cadastro (lib/pedidos.js).
 // - O comprovante do sinal NÃO é obrigatório para criar o pedido (os pedidos
-//   são alterados com frequência depois de enviados). Se vier, o sinal nasce
-//   'em_analise' e o comprovante segue em anexo nos emails; se não vier, o
-//   sinal fica 'pendente' e o distribuidor paga depois em "Meus Pedidos"
-//   (/api/user/sinal).
+//   são alterados com frequência depois de enviados). Se vier, é registado
+//   como o 1.º pagamento do sinal (`sinal.pagamentos[0]`, em conferência) e o
+//   comprovante segue em anexo nos emails; `valor` pode ser o sinal inteiro
+//   ou só uma parte. Se não vier, o sinal fica 'pendente'. Em ambos os casos
+//   o que faltar é pago depois em "Meus Pedidos" (/api/user/sinal).
 // - O txid do Pix é único por pedido: repetir o envio devolve o pedido que
 //   já existe em vez de criar outro.
 // 🔐 Autenticação via requireDistribuidor (dados do distribuidor vêm do Mongo)
@@ -91,19 +92,21 @@ async function handler(req, res) {
     const { valores, sinal } = calculo;
 
     // ══════════════════════════════════════════════════════════════
-    // SINAL: com comprovante -> em_analise; sem comprovante -> pendente
-    // (o distribuidor paga depois em "Meus Pedidos")
+    // SINAL: com comprovante -> 1.º pagamento em conferência (integral ou
+    // parcial); sem comprovante -> pendente (paga depois em "Meus Pedidos")
     // ══════════════════════════════════════════════════════════════
     let dadosSinal = { percentual: sinal.percentual, valor: 0, status: 'nao_aplicavel' };
 
     const txid = String(sinalEnviado.txid || '');
     const pagouAgora = Boolean(txid || sinalEnviado.comprovanteId);
+    const filtroTxid = { userId: distribuidor.usuario, 'sinal.pagamentos.txid': txid };
 
     if (sinal.exigido && !pagouAgora) {
       dadosSinal = {
         percentual: sinal.percentual,
         valor: sinal.valor,
         status: 'pendente',
+        pagamentos: [],
         ...(pixConfigurado(fornecedor.pix) ? { chavePix: fornecedor.pix.chave } : {}),
       };
     } else if (sinal.exigido) {
@@ -121,18 +124,20 @@ async function handler(req, res) {
       }
 
       // Envio repetido (duplo clique, nova tentativa): devolve o pedido existente
-      const existente = await Pedido.findOne({ userId: distribuidor.usuario, 'sinal.txid': txid });
+      const existente = await Pedido.findOne(filtroTxid);
       if (existente) {
         return res.status(200).json(
           respostaPedido(existente, { message: 'Pedido já registrado', duplicado: true }),
         );
       }
 
-      // O valor pago tem de ser o que o servidor calcula agora
-      if (
-        sinalEnviado.valor !== undefined &&
-        arred(sinalEnviado.valor) !== arred(sinal.valor)
-      ) {
+      // Valor pago agora: o sinal inteiro ou uma parte (nunca mais do que o
+      // sinal calculado com os preços atuais)
+      const valorPago = sinalEnviado.valor === undefined ? sinal.valor : arred(sinalEnviado.valor);
+      if (!(valorPago >= 0.01)) {
+        return res.status(400).json({ message: 'Valor do sinal inválido' });
+      }
+      if (valorPago > sinal.valor + 0.004) {
         return res.status(409).json({
           message:
             'Os preços deste pedido foram atualizados e o valor do sinal mudou. Volte ao carrinho e reveja o pedido.',
@@ -147,7 +152,7 @@ async function handler(req, res) {
       });
       if (!comprovanteReservado) {
         // Pode ser o mesmo envio a chegar duas vezes ao mesmo tempo
-        const gemeo = await Pedido.findOne({ userId: distribuidor.usuario, 'sinal.txid': txid });
+        const gemeo = await Pedido.findOne(filtroTxid);
         if (gemeo) {
           return res.status(200).json(
             respostaPedido(gemeo, { message: 'Pedido já registrado', duplicado: true }),
@@ -163,12 +168,20 @@ async function handler(req, res) {
         percentual: sinal.percentual,
         valor: sinal.valor,
         status: 'em_analise',
-        txid,
         chavePix: fornecedor.pix.chave,
-        comprovanteId: comprovanteReservado._id,
-        enviadoEm: new Date(),
+        pagamentos: [
+          {
+            valor: valorPago,
+            txid,
+            chavePix: fornecedor.pix.chave,
+            comprovanteId: comprovanteReservado._id,
+            status: 'em_analise',
+            enviadoEm: new Date(),
+          },
+        ],
       };
     }
+    const primeiroPagamento = dadosSinal.pagamentos?.[0];
 
     // ══════════════════════════════════════════════════════════════
     // CRIAR PEDIDO
@@ -202,11 +215,8 @@ async function handler(req, res) {
       await pedido.save();
     } catch (error) {
       // Dois envios em simultâneo com o mesmo Pix: fica o primeiro
-      if (error.code === 11000 && dadosSinal.txid) {
-        const existente = await Pedido.findOne({
-          userId: distribuidor.usuario,
-          'sinal.txid': dadosSinal.txid,
-        });
+      if (error.code === 11000 && primeiroPagamento) {
+        const existente = await Pedido.findOne(filtroTxid);
         if (existente) {
           if (comprovanteReservado) {
             await libertarComprovante(comprovanteReservado._id).catch(() => {});
@@ -222,7 +232,7 @@ async function handler(req, res) {
 
     console.log(
       `✅ Pedido ${pedido._id} criado por ${distribuidor.usuario} (${fornecedor.codigo}) ` +
-        `total=${valores.total} sinal=${dadosSinal.valor} (${dadosSinal.status})`,
+        `total=${valores.total} sinal=${dadosSinal.valor} pago_agora=${primeiroPagamento?.valor || 0} (${dadosSinal.status})`,
     );
 
     if (comprovanteReservado) {
@@ -234,9 +244,9 @@ async function handler(req, res) {
     // ENVIAR EMAILS (o comprovante do sinal, se existir, vai em anexo)
     // ══════════════════════════════════════════════════════════════
     try {
-      const anexos = dadosSinal.comprovanteId
+      const anexos = primeiroPagamento
         ? await anexoDoComprovante(
-            dadosSinal.comprovanteId,
+            primeiroPagamento.comprovanteId,
             `comprovante-sinal-${pedido._id.toString().slice(-8).toUpperCase()}`,
           )
         : [];
@@ -261,6 +271,7 @@ async function handler(req, res) {
         resumo: {
           ...valores,
           sinal: dadosSinal.valor,
+          sinalPagoAgora: primeiroPagamento?.valor || 0,
           sinalStatus: dadosSinal.status,
         },
       }),
